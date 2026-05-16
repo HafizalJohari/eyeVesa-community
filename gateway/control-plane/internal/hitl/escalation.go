@@ -3,6 +3,7 @@ package hitl
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -418,15 +419,19 @@ func (s *EscalationService) processEscalationTimers(ctx context.Context) {
 }
 
 func (s *EscalationService) expireOldApprovals(ctx context.Context) {
-	s.db.Exec(ctx,
+	if _, err := s.db.Exec(ctx,
 		`UPDATE hitl_approvals SET status = 'expired'
 		 WHERE status = 'pending' AND expires_at < NOW()`,
-	)
+	); err != nil {
+		log.Printf("[escalation] expireOldApprovals update: %v", err)
+	}
 
-	s.db.Exec(ctx,
+	if _, err := s.db.Exec(ctx,
 		`UPDATE agents a SET trust_score = GREATEST(0, trust_score - 0.01)
 		 WHERE agent_id IN (SELECT agent_id FROM hitl_approvals WHERE status = 'expired' AND expires_at < NOW() - INTERVAL '1 minute')`,
-	)
+	); err != nil {
+		log.Printf("[escalation] expireOldApprovals trust: %v", err)
+	}
 }
 
 func (s *EscalationService) escalateStaleApprovals(ctx context.Context) {
@@ -446,10 +451,12 @@ func (s *EscalationService) escalateStaleApprovals(ctx context.Context) {
 			continue
 		}
 
-		s.db.Exec(ctx,
+		if _, err := s.db.Exec(ctx,
 			`UPDATE hitl_approvals SET escalation_level = escalation_level + 1 WHERE approval_id = $1`,
 			approvalID,
-		)
+		); err != nil {
+			log.Printf("[escalation] escalateStale level bump: %v", err)
+		}
 
 		s.enqueueNotification(ctx, approvalID, level+1,
 			fmt.Sprintf("ESCALATION: Approval %s has been pending for 5+ minutes", approvalID))
@@ -487,7 +494,9 @@ func (s *EscalationService) enqueueNotification(ctx context.Context, approvalID 
 	}
 
 	if notifier, ok := s.notifyChans[channel]; ok {
-		notifier.Send(ctx, target, message)
+		if err := notifier.Send(ctx, target, message); err != nil {
+			log.Printf("[escalation] notify send: %v", err)
+		}
 	}
 
 	s.pushToApprovers(ctx, approvalID, message)
@@ -520,7 +529,9 @@ func (s *EscalationService) pushToApprovers(ctx context.Context, approvalID stri
 			prefix = "apns:"
 		}
 
-		pushNotifier.Send(ctx, prefix+deviceToken, message)
+		if err := pushNotifier.Send(ctx, prefix+deviceToken, message); err != nil {
+			log.Printf("[escalation] push send: %v", err)
+		}
 	}
 }
 
@@ -533,16 +544,20 @@ func (s *EscalationService) updateTrustForApproval(ctx context.Context, approval
 		return
 	}
 
-	s.db.Exec(ctx,
+	if _, err := s.db.Exec(ctx,
 		`UPDATE agents SET trust_score = GREATEST(0, LEAST(1, trust_score + $1)), updated_at = NOW() WHERE agent_id = $2`,
 		delta, agentID,
-	)
+	); err != nil {
+		log.Printf("[escalation] trust update: %v", err)
+	}
 
-	s.db.Exec(ctx,
+	if _, err := s.db.Exec(ctx,
 		`INSERT INTO trust_events (agent_id, event_type, trust_delta, trust_score_after, reason)
 		 SELECT agent_id, 'hitl_approval', $1, trust_score, $2 FROM agents WHERE agent_id = $3`,
 		delta, reason, agentID,
-	)
+	); err != nil {
+		log.Printf("[escalation] trust event insert: %v", err)
+	}
 }
 
 func (s *EscalationService) GetNotifications(ctx context.Context, approvalID string) ([]NotificationEntry, error) {

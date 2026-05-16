@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"log"
 	"time"
 
 	pb "github.com/hafizaljohari/eyeVesa/proto/agentid"
@@ -77,7 +78,9 @@ func (s *GatewayServer) RegisterAgent(ctx context.Context, req *pb.RegisterAgent
 		TrustBefore: 1.0,
 		TrustAfter:  1.0,
 	}
-	s.auditLogger.Log(ctx, auditEntry, s.gatewayPrivKey)
+	if err := s.auditLogger.Log(ctx, auditEntry, s.gatewayPrivKey); err != nil {
+		log.Printf("[grpc] audit log: %v", err)
+	}
 
 	return &pb.RegisterAgentResponse{
 		AgentId:   agentID.String(),
@@ -158,7 +161,9 @@ func (s *GatewayServer) Authorize(ctx context.Context, req *pb.AuthorizeRequest)
 
 	var params map[string]interface{}
 	if req.ParamsJson != "" {
-		json.Unmarshal([]byte(req.ParamsJson), &params)
+		if err := json.Unmarshal([]byte(req.ParamsJson), &params); err != nil {
+			log.Printf("[grpc] authorize params unmarshal: %v", err)
+		}
 		policyInput.Action.Params = params
 	}
 
@@ -172,15 +177,19 @@ func (s *GatewayServer) Authorize(ctx context.Context, req *pb.AuthorizeRequest)
 		newTrustScore = 1
 	}
 
-	s.db.Pool.Exec(ctx,
+	if _, err := s.db.Pool.Exec(ctx,
 		`UPDATE agents SET trust_score = $1, updated_at = NOW() WHERE agent_id = $2`,
 		newTrustScore, req.AgentId,
-	)
+	); err != nil {
+		log.Printf("[grpc] trust update: %v", err)
+	}
 
-	s.db.Pool.Exec(ctx,
+	if _, err := s.db.Pool.Exec(ctx,
 		`INSERT INTO trust_events (agent_id, event_type, trust_delta, trust_score_after, reason) VALUES ($1, $2, $3, $4, $5)`,
 		req.AgentId, "authorize", decision.TrustDelta, newTrustScore, decision.Reason,
-	)
+	); err != nil {
+		log.Printf("[grpc] trust event insert: %v", err)
+	}
 
 	auditEntry := audit.AuditEntry{
 		AgentID:     req.AgentId,
@@ -191,7 +200,9 @@ func (s *GatewayServer) Authorize(ctx context.Context, req *pb.AuthorizeRequest)
 		TrustBefore: trustScore,
 		TrustAfter:  newTrustScore,
 	}
-	s.auditLogger.Log(ctx, auditEntry, s.gatewayPrivKey)
+	if err := s.auditLogger.Log(ctx, auditEntry, s.gatewayPrivKey); err != nil {
+		log.Printf("[grpc] audit log: %v", err)
+	}
 
 	return &pb.AuthorizeResponse{
 		Allowed:      decision.Allowed,

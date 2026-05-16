@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -88,7 +89,9 @@ func NewPTVService(db *pgxpool.Pool) *PTVService {
 		keyDER, err := x509.MarshalPKCS8PrivateKey(key)
 		if err == nil {
 			keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
-			os.WriteFile(keyPath, keyPEM, 0600)
+			if writeErr := os.WriteFile(keyPath, keyPEM, 0600); writeErr != nil {
+				log.Printf("[ptv] Warning: failed to write key to %s: %v", keyPath, writeErr)
+			}
 		}
 	}
 

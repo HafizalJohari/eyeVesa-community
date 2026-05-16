@@ -54,7 +54,7 @@ func (a *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"unauthorized","message":"valid API key, bearer token, or SSO session required"}`))
+		_, _ = w.Write([]byte(`{"error":"unauthorized","message":"valid API key, bearer token, or SSO session required"}`))
 	})
 }
 
@@ -202,7 +202,7 @@ func (a *AuthMiddleware) RequireRole(role string) func(http.Handler) http.Handle
 			auth := r.Header.Get("Authorization")
 			if !strings.HasPrefix(auth, "Bearer ") {
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
+				_, _ = w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
 				return
 			}
 
@@ -210,14 +210,14 @@ func (a *AuthMiddleware) RequireRole(role string) func(http.Handler) http.Handle
 			claims, err := parseJWT(token, a.jwtSecret)
 			if err != nil {
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
+				_, _ = w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
 				return
 			}
 
 			roleOrder := map[string]int{"admin": 3, "operator": 2, "viewer": 1}
 			if roleOrder[claims.Role] < roleOrder[role] {
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
+				_, _ = w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
 				return
 			}
 
@@ -342,13 +342,13 @@ func buildJWTToken(claims *JWTClaims, secret []byte) string {
 
 func GenerateAPIKey() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return "eyevesa_" + base64.RawURLEncoding.EncodeToString(b)
 }
 
 func GenerateJWTSecret() []byte {
 	b := make([]byte, 64)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return []byte(base64.RawURLEncoding.EncodeToString(b))
 }
 

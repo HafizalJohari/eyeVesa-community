@@ -21,12 +21,18 @@
         <center>
             <a href="#problem">[Problem]</a>
             <a href="#kya">[KYA]</a>
+            <a href="#ptv">[PTV]</a>
             <a href="#features">[Features]</a>
             <a href="#how-it-works">[How It Works]</a>
+            <a href="#opa">[OPA]</a>
+            <a href="#hitl">[HITL]</a>
             <a href="#trust">[Trust]</a>
             <a href="#use-cases">[Use Cases]</a>
             <a href="#architecture">[Architecture]</a>
-            <a href="#hermes">[Hermes Agent]</a>
+            <a href="#delegation">[Delegation]</a>
+            <a href="#api">[API]</a>
+            <a href="#hermes">[Hermes]</a>
+            <a href="#cli">[CLI]</a>
             <a href="#quickstart">[Quick Start]</a>
         </center>
     </div>
@@ -48,9 +54,9 @@
 
     <center><table border="1" cellpadding="8" cellspacing="0" class="statbox">
         <tr>
-            <th>3</th><th>Ed25519</th><th>100%</th>
+            <th>30+</th><th>Ed25519+PTV</th><th>3-Tier</th><th>100%</th>
         </tr><tr>
-            <td>Decision Layers</td><td>Crypto Identity</td><td>Audit Integrity</td>
+            <td>API Endpoints</td><td>Crypto Identity</td><td>Policy Engine</td><td>Audit Integrity</td>
         </tr>
     </table></center>
 
@@ -91,6 +97,33 @@
 
     <hr>
 
+    <a name="ptv"></a>
+    <h2>PTV: Prove-Transform-Verify</h2>
+    <p>Hardware-rooted identity attestation. Agents prove their platform identity, the gateway transforms it into a binding, and any party can verify.</p>
+
+    <pre>
+    Prove:
+      Agent generates hardware attestation (TPM / Secure Enclave)
+      Signs with Ed25519 identity key
+      Submits to /v1/ptv/attest
+
+    Transform:
+      Gateway verifies TPM signature
+      Creates identity binding (attestation + public key + expiry)
+      Stores binding in identity_bindings table
+      /v1/ptv/bind
+
+    Verify:
+      Any party checks binding expiry and signature
+      Confirms agent is who it claims to be
+      /v1/ptv/verify/{bindingID}
+    </pre>
+
+    <p>Three-step protocol. No shared secrets. No API keys. Cryptographic proof that the agent
+    ran on specific hardware at a specific time.</p>
+
+    <hr>
+
     <a name="features"></a>
     <h2>Core Capabilities</h2>
     <p>Every agent request passes through decision layers before reaching your production systems.</p>
@@ -100,28 +133,48 @@
             <th>Capability</th><th>Description</th>
         </tr>
         <tr>
-            <td><b>Cryptographic Identity</b></td>
-            <td>Every agent gets an Ed25519 keypair on registration. Requests are signed, verified, and non-repudiable. No more shared API keys.</td>
+            <td><b>Ed25519 Identity</b></td>
+            <td>Every agent gets a keypair on registration. Requests are signed, verified, and non-repudiable. No shared API keys.</td>
         </tr>
         <tr>
-            <td><b>Policy Engine &amp; HITL</b></td>
-            <td>OPA/Rego policies auto-allow low-risk actions, auto-deny dangerous ones, and route uncertain decisions to humans. Four layers of trust.</td>
+            <td><b>PTV Attestation</b></td>
+            <td>Prove-Transform-Verify protocol binds Ed25519 identity to hardware (TPM/Secure Enclave). Cryptographic proof of platform integrity.</td>
+        </tr>
+        <tr>
+            <td><b>3-Tier Policy Engine</b></td>
+            <td>Embedded OPA (fast, in-process) -- external OPA server (centralized) -- local Go fallback (always works). Never blocked on policy.</td>
+        </tr>
+        <tr>
+            <td><b>HITL + Escalation</b></td>
+            <td>Human-in-the-loop approvals with multi-layer escalation. Slack buttons, PagerDuty alerts, webhooks, APNs/FCM push. 5-min auto-escalation.</td>
         </tr>
         <tr>
             <td><b>Trust Scoring</b></td>
-            <td>Dynamic trust scores adapt in real-time. Good behavior earns trust (+0.01). Policy violations degrade it (-0.05). Low-trust agents get contained automatically.</td>
+            <td>Dynamic trust scores adapt in real-time. Good behavior earns trust (+0.01). Policy violations degrade it (-0.05). Low-trust agents get contained.</td>
         </tr>
         <tr>
             <td><b>Non-Repudiable Audit</b></td>
-            <td>Every action is logged with an Ed25519 signature. Integrity verification is built-in. Tamper-proof evidence for compliance.</td>
+            <td>Every action logged with Ed25519 signature. SHA-256 chain integrity. VerifyIntegrity() proves logs weren't tampered with.</td>
         </tr>
         <tr>
-            <td><b>Agent Delegation</b></td>
-            <td>Agents can delegate scoped, time-limited authority to sub-agents. Depth limits prevent unbounded chains. Every delegation is tracked.</td>
+            <td><b>Delegation</b></td>
+            <td>Agents delegate scoped authority to sub-agents. Max depth 3. Time-limited. Revocable. Every link in the chain is tracked.</td>
         </tr>
         <tr>
             <td><b>mTLS + SPIRE</b></td>
-            <td>Zero-trust networking with SPIFFE/SPIRE workload identity. Every service-to-service call is mutually authenticated via mTLS.</td>
+            <td>Three gateway modes: plaintext (dev), TLS (staging), mTLS (production). SPIRE/SPIFFE workload identity with local dev fallback.</td>
+        </tr>
+        <tr>
+            <td><b>Behavioral Anomalies</b></td>
+            <td>pgvector 1536-dim behavioral embeddings. Cosine similarity detects anomalous agents. Trust events feed the model.</td>
+        </tr>
+        <tr>
+            <td><b>LLM Integration</b></td>
+            <td>HITL summaries (OpenAI/Anthropic), audit narratives, natural-language-to-Rego policy translation. Graceful fallback when no API key.</td>
+        </tr>
+        <tr>
+            <td><b>Budget &amp; Rate Limits</b></td>
+            <td>Per-agent spend tracking. OPA checks budget before authorization. Rate limiting per agent per resource.</td>
         </tr>
     </table>
 
@@ -159,6 +212,73 @@
             <th><font color="#cc66ff"><b>[ESCALATE]</b></font></th>
         </tr>
         <tr><td colspan="3"><font size="2">Bank transfers over $1,000. Database schema changes. Requires 2+ separate sign-offs.</font></td></tr>
+    </table>
+
+    <hr>
+
+    <a name="opa"></a>
+    <h2>3-Tier Policy Engine</h2>
+    <p>Never blocked on policy. Three fallback layers ensure authorization always returns an answer.</p>
+
+    <table border="1" cellpadding="10" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Tier</th><th>How</th><th>Latency</th><th>When Used</th></tr>
+        <tr>
+            <td><b>1. Embedded OPA</b></td>
+            <td>Rego policies compiled and evaluated in-process via OPA Go SDK</td>
+            <td>&lt;1ms</td>
+            <td>Default. Always available. No external dependency.</td>
+        </tr>
+        <tr>
+            <td><b>2. External OPA</b></td>
+            <td>HTTP query to standalone OPA server at OPA_ENDPOINT</td>
+            <td>~5ms</td>
+            <td>Centralized policy management. Hot-reload without gateway restart.</td>
+        </tr>
+        <tr>
+            <td><b>3. Local Fallback</b></td>
+            <td>Hardcoded Go rules: trust thresholds, tool allowlists, budget limits</td>
+            <td>&lt;0.1ms</td>
+            <td>Everything else fails. Last line of defense. Always works.</td>
+        </tr>
+    </table>
+
+    <p>Policy decisions return four fields: <tt>allow</tt>, <tt>requires_hitl</tt>, <tt>reason</tt>, <tt>trust_delta</tt>.
+    The gateway updates the agent's trust score based on <tt>trust_delta</tt> after every call.</p>
+
+    <hr>
+
+    <a name="hitl"></a>
+    <h2>Human-in-the-Loop</h2>
+    <p>When policy is uncertain, humans decide. And they get notified everywhere.</p>
+
+    <h3>Approval Flow</h3>
+    <pre>
+    Request enters HITL:
+      1. Write to hitl_approvals table (persistent, won't disappear)
+      2. Notify primary approver (Slack DM / push notification / webhook)
+      3. Start expiry timer (default: 30 minutes)
+      4. Start escalation timer (5 min -&gt; secondary -&gt; 15 min -&gt; team channel)
+
+    Minute 0:    Notify primary approver
+    Minute 5:    No response? Escalate to secondary approver
+    Minute 15:   No response? Escalate to team channel (anyone can approve)
+    Minute 30:   No response? EXPIRED (never auto-approve)
+                 Trust -= 0.01 for expired approval
+
+    For Layer 4 (escalation):
+      Requires 2 separate approvals (e.g., VP Engineering + CTO)
+      First approval: marks 1/2 approved, still pending
+      Second approval: marks 2/2 approved, request executes
+    </pre>
+
+    <h3>Notification Backends</h3>
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Backend</th><th>How</th><th>Interactive?</th></tr>
+        <tr><td><b>Slack</b></td><td>Webhook with interactive Approve/Deny buttons</td><td>Yes</td></tr>
+        <tr><td><b>PagerDuty</b></td><td>Events API v2 payload with severity and links</td><td>Links only</td></tr>
+        <tr><td><b>Webhook</b></td><td>Generic JSON POST with X-EyeVesa-Event header</td><td>Custom</td></tr>
+        <tr><td><b>APNs</b></td><td>Push notification to iOS devices (JWT auth)</td><td>Tap to approve</td></tr>
+        <tr><td><b>FCM</b></td><td>Push notification to Android devices</td><td>Tap to approve</td></tr>
     </table>
 
     <hr>
@@ -312,6 +432,88 @@
 
     <hr>
 
+    <a name="delegation"></a>
+    <h2>Agent Delegation</h2>
+    <p>Agents can delegate scoped authority to sub-agents. But not forever, and not without limits.</p>
+
+    <pre>
+    Hermes (level 0, trust: 0.92)
+      +-- Worker Agent (level 1, delegated by Hermes)
+            scope: ["log_search"] only
+            max_depth: 1 (cannot delegate further)
+            expires: 1 hour
+
+            +-- NOT ALLOWED -- delegation_policy prevents depth &gt; 1
+    </pre>
+
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Property</th><th>Value</th><th>Why</th></tr>
+        <tr><td>Max depth</td><td>3</td><td>Prevents unbounded delegation chains</td></tr>
+        <tr><td>Scope</td><td>Tool-level allowlist</td><td>Sub-agent can only use delegated tools</td></tr>
+        <tr><td>Expiry</td><td>Configurable (default: 1 hour)</td><td>No permanent sub-agent permissions</td></tr>
+        <tr><td>Revocation</td><td>DELETE /v1/delegations/{id}</td><td>Parent can revoke at any time</td></tr>
+        <tr><td>Chain tracking</td><td>parent_agent_id + child_agent_id</td><td>Full audit trail of who delegated to whom</td></tr>
+    </table>
+
+    <hr>
+
+    <a name="api"></a>
+    <h2>API Endpoints</h2>
+
+    <h3>Control Plane (HTTP :8080)</h3>
+    <table border="1" cellpadding="4" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Method</th><th>Path</th><th>Description</th></tr>
+        <tr><td>GET</td><td><tt>/health</tt></td><td>Health check</td></tr>
+        <tr><td>GET</td><td><tt>/identity</tt></td><td>SPIFFE identity info</td></tr>
+        <tr><td>POST</td><td><tt>/v1/agents/register</tt></td><td>Register a new AI agent</td></tr>
+        <tr><td>GET</td><td><tt>/v1/agents</tt></td><td>List all agents</td></tr>
+        <tr><td>GET</td><td><tt>/v1/agents/{id}</tt></td><td>Get agent by ID</td></tr>
+        <tr><td>POST</td><td><tt>/v1/resources/register</tt></td><td>Register an enterprise resource</td></tr>
+        <tr><td>GET</td><td><tt>/v1/resources</tt></td><td>List all resources</td></tr>
+        <tr><td>POST</td><td><tt>/v1/authorize</tt></td><td>Authorize an agent action (OPA)</td></tr>
+        <tr><td>POST</td><td><tt>/v1/verify-signature</tt></td><td>Verify Ed25519 signature</td></tr>
+        <tr><td>POST</td><td><tt>/v1/delegate</tt></td><td>Delegate scope to another agent</td></tr>
+        <tr><td>GET</td><td><tt>/v1/delegations/{id}</tt></td><td>Get delegation chain</td></tr>
+        <tr><td>DELETE</td><td><tt>/v1/delegations/{id}</tt></td><td>Revoke a delegation</td></tr>
+        <tr><td>POST</td><td><tt>/v1/hitl/request</tt></td><td>Request human approval</td></tr>
+        <tr><td>GET</td><td><tt>/v1/hitl/pending</tt></td><td>List pending approvals</td></tr>
+        <tr><td>POST</td><td><tt>/v1/hitl/{id}/decide</tt></td><td>Approve/reject with FaceID/password</td></tr>
+        <tr><td>POST</td><td><tt>/v1/hitl/escalate</tt></td><td>Escalated multi-approver HITL</td></tr>
+        <tr><td>POST</td><td><tt>/v1/ptv/attest</tt></td><td>PTV: Attest hardware identity</td></tr>
+        <tr><td>POST</td><td><tt>/v1/ptv/bind</tt></td><td>PTV: Transform attestation to binding</td></tr>
+        <tr><td>GET</td><td><tt>/v1/ptv/verify/{id}</tt></td><td>PTV: Verify identity binding</td></tr>
+        <tr><td>POST</td><td><tt>/v1/behavior/{id}/embedding</tt></td><td>Update behavioral embedding</td></tr>
+        <tr><td>GET</td><td><tt>/v1/behavior/{id}/anomalies</tt></td><td>Detect behavioral anomalies</td></tr>
+        <tr><td>POST</td><td><tt>/v1/llm/hitl-summary/{id}</tt></td><td>Generate HITL summary (LLM)</td></tr>
+        <tr><td>GET</td><td><tt>/v1/budget/check</tt></td><td>Check agent budget</td></tr>
+        <tr><td>POST</td><td><tt>/v1/budget/spend</tt></td><td>Record agent spend</td></tr>
+        <tr><td>POST</td><td><tt>/v1/audit</tt></td><td>Query audit trail</td></tr>
+    </table>
+
+    <h3>Core Proxy (HTTP/TLS/mTLS :9443)</h3>
+    <table border="1" cellpadding="4" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Method</th><th>Path</th><th>Description</th></tr>
+        <tr><td>GET</td><td><tt>/health</tt></td><td>Health check</td></tr>
+        <tr><td>POST</td><td><tt>/v1/mcp</tt></td><td>MCP JSON-RPC proxy</td></tr>
+        <tr><td>POST</td><td><tt>/v1/register</tt></td><td>Agent registration (proxied)</td></tr>
+        <tr><td>POST</td><td><tt>/v1/auth</tt></td><td>Authorization (proxied via gRPC)</td></tr>
+        <tr><td>*</td><td><tt>/v1/ptv/*</tt></td><td>PTV endpoints (proxied)</td></tr>
+        <tr><td>*</td><td><tt>/v1/hitl/*</tt></td><td>HITL endpoints (proxied)</td></tr>
+        <tr><td>*</td><td><tt>/v1/agents/*</tt></td><td>Agent management (proxied)</td></tr>
+        <tr><td>*</td><td><tt>/v1/delegate*</tt></td><td>Delegation (proxied)</td></tr>
+        <tr><td>*</td><td><tt>/v1/audit*</tt></td><td>Audit trail (proxied)</td></tr>
+    </table>
+
+    <h3>Gateway Modes</h3>
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Mode</th><th>Description</th><th>Use When</th></tr>
+        <tr><td><tt>plaintext</tt></td><td>HTTP, no TLS</td><td>Local development</td></tr>
+        <tr><td><tt>tls</tt></td><td>Server TLS, no client cert</td><td>Staging</td></tr>
+        <tr><td><tt>mtls</tt></td><td>Mutual TLS with client cert</td><td>Production</td></tr>
+    </table>
+
+    <hr>
+
     <a name="hermes"></a>
     <h2>Connect with Hermes Agent</h2>
     <p>Hermes is a self-improving autonomous AI agent by <a href="https://nousresearch.com" target="_blank" rel="noopener">Nous Research</a>.
@@ -381,6 +583,45 @@ EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
 
     <hr>
 
+    <a name="cli"></a>
+    <h2>CLI</h2>
+    <p>The <tt>eyevesa</tt> CLI covers agent management, authorization, HITL, and audit from the terminal.</p>
+
+    <pre>
+    # Agent operations
+    eyevesa agent register --name hermes-ops --owner org:devops --capabilities "read,write" --tools "k8s_deploy,log_search"
+    eyevesa agent list
+    eyevesa agent get &lt;agent-id&gt;
+    eyevesa agent trust &lt;agent-id&gt;
+
+    # Authorization
+    eyevesa authorize --agent-id &lt;id&gt; --action read --resource-id &lt;rid&gt;
+
+    # HITL approvals
+    eyevesa hitl list
+    eyevesa hitl approve &lt;approval-id&gt;
+    eyevesa hitl deny &lt;approval-id&gt;
+
+    # Delegation
+    eyevesa delegate create --parent &lt;id&gt; --child &lt;id&gt; --scope "log_search" --max-depth 1
+    eyevesa delegate list &lt;agent-id&gt;
+    eyevesa delegate revoke &lt;delegation-id&gt;
+
+    # Audit
+    eyevesa audit --agent-id &lt;id&gt; --limit 50
+
+    # Resources
+    eyevesa resource register --name k8s-api --type mcp_server --endpoint https://k8s:8443
+    eyevesa resource list
+    eyevesa resource get &lt;resource-id&gt;
+
+    # MCP
+    eyevesa mcp initialize
+    eyevesa mcp tools-list
+    </pre>
+
+    <hr>
+
     <a name="quickstart"></a>
     <h2>Quick Start</h2>
     <p>Get running in under 5 minutes.</p>
@@ -428,14 +669,17 @@ curl http://localhost:8181/v1/data/agentid/authz/allow  # OPA</pre>
         </td>
         <td>
             <font size="2"><b>Product</b><br>
-            <a href="#features">Features</a><br>
-            <a href="#how-it-works">How It Works</a><br>
-            <a href="#use-cases">Use Cases</a><br>
-            <a href="#architecture">Architecture</a></font>
+            <a href="#ptv">PTV</a><br>
+            <a href="#opa">Policy Engine</a><br>
+            <a href="#hitl">HITL</a><br>
+            <a href="#delegation">Delegation</a><br>
+            <a href="#use-cases">Use Cases</a></font>
         </td>
         <td>
             <font size="2"><b>Developers</b><br>
             <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener">GitHub</a><br>
+            <a href="#api">API Reference</a><br>
+            <a href="#cli">CLI</a><br>
             <a href="#quickstart">Quick Start</a><br>
             <a href="https://github.com/hafizaljohari/eyeVesa/blob/main/eyeVesa.md" target="_blank" rel="noopener">Documentation</a></font>
         </td>
