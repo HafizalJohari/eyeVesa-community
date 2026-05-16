@@ -181,12 +181,36 @@ td {
     padding: 4px 16px !important;
 }
 
-@media (max-width: 700px) {
-    .statbox th, .statbox td {
-        padding: 4px 8px !important;
-        font-size: 11px !important;
+    @media (max-width: 700px) {
+        .statbox th, .statbox td {
+            padding: 4px 8px !important;
+            font-size: 11px !important;
+        }
     }
-}
+
+    #goUp {
+        display: none;
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 40px;
+        height: 40px;
+        background: #1a1a2e;
+        color: #66ff66;
+        border: 2px solid #444;
+        text-align: center;
+        line-height: 36px;
+        font-size: 20px;
+        text-decoration: none;
+        z-index: 999;
+        cursor: pointer;
+    }
+
+    #goUp:hover {
+        background: #66ff66;
+        color: #0a0e17;
+        border-color: #66ff66;
+    }
 
 body {
     padding: 0 20px;
