@@ -19,13 +19,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Agent ID: {}", agent_id);
     println!("Connecting to gateway at {}...\n", config.gateway_endpoint);
 
+    // Step 1: Connect (register)
     let client = AgentClient::connect(config, signing_key).await?;
     println!("Connected! Registered: {}", client.is_registered());
     println!("Trust score: {:.2}\n", client.trust_score());
 
+    // Step 2: MCP Initialize
+    println!("--- MCP Initialize ---");
+    match client.mcp_initialize().await {
+        Ok(caps) => {
+            println!("Protocol: {}", caps.protocol_version);
+            println!("Tools: {}, Resources: {}, Prompts: {}\n", caps.tools, caps.resources, caps.prompts);
+        }
+        Err(e) => println!("MCP init error: {}\n", e),
+    }
+
+    // Step 3: Discover resources
+    println!("--- Discovering resources ---");
+    match client.discover("mcp").await {
+        Ok(tools) => {
+            for tool in &tools {
+                println!("Found tool: {} - {}", tool.name, tool.description);
+            }
+            println!();
+        }
+        Err(e) => println!("Discovery: {}\n", e),
+    }
+
+    // Step 4: Authorize & Invoke
     let resource_id = Uuid::parse_str("d4385f9f-bcf8-47b9-90f4-b1fce91def59").unwrap();
 
-    println!("--- Invoking get_weather ---");
+    println!("--- Invoking read ---");
     match client.invoke(&resource_id, "read", serde_json::json!({"location": "Kuala Lumpur"})).await {
         Ok(result) => {
             println!("Success: {:?}", result.data);
@@ -36,20 +60,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("--- Invoking delete (should be denied) ---");
     match client.invoke(&resource_id, "delete", serde_json::json!({})).await {
-        Ok(result) => {
-            println!("Success: {:?}", result.data);
-        }
+        Ok(result) => println!("Unexpectedly allowed: {:?}", result.data),
         Err(e) => println!("Denied (expected): {}\n", e),
     }
 
-    println!("--- Discovering resources ---");
-    match client.discover("mcp").await {
-        Ok(tools) => {
-            for tool in &tools {
-                println!("Found tool: {} - {}", tool.name, tool.description);
-            }
+    // Step 5: HITL Approval
+    println!("--- Requesting HITL approval ---");
+    match client.request_approval("bank_transfer", "Transfer $10K externally", "high").await {
+        Ok(approval) => {
+            println!("Approval requested: {} (status: {})", approval.approval_id, approval.status);
         }
-        Err(e) => println!("Discovery: {}", e),
+        Err(e) => println!("HITL request error: {}", e),
+    }
+
+    // Step 6: PTV Attestation
+    println!("\n--- PTV Attestation ---");
+    match client.attest("linux-tpm2", "2.0.0").await {
+        Ok(result) => println!("Attestation successful, quote length: {}", result.quote.len()),
+        Err(e) => println!("Attestation error: {}", e),
     }
 
     println!("\nSDK demo complete!");

@@ -39,9 +39,87 @@
 
     <hr>
 
-    <div align="center"><img src="logo.svg" alt="eyeVesa" width="320" height="320"></div>
+    <style>
+        .hero-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            margin: 20px auto 40px auto;
+            max-width: 900px;
+            flex-wrap: wrap;
+        }
+        .pixel-bubble {
+            position: relative;
+            background: #000;
+            color: #66ff66;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            padding: 15px;
+            text-align: left;
+            max-width: 320px;
+            box-shadow: 
+                -4px 0 0 0 #66ff66,
+                4px 0 0 0 #66ff66,
+                0 -4px 0 0 #66ff66,
+                0 4px 0 0 #66ff66;
+        }
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 15px;
+            background-color: #66ff66;
+            vertical-align: middle;
+            margin-left: 2px;
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
 
-    <h1 align="center">The Gateway That Keeps<br>AI Agents in Check</h1>
+    <div class="hero-container">
+        <div align="center"><img src="logo.svg" alt="eyeVesa" width="260" height="260"></div>
+        <div class="pixel-bubble">
+            <span id="typing-text"></span><span class="cursor" id="typing-cursor"></span>
+            <svg style="position: absolute; left: -16px; bottom: 20px; width: 16px; height: 16px; shape-rendering: crispEdges;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4">
+                <rect x="3" y="1" width="1" height="2" fill="#000" />
+                <rect x="2" y="2" width="1" height="1" fill="#000" />
+                <rect x="3" y="0" width="1" height="1" fill="#66ff66" />
+                <rect x="2" y="1" width="1" height="1" fill="#66ff66" />
+                <rect x="1" y="2" width="1" height="1" fill="#66ff66" />
+                <rect x="1" y="3" width="3" height="1" fill="#66ff66" />
+            </svg>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const text = "<b>TL;DR</b><br><br>eyeVesa gives AI agents a cryptographic ID, enforces strict rules on what they can do (auto-allow, human-in-the-loop, or deny), and records every action in a tamper-proof audit log.<br><br><i>Think KYC and enterprise access control, but for AI agents.</i>";
+            let i = 0;
+            const textElement = document.getElementById("typing-text");
+            
+            function typeWriter() {
+                if (i < text.length) {
+                    let char = text.charAt(i);
+                    if (char === '<') {
+                        let tagEnd = text.indexOf('>', i);
+                        if (tagEnd !== -1) {
+                            i = tagEnd;
+                        }
+                    }
+                    textElement.innerHTML = text.substring(0, i + 1);
+                    i++;
+                    let delay = (char === '<') ? 0 : 20 + Math.random() * 20;
+                    setTimeout(typeWriter, delay);
+                }
+            }
+            setTimeout(typeWriter, 500);
+        });
+    </script>
+
+    <h1 align="center">The Gateway That Keeps AI Agents in Check</h1>
 
     <blockquote align="center">
         <i>"In an agent-first world, the core challenge is no longer about capability,<br>

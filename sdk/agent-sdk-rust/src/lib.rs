@@ -3,6 +3,10 @@ pub mod connect;
 pub mod discover;
 pub mod invoke;
 pub mod delegate;
+pub mod ptv;
+pub mod hitl;
+pub mod mcp;
+pub mod verify;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
