@@ -1,9 +1,6 @@
-# AgentID Learning Roadmap
+# eyeVesa Learning Roadmap
 
-## Philosophy: Learn by Building
-
-Each week combines **structured learning** with **hands-on implementation**.
-You learn a concept, then immediately apply it to the AgentID codebase.
+You learn a concept, then immediately apply it to the eyeVesa codebase.
 
 ---
 
@@ -34,7 +31,7 @@ You'll build the Go control plane APIs while learning Go basics.
 ### Days 8-9: Go gRPC & Protobuf
 - [ ] Read [grpc.io/docs/languages/go/](https://grpc.io/docs/languages/go/)
 - [ ] Learn protobuf definitions
-- [ ] **Project Task**: Define `proto/agentid.proto` message types
+- [ ] **Project Task**: Define `proto/agentid.proto` message types for eyeVesa
 
 ### Day 10: Go Testing
 - [ ] Learn Go testing conventions (`_test.go`, table-driven tests)
@@ -204,7 +201,7 @@ You'll build the Rust proxy engine while learning Rust basics.
 
 ```
 Morning (2h):  Learn concept (read docs, watch tutorials)
-Midday (3h):   Apply to AgentID codebase (write code)
+Midday (3h):   Apply to eyeVesa codebase (write code)
 Evening (1h):  Review, test, commit what you built
 ```
 

@@ -178,7 +178,7 @@ func GenerateHITLSummary(w http.ResponseWriter, r *http.Request) {
 		Params     map[string]interface{} `json:"params"`
 	}
 
-	err := db.Pool.QueryRow(r.Context(),
+	err := querier.QueryRow(r.Context(),
 		`SELECT name, trust_score FROM agents WHERE agent_id = (SELECT agent_id FROM hitl_approvals WHERE approval_id = $1)`,
 		approvalID,
 	).Scan(&agent.Name, &agent.TrustScore)
@@ -187,7 +187,7 @@ func GenerateHITLSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = db.Pool.QueryRow(r.Context(),
+	_ = querier.QueryRow(r.Context(),
 		`SELECT action, COALESCE(resource_id::text, ''), COALESCE(risk_level, 'medium'), COALESCE(params::text, '{}') FROM hitl_approvals WHERE approval_id = $1`,
 		approvalID,
 	).Scan(&hitlApproval.Action, &hitlApproval.ResourceID, &hitlApproval.RiskLevel, &hitlApproval.Params)
@@ -213,8 +213,8 @@ func GenerateHITLSummary(w http.ResponseWriter, r *http.Request) {
 
 	summary.ApprovalID = approvalID
 
-	if db != nil {
-		db.Pool.Exec(r.Context(),
+	if querier != nil {
+		querier.Exec(r.Context(),
 			`INSERT INTO hitl_summaries (approval_id, summary_text, recommendation, model_used, tokens_used)
 			 VALUES ($1, $2, $3, $4, $5)`,
 			approvalID, summary.Summary, summary.Recommendation, summary.ModelUsed, summary.TokensUsed,
@@ -246,11 +246,11 @@ func GenerateAuditNarrative(w http.ResponseWriter, r *http.Request) {
 	_ = periodStart
 
 	var agentName string
-	_ = db.Pool.QueryRow(r.Context(),
+	_ = querier.QueryRow(r.Context(),
 		`SELECT name FROM agents WHERE agent_id = $1`, req.AgentID,
 	).Scan(&agentName)
 
-	rows, err := db.Pool.Query(r.Context(),
+	rows, err := querier.Query(r.Context(),
 		`SELECT action, result_status, trust_delta, created_at FROM audit_logs
 		 WHERE agent_id = (SELECT name FROM agents WHERE agent_id = $1)
 		 AND created_at > NOW() - $2::interval
@@ -289,7 +289,7 @@ func GenerateAuditNarrative(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db.Pool.Exec(r.Context(),
+	querier.Exec(r.Context(),
 		`INSERT INTO audit_narratives (agent_id, period_start, period_end, narrative_text, key_events, anomalies_detected, trust_trend, model_used, tokens_used)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		req.AgentID, llmReq.PeriodStart, llmReq.PeriodEnd,
@@ -322,8 +322,8 @@ func TranslatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if db != nil {
-		db.Pool.Exec(r.Context(),
+	if querier != nil {
+		querier.Exec(r.Context(),
 			`INSERT INTO policy_translations (natural_language, generated_rego, status, validated, model_used, tokens_used)
 			 VALUES ($1, $2, $3, $4, $5, $6)`,
 			req.NaturalLanguage, result.GeneratedRego, result.Status, result.Validated, result.ModelUsed, result.TokensUsed,

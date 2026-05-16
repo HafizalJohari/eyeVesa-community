@@ -1,6 +1,6 @@
 # Enterprise Setup Guide: Selling to AI Agents
 
-How an enterprise exposes products and services for AI agents (like Hermes) to discover, authorize, and purchase through the AgentID Gateway.
+How an enterprise exposes products and services for AI agents (like Hermes) to discover, authorize, and purchase through eyeVesa.
 
 ---
 

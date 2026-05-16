@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,12 +45,18 @@ func (a *AuditLogger) Log(ctx context.Context, entry AuditEntry, signingKey ed25
 	paramsJSON, _ := json.Marshal(entry.Params)
 	resultJSON, _ := json.Marshal(entry.Result)
 
-	signature, err := a.computeSignature(entry, signingKey)
-	if err != nil {
-		return fmt.Errorf("failed to compute signature: %w", err)
+	var signature []byte
+	if signingKey != nil {
+		sig, sigErr := a.computeSignature(entry, signingKey)
+		if sigErr != nil {
+			return fmt.Errorf("failed to compute signature: %w", sigErr)
+		}
+		signature = sig
+	} else {
+		log.Printf("[audit] Log %s: no signing key provided, entry stored without signature", entry.LogID)
 	}
 
-	_, err = a.db.Pool.Exec(ctx,
+	_, err := a.db.Pool.Exec(ctx,
 		`INSERT INTO audit_logs (log_id, agent_id, resource_id, action, method, params, result, result_status, trust_score_before, trust_score_after, session_id, signature)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		entry.LogID, entry.AgentID, nilIfEmpty(entry.ResourceID), entry.Action, entry.Method,

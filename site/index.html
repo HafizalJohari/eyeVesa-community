@@ -20,6 +20,7 @@
     <div id="nav">
         <center>
             <a href="#problem">[Problem]</a>
+            <a href="#kya">[KYA]</a>
             <a href="#features">[Features]</a>
             <a href="#how-it-works">[How It Works]</a>
             <a href="#trust">[Trust]</a>
@@ -69,6 +70,24 @@
         <dt><b>3. Can we prove what happened?</b></dt>
         <dd>When something goes wrong, logs can be tampered with. You need cryptographic proof of who did what, when, and why.</dd>
     </dl>
+
+    <hr>
+
+    <a name="kya"></a>
+    <h2>Know Your Agent (KYA)</h2>
+    <p>The same principles banks use for <b>Know Your Customer (KYC)</b>, applied to AI agents.
+    The core loop is the same: <font color="#ffcc00"><b>identify &rarr; assess &rarr; authorize &rarr; monitor &rarr; enforce</b></font>.
+    Just swapped "customer" for "agent."</p>
+
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>KYC (Banking)</th><th>KYA (eyeVesa)</th></tr>
+        <tr><td>Verify customer identity</td><td>Ed25519 keypairs + PTV hardware attestation</td></tr>
+        <tr><td>Assess risk profile</td><td>Trust scoring + behavioral embeddings (pgvector)</td></tr>
+        <tr><td>Set transaction limits</td><td>OPA policies (auto-deny / auto-allow / HITL / escalation)</td></tr>
+        <tr><td>Monitor transactions</td><td>Non-repudiable audit logs with signatures</td></tr>
+        <tr><td>Flag suspicious activity</td><td>Anomaly detection, trust degradation</td></tr>
+        <tr><td>Report to regulators</td><td>Cryptographic proof of who did what, when, who approved</td></tr>
+    </table>
 
     <hr>
 
@@ -335,7 +354,7 @@ EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
     <table border="1" cellpadding="8" cellspacing="0" width="100%">
         <tr bgcolor="#333"><th>Layer</th><th>System</th><th>What it Controls</th></tr>
         <tr><td><b>Hermes approval</b></td><td>Hermes Agent</td><td>Should this <i>shell command</i> run? (local process safety)</td></tr>
-        <tr><td><b>eyeVesa authorization</b></td><td>AgentID Gateway</td><td>Should this <i>agent identity</i> access this <i>enterprise resource</i>? (remote access policy)</td></tr>
+        <tr><td><b>eyeVesa authorization</b></td><td>eyeVesa Gateway</td><td>Should this <i>agent identity</i> access this <i>enterprise resource</i>? (remote access policy)</td></tr>
     </table>
 
     <h3>Decision Flow</h3>
@@ -344,7 +363,7 @@ EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
       |
       +-- Hermes LLM reasons about the request
       |
-      +-- Is it an enterprise resource? (via AgentID Gateway MCP)
+      +-- Is it an enterprise resource? (via eyeVesa Gateway MCP)
             |
             +-- Gateway verifies Ed25519 identity
             |

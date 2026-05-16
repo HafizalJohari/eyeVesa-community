@@ -104,6 +104,19 @@ spec:
       annotations:
         spiffe.io/spiffe-id: spiffe://agentid.dev/gateway/control
     spec:
+      initContainers:
+        - name: db-migrate
+          image: postgres:16-alpine
+          command: ["sh", "-c", "for f in /migrations/*.sql; do echo \"Applying $f\"; psql \"$DATABASE_URL\" -f \"$f\" || true; done"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agentid-db-credentials
+                  key: url
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
       containers:
         - name: gateway-control
           image: agentid/gateway-control:latest
@@ -172,6 +185,10 @@ spec:
                   name: push-credentials
                   key: fcm-project-id
                   optional: true
+            - name: AUTH_ENABLED
+              value: "true"
+            - name: RATE_LIMIT_RPS
+              value: "100"
           volumeMounts:
             - name: gateway-key
               mountPath: /secrets
@@ -191,6 +208,9 @@ spec:
         - name: policies
           configMap:
             name: opa-policies
+        - name: migrations
+          configMap:
+            name: agentid-migrations
 
 ---
 # Gateway Control Plane Service

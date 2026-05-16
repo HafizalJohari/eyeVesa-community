@@ -1,6 +1,14 @@
-# AgentID Gateway
+<p align="center">
+  <img src="site/logo.svg" alt="eyeVesa" width="320">
+</p>
 
-Identity and trust layer for the agentic economy. Connects AI agents to enterprise resources with cryptographic identity, policy-based authorization, and non-repudiable audit trails.
+<h1 align="center">eyeVesa</h1>
+
+<p align="center"><em>Identity and trust layer for the agentic economy. Know Your Agent.</em></p>
+
+---
+
+Connects AI agents to enterprise resources with cryptographic identity, policy-based authorization, and non-repudiable audit trails.
 
 ## Architecture
 
@@ -255,6 +263,53 @@ Policy decisions:
 11. **budget_metering** - Agent spend tracking, rate limit counters
 12. **push_tokens** - APNs/FCM device tokens for HITL push notifications
 13. **api_keys** - API key authentication for gateway access
+
+## Development Status
+
+**Phase 2 — Core Complete, Integration In Progress**
+
+### Working
+
+| Component | Status |
+|-----------|--------|
+| Agent & Resource CRUD (register, get, list) | Working |
+| Authorization with 3-tier OPA (embedded, external, local fallback) | Working |
+| HITL approval workflow with multi-layer escalation | Working |
+| Notification backends (Slack, PagerDuty, Webhook) | Working |
+| Delegation with chain validation (max depth 3) | Working |
+| Ed25519 signing and verification | Working |
+| Audit logging with signatures + integrity verification | Working |
+| PTV (Prove-Transform-Verify) identity attestation | Working |
+| SPIRE/SPIFFE dual-provider (SPIRE → local fallback) | Working |
+| Behavioral embeddings (pgvector) + anomaly detection | Working |
+| LLM service (OpenAI/Anthropic with graceful fallback) | Working |
+| Budget metering and rate limiting | Working |
+| Multi-tenant CRUD + approver management | Working |
+| gRPC server (all 7 RPCs) | Working |
+| Rust gateway proxy (plaintext/TLS/mTLS) | Working |
+| MCP protocol handling (initialize, tools/call, resources) | Working |
+| SDK connect, discover, invoke, delegate | Working |
+| Adapter MCP server + gateway registration | Working |
+| All 13 database migrations | Working |
+
+### Partial
+
+| Component | Status | Gap |
+|-----------|--------|-----|
+| Auth middleware | Partial | API keys work; JWT/SAML are stubs; middleware not wired to router |
+| SDK signature on invoke | Partial | Signs payload but doesn't send signature in HTTP headers |
+| MCP tools/list via gRPC | Partial | Returns empty array, never queries control plane |
+| MCP tools/call on control plane | Partial | Only list methods work; tools/call falls through |
+| Adapter tool handlers | Stub | Return hardcoded demo data |
+| OPA policy files | Partial | `policies/authz.rego` used in production; `agentid.rego` needs external data |
+
+### Not Yet Built
+
+- JWT token verification (uses "signature-placeholder")
+- SAML assertion parsing (returns hardcoded claims)
+- CLI tool (`eyevesa init`, `eyevesa trust`, `eyevesa audit`)
+- SDK HITL approval query methods
+- SDK PTV attestation/bind methods
 
 ## Learning
 

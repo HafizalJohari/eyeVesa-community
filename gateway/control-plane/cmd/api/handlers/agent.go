@@ -37,12 +37,18 @@ type AgentResponse struct {
 }
 
 var db *database.DB
+var querier database.Querier
 var auditLogger *audit.AuditLogger
 var gatewayPrivateKey ed25519.PrivateKey
 var globalPolicyEngine *policy.PolicyEngine
 
 func SetDB(d *database.DB) {
 	db = d
+	querier = &database.PoolQuerier{Pool: d.Pool}
+}
+
+func SetQuerier(q database.Querier) {
+	querier = q
 }
 
 func SetAuditLogger(a *audit.AuditLogger) {
@@ -94,7 +100,7 @@ func RegisterAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var createdAt time.Time
-	err = db.Pool.QueryRow(r.Context(),
+	err = querier.QueryRow(r.Context(),
 		`INSERT INTO agents (agent_id, name, owner, public_key, capabilities, allowed_tools, max_budget_usd, delegation_policy, behavioral_tags)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING created_at`,
 		agentID, req.Name, req.Owner, keypair.PublicKey, capabilities, allowedTools,
@@ -144,7 +150,7 @@ func GetAgent(w http.ResponseWriter, r *http.Request) {
 	var name, owner, agentStatus string
 	var trustScore float64
 	var capabilities, allowedTools []string
-	err := db.Pool.QueryRow(r.Context(),
+	err := querier.QueryRow(r.Context(),
 		`SELECT name, owner, trust_score, status, capabilities, allowed_tools FROM agents WHERE agent_id = $1`,
 		agentIDStr,
 	).Scan(&name, &owner, &trustScore, &agentStatus, &capabilities, &allowedTools)
@@ -167,7 +173,7 @@ func GetAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListAgents(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Pool.Query(r.Context(),
+	rows, err := querier.Query(r.Context(),
 		`SELECT agent_id, name, owner, trust_score, status FROM agents ORDER BY created_at DESC`)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)

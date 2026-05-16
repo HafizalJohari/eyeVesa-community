@@ -38,7 +38,7 @@ func Authorize(w http.ResponseWriter, r *http.Request) {
 	var owner string
 	var trustScore float64
 	var capabilities, allowedTools []string
-	err := db.Pool.QueryRow(r.Context(),
+	err := querier.QueryRow(r.Context(),
 		`SELECT owner, trust_score, capabilities, allowed_tools FROM agents WHERE agent_id = $1 AND status = 'active'`,
 		req.AgentID,
 	).Scan(&owner, &trustScore, &capabilities, &allowedTools)
@@ -74,12 +74,12 @@ func Authorize(w http.ResponseWriter, r *http.Request) {
 		newTrustScore = 1
 	}
 
-	db.Pool.Exec(r.Context(),
+	querier.Exec(r.Context(),
 		`UPDATE agents SET trust_score = $1, updated_at = NOW() WHERE agent_id = $2`,
 		newTrustScore, req.AgentID,
 	)
 
-	db.Pool.Exec(r.Context(),
+	querier.Exec(r.Context(),
 		`INSERT INTO trust_events (agent_id, event_type, trust_delta, trust_score_after, reason) VALUES ($1, $2, $3, $4, $5)`,
 		req.AgentID, "authorize", decision.TrustDelta, newTrustScore, decision.Reason,
 	)
@@ -118,12 +118,17 @@ func VerifySignature(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pubKeyBytes []byte
-	err := db.Pool.QueryRow(r.Context(),
+	err := querier.QueryRow(r.Context(),
 		`SELECT public_key FROM agents WHERE agent_id = $1`,
 		req.AgentID,
 	).Scan(&pubKeyBytes)
 
 	if err != nil {
+		http.Error(w, "agent not found", http.StatusNotFound)
+		return
+	}
+
+	if len(pubKeyBytes) == 0 {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}

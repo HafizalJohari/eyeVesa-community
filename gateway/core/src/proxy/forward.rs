@@ -13,7 +13,8 @@ pub async fn forward_to_control_plane(
     let bytes = crate::proxy::collect_body(body).await?;
 
     let client = &state.http_client;
-    let url = format!("http://{}{}", state.control_plane_http_addr, path);
+    let scheme = if state.backend_tls.enabled { "https" } else { "http" };
+    let url = format!("{}://{}{}", scheme, state.control_plane_http_addr, path);
 
     let mut builder = match method.as_str() {
         "GET" => client.get(&url),

@@ -1,0 +1,11 @@
+target/
+.git/
+.gitignore
+README.md
+docs/
+tests/
+deploy/
+*.md
+.env
+.env.*
+.tmp/

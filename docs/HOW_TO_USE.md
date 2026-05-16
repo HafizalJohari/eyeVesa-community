@@ -1,6 +1,6 @@
 # How to Use
 
-Complete guide for setting up, configuring, and using the AgentID Gateway.
+Complete guide for setting up, configuring, and using eyeVesa.
 
 ## Prerequisites
 

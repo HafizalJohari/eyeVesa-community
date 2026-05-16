@@ -1,6 +1,6 @@
 # Hermes Agent Setup Guide
 
-Complete guide for setting up Hermes Agent by Nous Research and connecting it to the AgentID Gateway for identity, authorization, and audit.
+Complete guide for setting up Hermes Agent by Nous Research and connecting it to eyeVesa for identity, authorization, and audit.
 
 ---
 
@@ -232,7 +232,7 @@ Skills live in `~/.hermes/skills/` and are available as slash commands: `/k8s`, 
 
 ---
 
-## 8. Connect Hermes to AgentID Gateway
+## 8. Connect Hermes to eyeVesa
 
 This is where Hermes gets cryptographic identity, policy-based authorization, trust scoring, and non-repudiable audit trails.
 
@@ -298,7 +298,7 @@ curl -X POST http://localhost:8080/v1/resources/register \
 
 ### 8.4 Configure Hermes MCP to Use Gateway
 
-In `~/.hermes/config.yaml`, add the AgentID Gateway as an HTTP MCP server:
+In `~/.hermes/config.yaml`, add eyeVesa as an HTTP MCP server:
 
 ```yaml
 mcp_servers:
@@ -355,7 +355,7 @@ User sends message to Hermes (Telegram/Discord/CLI)
   ├── Is it a local tool? (terminal, file, web)
   │     └── Execute directly (Hermes approval system applies)
   │
-  └── Is it an enterprise resource? (via AgentID Gateway MCP)
+  └── Is it an enterprise resource? (via eyeVesa Gateway MCP)
         │
         ├── Hermes sends MCP tools/call to eyeVesa Gateway
         │
@@ -388,7 +388,7 @@ Hermes has its own security system. eyeVesa adds a complementary layer:
 | Layer | System | What it controls |
 |-------|--------|-----------------|
 | **Hermes approval** | Hermes Agent | Should this *shell command* run? (local process safety) |
-| **eyeVesa authorization** | AgentID Gateway | Should this *agent identity* access this *enterprise resource*? (remote access policy) |
+| **eyeVesa authorization** | eyeVesa Gateway | Should this *agent identity* access this *enterprise resource*? (remote access policy) |
 
 They're orthogonal. A `k8s_deploy` command passes Hermes's local approval, then separately passes through eyeVesa's policy engine for enterprise resource authorization.
 
@@ -512,7 +512,7 @@ memory:
   memory_enabled: true
   user_profile_enabled: true
 
-# MCP servers (includes AgentID Gateway)
+# MCP servers (includes eyeVesa)
 mcp_servers:
   agentid-gateway:
     url: "http://localhost:9443/v1/mcp"
@@ -536,7 +536,7 @@ mcp_servers:
 # LLM Provider
 OPENROUTER_API_KEY=sk-or-...
 
-# AgentID Gateway
+# eyeVesa
 EYEVESA_AGENT_ID=550e8400-e29b-41d4-a716-446655440000
 EYEVESA_AGENT_NAME=hermes-ops
 EYEVESA_AGENT_OWNER=org:devops
@@ -597,7 +597,7 @@ hermes gateway status      # Check gateway health
 
 ## 14. Next Steps
 
-- **[AgentID Gateway README](../README.md)** — Architecture, API reference, and database schema
+- **[eyeVesa README](../README.md)** — Architecture, API reference, and database schema
 - **[How to Use](./HOW_TO_USE.md)** — Detailed API usage and flows
 - **[Hermes Docs](https://hermes-agent.nousresearch.com/docs/)** — Full Hermes documentation
 - **[Hermes MCP Integration](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp)** — MCP client/server setup

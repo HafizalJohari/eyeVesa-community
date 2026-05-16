@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
         .init();
@@ -31,11 +31,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "localhost:8080".to_string());
     let mode = std::env::var("GATEWAY_MODE")
         .unwrap_or_else(|_| "plaintext".to_string());
+    let backend_tls = tls::BackendTlsConfig::from_env();
     tracing::info!("Control plane gRPC address: {}", control_plane_addr);
     tracing::info!("Control plane HTTP address: {}", control_plane_http_addr);
     tracing::info!("Gateway mode: {}", mode);
+    tracing::info!("Backend TLS enabled: {}", backend_tls.enabled);
 
-    match identity::svid::fetch_identity(&control_plane_http_addr).await {
+    match identity::svid::fetch_identity(&control_plane_http_addr, backend_tls.enabled).await {
         Ok(id) => tracing::info!(
             "Gateway identity: {} (trust domain: {}, expires: {})",
             id.spiffe_id, id.trust_domain, id.expires_at
@@ -43,16 +45,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => tracing::warn!("Could not fetch gateway identity: {}", e),
     }
 
+    let http_client = backend_tls.build_reqwest_client()
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to build TLS client, falling back to default: {}", e);
+            reqwest::Client::new()
+        });
+
+    let grpc_addr = if backend_tls.enabled {
+        let addr = control_plane_addr.trim_start_matches("http://").trim_start_matches("https://");
+        format!("https://{}", addr)
+    } else {
+        control_plane_addr.clone()
+    };
+
     let state = Arc::new(ProxyState {
         control_plane: Arc::new(Mutex::new(None)),
-        control_plane_addr: control_plane_addr.clone(),
+        control_plane_addr: grpc_addr.clone(),
         control_plane_http_addr: control_plane_http_addr.clone(),
-        http_client: reqwest::Client::new(),
+        http_client,
+        backend_tls,
     });
 
-    match grpc::ControlPlaneClient::connect(&control_plane_addr).await {
+    match grpc::ControlPlaneClient::connect(&grpc_addr).await {
         Ok(client) => {
-            tracing::info!("Connected to control plane at {}", control_plane_addr);
+            tracing::info!("Connected to control plane at {}", grpc_addr);
             let mut guard = state.control_plane.lock().await;
             *guard = Some(client);
         }

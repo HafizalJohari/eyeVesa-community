@@ -7,8 +7,9 @@ pub struct GatewayIdentity {
     pub expires_at: String,
 }
 
-pub async fn fetch_identity(control_plane_http: &str) -> Result<GatewayIdentity, Box<dyn std::error::Error + Send + Sync>> {
-    let url = format!("http://{}/identity", control_plane_http);
+pub async fn fetch_identity(control_plane_http: &str, backend_tls_enabled: bool) -> Result<GatewayIdentity, Box<dyn std::error::Error + Send + Sync>> {
+    let scheme = if backend_tls_enabled { "https" } else { "http" };
+    let url = format!("{}://{}/identity", scheme, control_plane_http);
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await?;
 

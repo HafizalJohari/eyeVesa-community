@@ -7,7 +7,7 @@ pub async fn run_tls(
     addr: std::net::SocketAddr,
     tls_config: &TlsConfig,
     state: std::sync::Arc<crate::proxy::ProxyState>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let certs = crate::tls::load_certs(&tls_config.cert_path)?;
     let key = crate::tls::load_key(&tls_config.key_path)?;
 
@@ -50,7 +50,7 @@ pub async fn run_mtls(
     addr: std::net::SocketAddr,
     tls_config: &TlsConfig,
     state: std::sync::Arc<crate::proxy::ProxyState>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let certs = crate::tls::load_certs(&tls_config.cert_path)?;
     let key = crate::tls::load_key(&tls_config.key_path)?;
 

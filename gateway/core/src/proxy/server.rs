@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
-pub async fn run(addr: SocketAddr, state: Arc<ProxyState>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(addr: SocketAddr, state: Arc<ProxyState>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(addr).await?;
     tracing::info!("Proxy server bound to {}", addr);
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/tls"
 	"encoding/json"
 	"log"
 	"net"
@@ -10,12 +11,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	pb "github.com/hafizaljohari/eyeVesa/proto/agentid"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/cmd/api/handlers"
@@ -31,6 +34,7 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/llm"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ptv"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ratelimit"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/tenant"
 )
 
@@ -172,6 +176,15 @@ func main() {
 		r.Use(authMiddleware.Middleware)
 	}
 
+	globalRPS := 100.0
+	if v := os.Getenv("RATE_LIMIT_RPS"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			globalRPS = f
+		}
+	}
+	rateLimiter := ratelimit.NewRateLimiter(globalRPS*10, globalRPS)
+	r.Use(rateLimiter.Middleware)
+
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
@@ -246,23 +259,64 @@ func main() {
 	})
 
 	go func() {
-		httpAddr := ":8080"
-		log.Printf("HTTP server starting on %s", httpAddr)
-		if err := http.ListenAndServe(httpAddr, r); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server failed: %v", err)
+		httpAddr := os.Getenv("HTTP_ADDR")
+		if httpAddr == "" {
+			httpAddr = ":8080"
+		}
+
+		backendTLSCert := os.Getenv("BACKEND_TLS_CERT_PATH")
+		backendTLSKey := os.Getenv("BACKEND_TLS_KEY_PATH")
+
+		if backendTLSCert != "" && backendTLSKey != "" {
+			cfg := &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			}
+			srv := &http.Server{
+				Addr:         httpAddr,
+				Handler:      r,
+				TLSConfig:    cfg,
+				ReadTimeout:  30 * time.Second,
+				WriteTimeout: 30 * time.Second,
+			}
+			log.Printf("HTTPS server starting on %s", httpAddr)
+			if err := srv.ListenAndServeTLS(backendTLSCert, backendTLSKey); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("HTTPS server failed: %v", err)
+			}
+		} else {
+			log.Printf("HTTP server starting on %s", httpAddr)
+			if err := http.ListenAndServe(httpAddr, r); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("HTTP server failed: %v", err)
+			}
 		}
 	}()
 
-	grpcListener, err := net.Listen("tcp", ":9090")
+	grpcAddr := os.Getenv("GRPC_ADDR")
+	if grpcAddr == "" {
+		grpcAddr = ":9090"
+	}
+	grpcListener, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
-		log.Fatalf("Failed to listen on :9090: %v", err)
+		log.Fatalf("Failed to listen on %s: %v", grpcAddr, err)
 	}
 
-	grpcServer := grpc.NewServer()
+	var grpcServer *grpc.Server
+	backendGRPCTLSCert := os.Getenv("BACKEND_GRPC_TLS_CERT_PATH")
+	backendGRPCTLSKey := os.Getenv("BACKEND_GRPC_TLS_KEY_PATH")
+
+	if backendGRPCTLSCert != "" && backendGRPCTLSKey != "" {
+		creds, err := credentials.NewServerTLSFromFile(backendGRPCTLSCert, backendGRPCTLSKey)
+		if err != nil {
+			log.Fatalf("Failed to load gRPC TLS credentials: %v", err)
+		}
+		grpcServer = grpc.NewServer(grpc.Creds(creds))
+		log.Printf("gRPC server starting on %s (TLS)", grpcAddr)
+	} else {
+		grpcServer = grpc.NewServer()
+		log.Printf("gRPC server starting on %s (plaintext)", grpcAddr)
+	}
 	pb.RegisterGatewayServiceServer(grpcServer, grpcSrv)
 
 	go func() {
-		log.Println("gRPC server starting on :9090")
 		if err := grpcServer.Serve(grpcListener); err != nil {
 			log.Fatalf("gRPC server failed: %v", err)
 		}

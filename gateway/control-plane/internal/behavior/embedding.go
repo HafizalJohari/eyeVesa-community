@@ -2,6 +2,7 @@ package behavior
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -45,7 +46,8 @@ func (s *EmbeddingService) RecordEvent(ctx context.Context, agentID string, tool
 
 	var paramsHash string
 	if len(paramsJSON) > 64 {
-		paramsHash = paramsJSON[:64]
+		hash := sha256.Sum256([]byte(paramsJSON))
+		paramsHash = fmt.Sprintf("%x", hash)[:64]
 	} else {
 		paramsHash = paramsJSON
 	}

@@ -67,7 +67,7 @@ func RegisterResource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var createdAt time.Time
-	err := db.Pool.QueryRow(r.Context(),
+	err := querier.QueryRow(r.Context(),
 		`INSERT INTO resources (resource_id, name, resource_type, endpoint, auth_method, capabilities, risk_level, data_sensitivity, rate_limit_per_agent)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING created_at`,
 		resourceID, req.Name, req.Type, req.Endpoint, authMethod,
@@ -112,7 +112,7 @@ func GetResource(w http.ResponseWriter, r *http.Request) {
 
 	var name, resourceType, endpoint, status string
 	var riskLevel string
-	err := db.Pool.QueryRow(r.Context(),
+	err := querier.QueryRow(r.Context(),
 		`SELECT name, resource_type, endpoint, risk_level, status FROM resources WHERE resource_id = $1`,
 		resourceIDStr,
 	).Scan(&name, &resourceType, &endpoint, &riskLevel, &status)
@@ -134,7 +134,7 @@ func GetResource(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListResources(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Pool.Query(r.Context(),
+	rows, err := querier.Query(r.Context(),
 		`SELECT resource_id, name, resource_type, endpoint, risk_level, status FROM resources ORDER BY created_at DESC`)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
