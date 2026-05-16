@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway/core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo check
+      - run: cargo test
+      - run: cargo clippy -- -D warnings
+
+  go-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway/control-plane
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: go build ./...
+      - run: go test ./...
+      - run: go vet ./...
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [rust-check, go-check]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker-compose up -d --wait
+      - run: sleep 5
+      - run: curl -f http://localhost:8080/health
+      - run: docker-compose down

@@ -1,0 +1,15 @@
+**/target/
+**/node_modules/
+.env
+*.pem
+*.key
+*.crt
+.DS_Store
+vendor/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+Cargo.lock
+!**/Cargo.lock
