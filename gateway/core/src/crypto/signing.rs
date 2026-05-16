@@ -1,6 +1,7 @@
 use ed25519_dalek::{SigningKey, VerifyingKey, Signer, Verifier, Signature};
 
 #[derive(Debug, thiserror::Error)]
+#[allow(dead_code)]
 pub enum SigningError {
     #[error("Invalid signature")]
     InvalidSignature,
@@ -8,10 +9,12 @@ pub enum SigningError {
     KeyError(String),
 }
 
+#[allow(dead_code)]
 pub fn sign(signing_key: &SigningKey, payload: &[u8]) -> Signature {
     signing_key.sign(payload)
 }
 
+#[allow(dead_code)]
 pub fn verify(
     verifying_key: &VerifyingKey,
     payload: &[u8],

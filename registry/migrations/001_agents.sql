@@ -2,7 +2,6 @@
 -- Stores AI agent identities and metadata
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgvector";
 
 CREATE TABLE agents (
     agent_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -24,7 +23,10 @@ CREATE INDEX idx_agents_owner ON agents(owner);
 CREATE INDEX idx_agents_trust_score ON agents(trust_score);
 CREATE INDEX idx_agents_capabilities ON agents USING GIN(capabilities);
 CREATE INDEX idx_agents_behavioral_tags ON agents USING GIN(behavioral_tags);
-CREATE INDEX idx_agents_behavior_vec ON agents USING ivfflat (behavior_vec vector_cosine_ops) WITH (lists = 100);
 
-COMMENT ON TABLE agents IS 'AI agent identity registry with trust scores and behavioral vectors';
-COMMENT ON COLUMN agents.behavior_vec IS 'Vector embedding of agent behavior for anomaly detection (pgvector)';
+COMMENT ON TABLE agents IS 'AI agent identity registry with trust scores';
+
+-- pgvector column: uncomment when pgvector extension is available
+-- CREATE EXTENSION IF NOT EXISTS "pgvector";
+-- ALTER TABLE agents ADD COLUMN behavior_vec vector(1536);
+-- CREATE INDEX idx_agents_behavior_vec ON agents USING ivfflat (behavior_vec vector_cosine_ops) WITH (lists = 100);

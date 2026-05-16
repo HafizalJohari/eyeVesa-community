@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AgentIdentity {
     pub agent_id: Uuid,
     pub owner: String,
@@ -10,6 +11,7 @@ pub struct AgentIdentity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AgentRegistration {
     pub name: String,
     pub owner: String,
@@ -18,12 +20,14 @@ pub struct AgentRegistration {
     pub max_budget_usd: f64,
 }
 
+#[allow(dead_code)]
 pub fn generate_agent_keypair() -> (SigningKey, VerifyingKey) {
     let signing_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let verifying_key = signing_key.verifying_key();
     (signing_key, verifying_key)
 }
 
+#[allow(dead_code)]
 pub fn sign_agent_request(
     signing_key: &SigningKey,
     message: &[u8],
@@ -31,6 +35,7 @@ pub fn sign_agent_request(
     signing_key.sign(message)
 }
 
+#[allow(dead_code)]
 pub fn verify_agent_signature(
     verifying_key: &VerifyingKey,
     message: &[u8],

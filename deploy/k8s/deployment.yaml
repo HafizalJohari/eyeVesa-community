@@ -1,0 +1,341 @@
+# AgentID Gateway - Kubernetes Deployment
+# SPIFFE/SPIRE sidecar + gateway components
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentid
+
+---
+# SPIRE Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spire-server
+  namespace: agentid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spire-server
+  template:
+    metadata:
+      labels:
+        app: spire-server
+    spec:
+      containers:
+        - name: spire-server
+          image: ghcr.io/spiffe/spire-server:1.9.6
+          ports:
+            - containerPort: 8081
+          volumeMounts:
+            - name: spire-config
+              mountPath: /opt/spire/conf/server
+            - name: spire-data
+              mountPath: /opt/spire/data
+          env:
+            - name: SPIRE_SERVER_PORT
+              value: "8081"
+      volumes:
+        - name: spire-config
+          configMap:
+            name: spire-server-config
+        - name: spire-data
+          persistentVolumeClaim:
+            claimName: spire-server-data
+
+---
+# SPIRE Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spire-agent
+  namespace: agentid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spire-agent
+  template:
+    metadata:
+      labels:
+        app: spire-agent
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: spire-agent
+          image: ghcr.io/spiffe/spire-agent:1.9.6
+          args: ["-config", "/opt/spire/conf/agent/agent.conf"]
+          volumeMounts:
+            - name: spire-agent-config
+              mountPath: /opt/spire/conf/agent
+            - name: spire-agent-socket
+              mountPath: /tmp/spire-agent/public
+          env:
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "unix:///tmp/spire-agent/public/api.sock"
+      volumes:
+        - name: spire-agent-config
+          configMap:
+            name: spire-agent-config
+        - name: spire-agent-socket
+          hostPath:
+            path: /var/run/spire/agent
+            type: DirectoryOrCreate
+
+---
+# Gateway Control Plane
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-control
+  namespace: agentid
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway-control
+  template:
+    metadata:
+      labels:
+        app: gateway-control
+      annotations:
+        spiffe.io/spiffe-id: spiffe://agentid.dev/gateway/control
+    spec:
+      containers:
+        - name: gateway-control
+          image: agentid/gateway-control:latest
+          ports:
+            - containerPort: 8080
+            - containerPort: 9090
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agentid-db-credentials
+                  key: url
+            - name: GATEWAY_KEY_PATH
+              value: "/secrets/agentid-gateway-ed25519.key"
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "unix:///spire/socket/api.sock"
+            - name: OPA_ENDPOINT
+              value: "http://opa:8181"
+            - name: POLICY_DIR
+              value: "/policies"
+            - name: APNS_KEY_PATH
+              valueFrom:
+                secretKeyRef:
+                  name: push-credentials
+                  key: apns-key-path
+                  optional: true
+            - name: APNS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: push-credentials
+                  key: apns-key-id
+                  optional: true
+            - name: APNS_TEAM_ID
+              valueFrom:
+                secretKeyRef:
+                  name: push-credentials
+                  key: apns-team-id
+                  optional: true
+            - name: APNS_BUNDLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: push-credentials
+                  key: apns-bundle-id
+                  optional: true
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: notification-credentials
+                  key: slack-webhook-url
+                  optional: true
+            - name: PAGERDUTY_INTEGRATION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: notification-credentials
+                  key: pagerduty-key
+                  optional: true
+            - name: FCM_SERVER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: push-credentials
+                  key: fcm-server-key
+                  optional: true
+            - name: FCM_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: push-credentials
+                  key: fcm-project-id
+                  optional: true
+          volumeMounts:
+            - name: gateway-key
+              mountPath: /secrets
+            - name: spire-agent-socket
+              mountPath: /spire/socket
+            - name: policies
+              mountPath: /policies
+              readOnly: true
+      volumes:
+        - name: gateway-key
+          secret:
+            secretName: agentid-gateway-key
+        - name: spire-agent-socket
+          hostPath:
+            path: /var/run/spire/agent
+            type: DirectoryOrCreate
+        - name: policies
+          configMap:
+            name: opa-policies
+
+---
+# Gateway Control Plane Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-control
+  namespace: agentid
+spec:
+  selector:
+    app: gateway-control
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: grpc
+      port: 9090
+      targetPort: 9090
+
+---
+# Gateway Core Proxy (Rust)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-core
+  namespace: agentid
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway-core
+  template:
+    metadata:
+      labels:
+        app: gateway-core
+    spec:
+      containers:
+        - name: gateway-core
+          image: agentid/gateway-core:latest
+          ports:
+            - containerPort: 9443
+          env:
+            - name: CONTROL_PLANE_ADDR
+              value: "http://gateway-control:9090"
+            - name: CONTROL_PLANE_HTTP_ADDR
+              value: "gateway-control:8080"
+            - name: GATEWAY_MODE
+              value: "mtls"
+            - name: TLS_CERT_PATH
+              value: "/secrets/agentid-gateway.crt"
+            - name: TLS_KEY_PATH
+              value: "/secrets/agentid-gateway.key"
+            - name: TLS_CA_PATH
+              value: "/secrets/agentid-ca.crt"
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /secrets
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: agentid-gateway-tls
+
+---
+# Gateway Core Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-core
+  namespace: agentid
+spec:
+  selector:
+    app: gateway-core
+  ports:
+    - name: https
+      port: 9443
+      targetPort: 9443
+
+---
+# Resource Adapter
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resource-adapter
+  namespace: agentid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resource-adapter
+  template:
+    metadata:
+      labels:
+        app: resource-adapter
+    spec:
+      containers:
+        - name: resource-adapter
+          image: agentid/resource-adapter:latest
+          ports:
+            - containerPort: 8443
+          env:
+            - name: RESOURCE_NAME
+              value: "enterprise-resource"
+            - name: GATEWAY_ENDPOINT
+              value: "gateway-core:9443"
+
+---
+# OPA
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa
+  namespace: agentid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opa
+  template:
+    metadata:
+      labels:
+        app: opa
+    spec:
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:latest
+          args: ["run", "--server", "--addr", ":8181", "/policies"]
+          ports:
+            - containerPort: 8181
+          volumeMounts:
+            - name: policies
+              mountPath: /policies
+      volumes:
+        - name: policies
+          configMap:
+            name: opa-policies
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa
+  namespace: agentid
+spec:
+  selector:
+    app: opa
+  ports:
+    - port: 8181
+      targetPort: 8181

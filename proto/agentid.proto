@@ -10,6 +10,9 @@ service GatewayService {
     rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
     rpc RegisterResource(RegisterResourceRequest) returns (RegisterResourceResponse);
     rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+    rpc VerifySignature(VerifySignatureRequest) returns (VerifySignatureResponse);
+    rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+    rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
     rpc Audit(AuditRequest) returns (AuditResponse);
 }
 
@@ -26,7 +29,9 @@ message RegisterAgentRequest {
 message RegisterAgentResponse {
     string agent_id = 1;
     bytes public_key = 2;
-    google.protobuf.Timestamp created_at = 3;
+    string status = 3;
+    double trust_score = 4;
+    google.protobuf.Timestamp created_at = 5;
 }
 
 message RegisterResourceRequest {
@@ -56,7 +61,38 @@ message AuthorizeResponse {
     bool allowed = 1;
     bool requires_hitl = 2;
     string reason = 3;
+    double trust_delta = 4;
+}
+
+message VerifySignatureRequest {
+    string agent_id = 1;
+    bytes message = 2;
+    bytes signature = 3;
+}
+
+message VerifySignatureResponse {
+    bool valid = 1;
+    string agent_id = 2;
+}
+
+message GetAgentRequest {
+    string agent_id = 1;
+}
+
+message GetAgentResponse {
+    string agent_id = 1;
+    string name = 2;
+    string owner = 3;
     double trust_score = 4;
+    string status = 5;
+    repeated string capabilities = 6;
+    repeated string allowed_tools = 7;
+}
+
+message ListAgentsRequest {}
+
+message ListAgentsResponse {
+    repeated GetAgentResponse agents = 1;
 }
 
 message AuditRequest {
@@ -75,6 +111,7 @@ message AuditEntry {
     string resource_id = 3;
     string action = 4;
     string result_status = 5;
-    double trust_score = 6;
-    google.protobuf.Timestamp created_at = 7;
+    double trust_score_before = 6;
+    double trust_score_after = 7;
+    google.protobuf.Timestamp created_at = 8;
 }

@@ -42,13 +42,34 @@ services:
       - spire-server
 
   opa:
-    image: openpolicyagent/opa:0.68.0
+    image: openpolicyagent/opa:latest
     container_name: agentid-opa
     ports:
       - "8181:8181"
     command: "run --server --addr :8181 /policies"
     volumes:
-      - ./gateway/control-plane/cmd/policy/regp:/policies
+      - ./gateway/control-plane/policies:/policies
+
+  gateway-control:
+    build:
+      context: ./gateway/control-plane
+      dockerfile: Dockerfile
+    container_name: agentid-control
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      DATABASE_URL: postgres://agentid:agentid_dev@postgres:5432/agentid?sslmode=disable
+      OPA_ENDPOINT: http://opa:8181
+      SPIRE_ENDPOINT: spire-agent:8090
+      POLICY_DIR: /policies
+    volumes:
+      - ./gateway/control-plane/policies:/policies:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opa:
+        condition: service_started
 
   gateway-core:
     build:
@@ -58,30 +79,25 @@ services:
     ports:
       - "9443:9443"
     environment:
-      DATABASE_URL: postgres://agentid:agentid_dev@postgres:5432/agentid
+      CONTROL_PLANE_ADDR: http://gateway-control:9090
+      CONTROL_PLANE_HTTP_ADDR: gateway-control:8080
       RUST_LOG: info
+      GATEWAY_MODE: plaintext
     depends_on:
-      postgres:
-        condition: service_healthy
-      spire-agent:
-        condition: service_started
+      - gateway-control
 
-  gateway-control:
+  resource-adapter:
     build:
-      context: ./gateway/control-plane
+      context: ./adapter/resource-adapter-go
       dockerfile: Dockerfile
-    container_name: agentid-control
+    container_name: agentid-resource-adapter
     ports:
-      - "8080:8080"
+      - "8443:8443"
     environment:
-      DATABASE_URL: postgres://agentid:agentid_dev@postgres:5432/agentid
-      OPA_ENDPOINT: http://opa:8181
-      SPIRE_ENDPOINT: spire-agent:8090
+      RESOURCE_NAME: enterprise-resource
+      GATEWAY_ENDPOINT: gateway-core:9443
     depends_on:
-      postgres:
-        condition: service_healthy
-      opa:
-        condition: service_started
+      - gateway-core
 
 volumes:
   pgdata:

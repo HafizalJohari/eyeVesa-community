@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eyeVesa -- Identity &amp; Trust Layer for AI Agents</title>
+    <meta name="description" content="eyeVesa connects AI agents to enterprise resources with cryptographic identity, policy enforcement, and non-repudiable audit trails.">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="topbar">
+        <table width="100%"><tr>
+            <td align="left"><img src="logo.svg" alt="eyeVesa" height="32"> <b>eyeVesa</b></td>
+            <td align="right">Identity &middot; Trust &middot; Audit &middot; <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener">[GitHub]</a></td>
+        </tr></table>
+    </div>
+
+    <hr>
+
+    <div id="nav">
+        <center>
+            <a href="#problem">[Problem]</a>
+            <a href="#features">[Features]</a>
+            <a href="#how-it-works">[How It Works]</a>
+            <a href="#trust">[Trust]</a>
+            <a href="#use-cases">[Use Cases]</a>
+            <a href="#architecture">[Architecture]</a>
+            <a href="#hermes">[Hermes Agent]</a>
+            <a href="#quickstart">[Quick Start]</a>
+        </center>
+    </div>
+
+    <hr>
+
+    <div align="center"><img src="logo.svg" alt="eyeVesa" width="320" height="320"></div>
+
+    <h1 align="center">The Gateway That Keeps<br>AI Agents in Check</h1>
+
+    <p align="center"><i>eyeVesa gives autonomous AI agents cryptographic identity, enforces real-time authorization
+    policies, and produces non-repudiable audit trails -- so enterprises can trust what their agents do.</i></p>
+
+    <p align="center">
+    <a href="#how-it-works">[See How It Works]</a>
+    &nbsp;
+    <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener">[View on GitHub]</a>
+    </p>
+
+    <center><table border="1" cellpadding="8" cellspacing="0" class="statbox">
+        <tr>
+            <th>3</th><th>Ed25519</th><th>100%</th>
+        </tr><tr>
+            <td>Decision Layers</td><td>Crypto Identity</td><td>Audit Integrity</td>
+        </tr>
+    </table></center>
+
+    <hr>
+
+    <a name="problem"></a>
+    <h2>The Problem</h2>
+    <p>When AI agents access production systems, three questions have no good answer:</p>
+
+    <dl>
+        <dt><b>1. Who is this agent?</b></dt>
+        <dd>API keys can be stolen. JWTs can be leaked. There's no cryptographic proof tying an action to a specific agent identity.</dd>
+
+        <dt><b>2. Should this be allowed?</b></dt>
+        <dd>Static RBAC doesn't adapt. Either agents get full access (dangerous) or humans approve everything (slow). No middle ground.</dd>
+
+        <dt><b>3. Can we prove what happened?</b></dt>
+        <dd>When something goes wrong, logs can be tampered with. You need cryptographic proof of who did what, when, and why.</dd>
+    </dl>
+
+    <hr>
+
+    <a name="features"></a>
+    <h2>Core Capabilities</h2>
+    <p>Every agent request passes through decision layers before reaching your production systems.</p>
+
+    <table border="1" cellpadding="10" cellspacing="0" width="100%">
+        <tr bgcolor="#333">
+            <th>Capability</th><th>Description</th>
+        </tr>
+        <tr>
+            <td><b>Cryptographic Identity</b></td>
+            <td>Every agent gets an Ed25519 keypair on registration. Requests are signed, verified, and non-repudiable. No more shared API keys.</td>
+        </tr>
+        <tr>
+            <td><b>Policy Engine &amp; HITL</b></td>
+            <td>OPA/Rego policies auto-allow low-risk actions, auto-deny dangerous ones, and route uncertain decisions to humans. Four layers of trust.</td>
+        </tr>
+        <tr>
+            <td><b>Trust Scoring</b></td>
+            <td>Dynamic trust scores adapt in real-time. Good behavior earns trust (+0.01). Policy violations degrade it (-0.05). Low-trust agents get contained automatically.</td>
+        </tr>
+        <tr>
+            <td><b>Non-Repudiable Audit</b></td>
+            <td>Every action is logged with an Ed25519 signature. Integrity verification is built-in. Tamper-proof evidence for compliance.</td>
+        </tr>
+        <tr>
+            <td><b>Agent Delegation</b></td>
+            <td>Agents can delegate scoped, time-limited authority to sub-agents. Depth limits prevent unbounded chains. Every delegation is tracked.</td>
+        </tr>
+        <tr>
+            <td><b>mTLS + SPIRE</b></td>
+            <td>Zero-trust networking with SPIFFE/SPIRE workload identity. Every service-to-service call is mutually authenticated via mTLS.</td>
+        </tr>
+    </table>
+
+    <hr>
+
+    <a name="how-it-works"></a>
+    <h2>How It Works</h2>
+    <p>Four layers decide every agent action in milliseconds:</p>
+
+    <table border="1" cellpadding="10" cellspacing="0" width="100%">
+        <tr bgcolor="#6b0000">
+            <th width="30">1</th>
+            <th><font color="#ff9999">AUTO-DENY</font> -- Hard blocks, no override</th>
+            <th><font color="#ff6666"><b>[DENY]</b></font></th>
+        </tr>
+        <tr><td colspan="3"><font size="2">Bank transfers over $5,000. Trust below 0.1. Budget exceeded. Instantly denied. Trust -= 0.05</font></td></tr>
+
+        <tr bgcolor="#003300">
+            <th width="30">2</th>
+            <th><font color="#99ff99">AUTO-ALLOW</font> -- Low-risk, no human needed</th>
+            <th><font color="#66ff66"><b>[ALLOW]</b></font></th>
+        </tr>
+        <tr><td colspan="3"><font size="2">Trust > 0.8 + low-risk resource. Read-only operations. Scaling within limits. Trust += 0.01</font></td></tr>
+
+        <tr bgcolor="#333300">
+            <th width="30">3</th>
+            <th><font color="#ffff99">HUMAN-IN-THE-LOOP</font> -- Needs human judgment</th>
+            <th><font color="#ffff66"><b>[HITL]</b></font></th>
+        </tr>
+        <tr><td colspan="3"><font size="2">Production deployments. Bank transfers $100-$500. Restricted data with trust &lt; 0.8. Pending until human approves.</font></td></tr>
+
+        <tr bgcolor="#1a0033">
+            <th width="30">4</th>
+            <th><font color="#cc99ff">ESCALATION</font> -- Needs multiple approvals</th>
+            <th><font color="#cc66ff"><b>[ESCALATE]</b></font></th>
+        </tr>
+        <tr><td colspan="3"><font size="2">Bank transfers over $1,000. Database schema changes. Requires 2+ separate sign-offs.</font></td></tr>
+    </table>
+
+    <hr>
+
+    <a name="trust"></a>
+    <h2>Trust Scoring</h2>
+    <p>Trust is earned, not given. Agents start at 1.0 and adapt based on behavior.</p>
+
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr bgcolor="#333"><th>Outcome</th><th>Trust Change</th><th>Effect</th></tr>
+        <tr><td><font color="#66ff66">Successful call</font></td><td><tt>+0.01</tt></td><td>Gradually earns more autonomy</td></tr>
+        <tr><td><font color="#ffff66">Policy denied</font></td><td><tt>-0.05</tt></td><td>Restricted until recovered</td></tr>
+        <tr><td><font color="#ff9966">Budget exceeded</font></td><td><tt>-0.10</tt></td><td>Severe restriction</td></tr>
+        <tr><td><font color="#ff6666">Never-event violation</font></td><td><tt>BLOCKED</tt></td><td>Auto-deny, no override</td></tr>
+    </table>
+
+    <br>
+
+    <p><b>Trust Thresholds:</b></p>
+    <ul>
+        <li><font color="#66ff66"><b>&gt;= 0.8</b></font> -- Auto-allow for low-risk</li>
+        <li><font color="#6699ff"><b>&gt;= 0.5</b></font> -- Normal operation, HITL for risky</li>
+        <li><font color="#ffff66"><b>&gt;= 0.1</b></font> -- Restricted, HITL for everything</li>
+        <li><font color="#ff6666"><b>&lt; 0.1</b></font> -- BLOCKED, cannot operate</li>
+    </ul>
+
+    <hr>
+
+    <a name="use-cases"></a>
+    <h2>Use Cases</h2>
+    <p>Where autonomous agents meet real consequences.</p>
+
+    <h3>1. DevOps / SRE -- 3am Incident Response</h3>
+    <blockquote>
+        <tt>
+        Agent reads logs.......... <font color="#66ff66">[AUTO-ALLOW]</font><br>
+        Scales up service......... <font color="#66ff66">[AUTO-ALLOW]</font><br>
+        Deploys hotfix............ <font color="#ffff66">[HITL]</font> -- 1 human tap<br>
+        <br>
+        <b>4 minutes total. Full audit trail. No 3am pages.</b>
+        </tt>
+    </blockquote>
+
+    <h3>2. Finance / Banking -- Automated Transfers</h3>
+    <blockquote>
+        <tt>
+        $50 transfer............. <font color="#66ff66">[AUTO-ALLOW]</font><br>
+        $300 transfer............ <font color="#ffff66">[HITL]</font> -- manager approves<br>
+        $6,000 transfer.......... <font color="#ff6666">[AUTO-DENY]</font><br>
+        <br>
+        <b>Hard limits enforced. Cryptographic audit for compliance.</b>
+        </tt>
+    </blockquote>
+
+    <h3>3. Healthcare / Pharma -- PHI Access Control</h3>
+    <blockquote>
+        <tt>
+        Query public data........ <font color="#66ff66">[AUTO-ALLOW]</font><br>
+        Access patient records... <font color="#ffff66">[HITL]</font><br>
+        Bulk data export......... <font color="#ff6666">[AUTO-DENY]</font><br>
+        <br>
+        <b>HIPAA compliant. PHI access audit with proofs.</b>
+        </tt>
+    </blockquote>
+
+    <hr>
+
+    <a name="architecture"></a>
+    <h2>Architecture</h2>
+    <p>Dual-protocol gateway: Rust core proxies to Go control plane for auth, registration, and crypto.</p>
+
+    <pre>
+    +-------------------------------------------------------+
+    |                     ENTERPRISE                        |
+    |                                                       |
+    |  +-------------+  +-------------+  +--------------+   |
+    |  | K8s Adapter |  |  DB Adapter |  | Slack Adapter |   |
+    |  |  (Go :8443) |  |  (Go :8443) |  |  (Go :8443)   |   |
+    |  +------+------+  +------+------+  +------+-------+   |
+    |         |                 |                |           |
+    |         +--------+--------+----------------+           |
+    |                  |                                     |
+    |                  v                                     |
+    |       +----------------------+                        |
+    |       |   eyeVesa Gateway    |                        |
+    |       |                      |                        |
+    |       |  +----------------+ |                        |
+    |       |  | Gateway Core   | |                        |
+    |       |  | (Rust :9443)   | |                        |
+    |       |  | mTLS, proxy,  | |                        |
+    |       |  | crypto, MCP    | |                        |
+    |       |  +----------------+ |                        |
+    |       |                      |                        |
+    |       |  +----------------+ |                        |
+    |       |  | Control Plane  | |                        |
+    |       |  | (Go :8080)     | |                        |
+    |       |  | REST, gRPC,    | |                        |
+    |       |  | HITL, audit    | |                        |
+    |       |  +--------+-------+ |                        |
+    |       +----------+----------+                        |
+    |                  |                                     |
+    |    +-------------+-------------+                     |
+    |    |             |             |                     |
+    |    v             v             v                     |
+    | +----------+ +---------+ +---------+               |
+    | |PostgreSQL| |  SPIRE  | |   OPA   |               |
+    | |+pgvector | |Identity | | Policy  |               |
+    | | :5432    | |:8081/90 | | :8181   |               |
+    | +----------+ +---------+ +---------+               |
+    |                                                       |
+    | +-----------------------------------------------+   |
+    | | Agent SDK (Rust)                               |   |
+    | | connect() -&gt; discover() -&gt; invoke() -&gt; delegate()|   |
+    | +-----------------------------------------------+   |
+    +-------------------------------------------------------+
+    </pre>
+
+    <hr>
+
+    <h2>Request Flow</h2>
+    <p>From agent action to audit log in 12 steps:</p>
+
+    <pre>
+     1. Agent registers            -&gt; POST /v1/agents/register  -&gt; PostgreSQL
+     2. Resource registers         -&gt; POST /v1/resources/register -&gt; PostgreSQL
+     3. Agent connects via SDK     -&gt; mTLS to Gateway Core (:9443)
+     4. Agent discovers tools      -&gt; GET /v1/agents/{id}
+     5. Agent invokes a tool       -&gt; Ed25519-signed MCP request
+     6. Gateway verifies signature
+     7. Gateway checks policy       -&gt; OPA evaluates Rego rules
+     8. If HITL required            -&gt; Write to hitl_approvals, notify human
+     9. If allowed                  -&gt; Proxy MCP request to Resource Adapter
+    10. Result returns              -&gt; Agent gets response + trust score
+    11. Audit log written           -&gt; Ed25519-signed entry
+    12. Trust score updated         -&gt; +0.01 or -0.05
+    </pre>
+
+    <hr>
+
+    <h2>Who Benefits</h2>
+
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Score</th><th>Role</th><th>Benefit</th></tr>
+        <tr><td align="center"><b>95</b></td><td>CISO / Security</td><td>Cryptographic identity, tamper-proof audit, trust degradation. Proof and control.</td></tr>
+        <tr><td align="center"><b>90</b></td><td>DevOps / SRE</td><td>Auto-handle 80% of ops. Only woken for HITL approvals.</td></tr>
+        <tr><td align="center"><b>85</b></td><td>Compliance / Legal</td><td>Signed audit trail. Defensible evidence for regulators.</td></tr>
+        <tr><td align="center"><b>75</b></td><td>Enterprise IT</td><td>One registry, one policy engine, one audit source.</td></tr>
+        <tr><td align="center"><b>65</b></td><td>Agent Developers</td><td>Standard SDK: connect() -&gt; discover() -&gt; invoke().</td></tr>
+        <tr><td align="center"><b>60</b></td><td>Business Leaders</td><td>Fewer incidents, simplified compliance, reduced risk.</td></tr>
+    </table>
+
+    <hr>
+
+    <a name="hermes"></a>
+    <h2>Connect with Hermes Agent</h2>
+    <p>Hermes is a self-improving autonomous AI agent by <a href="https://nousresearch.com" target="_blank" rel="noopener">Nous Research</a>.
+    It features 70+ built-in tools, MCP client/server support, persistent memory, and runs on 20+ messaging platforms.
+    Here's how to connect it to eyeVesa for identity, authorization, and audit.</p>
+
+    <h3>Install Hermes</h3>
+    <pre>curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash</pre>
+
+    <h3>Register Hermes as an Agent</h3>
+    <pre>curl -X POST http://localhost:8080/v1/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "hermes-ops",
+    "owner": "org:devops",
+    "capabilities": ["infrastructure_read", "infrastructure_write", "deployment"],
+    "allowed_tools": ["k8s_deploy", "k8s_scale", "log_search", "incident_create"],
+    "max_budget_usd": 500.0,
+    "delegation_policy": "single_level",
+    "behavioral_tags": ["production", "sre", "high_autonomy"]
+  }'</pre>
+
+    <h3>Configure Hermes MCP to Use Gateway</h3>
+    <pre>mcp_servers:
+  agentid-gateway:
+    url: "http://localhost:9443/v1/mcp"
+    headers:
+      X-Agent-ID: "YOUR-AGENT-ID"
+    tools:
+      include: [tools/list, tools/call, resources/list, prompts/list]</pre>
+
+    <h3>Set Environment Variables</h3>
+    <pre>EYEVESA_AGENT_ID=your-agent-id-here
+EYEVESA_AGENT_NAME=hermes-ops
+EYEVESA_AGENT_OWNER=org:devops
+EYEVESA_GATEWAY=https://gateway.yourcompany.com:9443
+EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
+
+    <h3>Two-Layer Security</h3>
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Layer</th><th>System</th><th>What it Controls</th></tr>
+        <tr><td><b>Hermes approval</b></td><td>Hermes Agent</td><td>Should this <i>shell command</i> run? (local process safety)</td></tr>
+        <tr><td><b>eyeVesa authorization</b></td><td>AgentID Gateway</td><td>Should this <i>agent identity</i> access this <i>enterprise resource</i>? (remote access policy)</td></tr>
+    </table>
+
+    <h3>Decision Flow</h3>
+    <pre>
+    User sends message to Hermes (Telegram/Discord/CLI)
+      |
+      +-- Hermes LLM reasons about the request
+      |
+      +-- Is it an enterprise resource? (via AgentID Gateway MCP)
+            |
+            +-- Gateway verifies Ed25519 identity
+            |
+            +-- Gateway evaluates OPA policy
+            |     +-- AUTO-DENY  (trust &lt; 0.1, budget exceeded, never event)
+            |     +-- AUTO-ALLOW (trust &gt; 0.8, low-risk, tool in allowed_tools)
+            |     +-- HITL       (production deploy, bank transfer &gt; $100)
+            |
+            +-- Gateway signs audit log entry
+            |
+            +-- Gateway returns result + trust delta to Hermes
+    </pre>
+
+    <p><a href="https://github.com/hafizaljohari/eyeVesa/blob/main/docs/HERMES_SETUP_GUIDE.md" target="_blank" rel="noopener">[Full Hermes Setup Guide]</a></p>
+
+    <hr>
+
+    <a name="quickstart"></a>
+    <h2>Quick Start</h2>
+    <p>Get running in under 5 minutes.</p>
+
+    <h3>Start Infrastructure</h3>
+    <pre>docker-compose up -d</pre>
+
+    <h3>Start Gateway</h3>
+    <pre># Terminal 1: Gateway core (Rust proxy)
+cd gateway/core &amp;&amp; cargo run
+
+# Terminal 2: Control plane (Go API)
+cd gateway/control-plane &amp;&amp; go run cmd/api/main.go</pre>
+
+    <h3>Register an Agent</h3>
+    <pre>curl -X POST http://localhost:8080/v1/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"hermes-ops","owner":"org:devops",
+       "capabilities":["infrastructure_read","deployment"],
+       "allowed_tools":["k8s_deploy","log_search"]}'</pre>
+
+    <h3>Verify Services</h3>
+    <pre>curl http://localhost:8080/health     # Control plane
+curl http://localhost:9443/health     # Gateway core
+curl http://localhost:8181/v1/data/agentid/authz/allow  # OPA</pre>
+
+    <hr>
+
+    <h2 align="center">Ready to Put Guardrails on Your AI Agents?</h2>
+    <p align="center">eyeVesa gives you cryptographic identity, real-time policy enforcement,<br>
+    and non-repudiable audit trails -- so your agents can act autonomously<br>
+    without putting production at risk.</p>
+    <p align="center">
+    <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener">[Get Started on GitHub]</a>
+    &nbsp;
+    <a href="#architecture">[View Architecture]</a>
+    </p>
+
+    <hr>
+
+    <table width="100%" cellpadding="8"><tr valign="top">
+        <td width="40%">
+            <img src="logo.svg" alt="eyeVesa" height="24"> <b>eyeVesa</b><br>
+            <font size="2">Identity and trust layer for the agentic economy.</font>
+        </td>
+        <td>
+            <font size="2"><b>Product</b><br>
+            <a href="#features">Features</a><br>
+            <a href="#how-it-works">How It Works</a><br>
+            <a href="#use-cases">Use Cases</a><br>
+            <a href="#architecture">Architecture</a></font>
+        </td>
+        <td>
+            <font size="2"><b>Developers</b><br>
+            <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener">GitHub</a><br>
+            <a href="#quickstart">Quick Start</a><br>
+            <a href="https://github.com/hafizaljohari/eyeVesa/blob/main/eyeVesa.md" target="_blank" rel="noopener">Documentation</a></font>
+        </td>
+        <td>
+            <font size="2"><b>Stack</b><br>
+            Rust Gateway<br>
+            Go Control Plane<br>
+            PostgreSQL<br>
+            OPA/Rego</font>
+        </td>
+    </tr></table>
+
+    <hr>
+
+    <p align="center"><font size="1">&copy; 2026 eyeVesa. Proprietary license.</font></p>
+
+</body>
+</html>

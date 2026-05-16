@@ -8,5 +8,6 @@ RUN CGO_ENABLED=0 go build -o /agentid-control ./cmd/api
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /agentid-control /usr/local/bin/agentid-control
-EXPOSE 8080
+COPY --from=builder /app/policies /policies
+EXPOSE 8080 9090
 CMD ["agentid-control"]

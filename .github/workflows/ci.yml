@@ -33,12 +33,81 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
 
-  integration:
+  adapter-check:
     runs-on: ubuntu-latest
-    needs: [rust-check, go-check]
+    defaults:
+      run:
+        working-directory: adapter/resource-adapter-go
     steps:
       - uses: actions/checkout@v4
-      - run: docker-compose up -d --wait
-      - run: sleep 5
-      - run: curl -f http://localhost:8080/health
-      - run: docker-compose down
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: go build ./...
+      - run: go vet ./...
+
+  sdk-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/agent-sdk-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo check
+      - run: cargo test
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [rust-check, go-check, adapter-check, sdk-check]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: agentid
+          POSTGRES_USER: agentid
+          POSTGRES_PASSWORD: agentid_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Run database migrations
+        run: |
+          for f in registry/migrations/*.sql; do
+            PGPASSWORD=agentid_dev psql -h localhost -U agentid -d agentid -f "$f"
+          done
+      - name: Build and start control plane
+        run: |
+          cd gateway/control-plane
+          go build -o /tmp/agentid-control ./cmd/api/
+          DATABASE_URL="postgres://agentid:agentid_dev@localhost:5432/agentid?sslmode=disable" \
+            POLICY_DIR="../../gateway/control-plane/policies" \
+            /tmp/agentid-control &
+          sleep 3
+      - name: Health check
+        run: curl -f http://localhost:8080/health
+      - name: Integration tests
+        run: |
+          cd gateway/control-plane
+          DATABASE_URL="postgres://agentid:agentid_dev@localhost:5432/agentid?sslmode=disable" \
+            go test -tags=integration ./internal/integration/ -v -timeout 60s
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [integration]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build control plane image
+        run: docker build -t agentid-control:ci ./gateway/control-plane
+      - name: Build core image
+        run: docker build -t agentid-core:ci ./gateway/core
+      - name: Build resource adapter image
+        run: docker build -t agentid-adapter:ci ./adapter/resource-adapter-go

@@ -29,3 +29,42 @@ pub struct InvokeResult {
     pub data: serde_json::Value,
     pub trust_score: f64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthorizeResult {
+    pub allowed: bool,
+    pub requires_hitl: bool,
+    pub reason: String,
+    pub trust_delta: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DelegateResult {
+    pub delegation_id: Uuid,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PtvAttestResult {
+    pub attestation: serde_json::Value,
+    pub tpm_signature: String,
+    pub quote: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PtvBindResult {
+    pub binding_id: Uuid,
+    pub agent_id: String,
+    pub platform: String,
+    pub transformed_at: i64,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HitlApproval {
+    pub approval_id: Uuid,
+    pub agent_id: String,
+    pub action: String,
+    pub status: String,
+    pub expires_at: Option<String>,
+}

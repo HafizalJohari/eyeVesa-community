@@ -1,0 +1,98 @@
+# AgentID Gateway - SPIRE Sidecar Config
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server-config
+  namespace: agentid
+data:
+  server.conf: |
+    server {
+        bind_address = "0.0.0.0"
+        bind_port = "8081"
+        data_dir = "/opt/spire/data"
+        trust_domain = "agentid.dev"
+
+        plugins {
+            DataStore "sql" {
+                plugin_data {
+                    driver_type = "postgres"
+                    connection_string = "host=gateway-control-postgres port=5432 user=agentid password=agentid_dev dbname=agentid sslmode=disable"
+                }
+            }
+
+            KeyManager "memory" {
+                plugin_data {}
+            }
+
+            NodeAttestor "x509pop" {
+                plugin_data {}
+            }
+
+            NodeResolver "noop" {
+                plugin_data {}
+            }
+        }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-config
+  namespace: agentid
+data:
+  agent.conf: |
+    agent {
+        data_dir = "/opt/spire/data"
+        server_address = "spire-server"
+        server_port = "8081"
+        trust_domain = "agentid.dev"
+
+        plugins {
+            KeyManager "memory" {
+                plugin_data {}
+            }
+
+            WorkloadAttestor "unix" {
+                plugin_data {}
+            }
+
+            WorkloadAttestor "k8s" {
+                plugin_data {}
+            }
+        }
+    }
+
+---
+# Gateway identity registration entry
+apiVersion: spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: gateway-control
+spec:
+  className: spire
+  spiffeIDTemplate: "spiffe://agentid.dev/gateway/control"
+  podSelector:
+    matchLabels:
+      app: gateway-control
+  workloadVisionTemplates:
+    - selector:
+        matchLabels:
+          app: gateway-control
+
+---
+apiVersion: spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: gateway-core
+spec:
+  className: spire
+  spiffeIDTemplate: "spiffe://agentid.dev/gateway/core"
+  podSelector:
+    matchLabels:
+      app: gateway-core
+  workloadVisionTemplates:
+    - selector:
+        matchLabels:
+          app: gateway-core
