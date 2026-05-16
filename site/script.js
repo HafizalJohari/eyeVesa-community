@@ -1,12 +1,12 @@
 (function() {
     var goUp = document.getElementById('goUp');
-    var topbar = document.getElementById('topbar');
+    if (!goUp) return;
 
     window.addEventListener('scroll', function() {
         if (window.pageYOffset > 300) {
-            goUp.style.display = 'block';
+            goUp.classList.add('visible');
         } else {
-            goUp.style.display = 'none';
+            goUp.classList.remove('visible');
         }
     });
 })();

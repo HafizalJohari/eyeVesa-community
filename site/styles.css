@@ -188,29 +188,36 @@ td {
         }
     }
 
-    #goUp {
-        display: none;
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        width: 40px;
-        height: 40px;
-        background: #1a1a2e;
-        color: #66ff66;
-        border: 2px solid #444;
-        text-align: center;
-        line-height: 36px;
-        font-size: 20px;
-        text-decoration: none;
-        z-index: 999;
-        cursor: pointer;
-    }
+#goUp {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 44px;
+    height: 44px;
+    background: #111122;
+    color: #66ff66;
+    border: 2px solid #333;
+    text-align: center;
+    line-height: 40px;
+    font-size: 22px;
+    text-decoration: none;
+    z-index: 9999;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
 
-    #goUp:hover {
-        background: #66ff66;
-        color: #0a0e17;
-        border-color: #66ff66;
-    }
+#goUp.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#goUp:hover {
+    background: #66ff66;
+    color: #0a0e17;
+    border-color: #66ff66;
+}
 
 body {
     padding: 0 20px;
