@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -67,7 +67,7 @@ func DelegateAgent(w http.ResponseWriter, r *http.Request) {
 		Duration:      duration,
 	})
 	if err != nil {
-		log.Printf("DelegateAgent: delegation failed: %v", err)
+		slog.Error("delegation failed", "error", err)
 		http.Error(w, "internal error", http.StatusBadRequest)
 		return
 	}

@@ -5,7 +5,8 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/json"
-	"log"
+	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -32,6 +33,7 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/hitl"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/identity"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/llm"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/metrics"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ptv"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ratelimit"
@@ -44,11 +46,12 @@ func main() {
 
 	db, err := database.Connect(ctx)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
-	log.Println("Connected to database")
+	slog.Info("connected to database")
 
 	var pubKey ed25519.PublicKey
 	var privKey ed25519.PrivateKey
@@ -60,9 +63,10 @@ func main() {
 
 	pubKey, privKey, err = gwcrypto.LoadOrGenerateKeys(keyPath)
 	if err != nil {
-		log.Fatalf("Failed to load/generate gateway keys: %v", err)
+		slog.Error("failed to load/generate gateway keys", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Gateway public key: %x", pubKey)
+	slog.Info("gateway key loaded", "public_key", fmt.Sprintf("%x", pubKey))
 
 	auditLogger := audit.NewAuditLogger(db)
 
@@ -70,13 +74,13 @@ func main() {
 
 	svid, err := identityProvider.FetchSVID(ctx)
 	if err != nil {
-		log.Printf("Warning: could not fetch SVID: %v", err)
+		slog.Warn("could not fetch SVID", "error", err)
 	} else {
-		log.Printf("Identity: %s (trust domain: %s)", svid.SpiffeID, svid.TrustDomain)
+		slog.Info("gateway identity", "spiffe_id", svid.SpiffeID, "trust_domain", svid.TrustDomain)
 	}
 
 	if err := identityProvider.WriteCerts("/tmp/agentid-gateway.crt", "/tmp/agentid-gateway.key"); err != nil {
-		log.Printf("Warning: could not write certs: %v", err)
+		slog.Warn("could not write certs", "error", err)
 	}
 
 	delegationTracker := delegation.NewDelegationTracker(db.Pool, identityProvider)
@@ -115,26 +119,26 @@ func main() {
 	var authMiddleware *auth.AuthMiddleware
 	if authEnabled {
 		authMiddleware = auth.NewAuthMiddleware(db.Pool, jwtSecret)
-		log.Println("Authentication middleware enabled")
+		slog.Info("authentication middleware enabled")
 	}
 
 	go func() {
 		if sp, ok := identityProvider.(*identity.SpireProvider); ok {
-			log.Println("Starting SPIRE SVID watcher for cert rotation...")
+			slog.Info("starting SPIRE SVID watcher for cert rotation")
 			ch, err := sp.WatchX509SVID(ctx)
 			if err != nil {
-				log.Printf("Warning: SPIRE watch failed: %v", err)
+				slog.Warn("SPIRE watch failed", "error", err)
 				return
 			}
 			for svid := range ch {
-				log.Printf("SVID updated: %s (expires: %s)", svid.SpiffeID, svid.ExpiresAt.Format(time.RFC3339))
+				slog.Info("SVID updated", "spiffe_id", svid.SpiffeID, "expires_at", svid.ExpiresAt.Format(time.RFC3339))
 				if err := identityProvider.WriteCerts("/tmp/agentid-gateway.crt", "/tmp/agentid-gateway.key"); err != nil {
-					log.Printf("Warning: cert rotation write failed: %v", err)
+					slog.Warn("cert rotation write failed", "error", err)
 				} else {
-					log.Println("Rotated gateway certificates from SPIRE SVID update")
+					slog.Info("rotated gateway certificates from SPIRE SVID update")
 				}
 			}
-			log.Println("SPIRE SVID watcher stopped")
+			slog.Info("SPIRE SVID watcher stopped")
 		}
 	}()
 
@@ -171,6 +175,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(metrics.Middleware)
 
 	if authEnabled && authMiddleware != nil {
 		r.Use(authMiddleware.Middleware)
@@ -189,6 +194,8 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
+
+	r.Handle("/metrics", metrics.Handler())
 
 	r.Get("/identity", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -278,14 +285,16 @@ func main() {
 				ReadTimeout:  30 * time.Second,
 				WriteTimeout: 30 * time.Second,
 			}
-			log.Printf("HTTPS server starting on %s", httpAddr)
+			slog.Info("HTTPS server starting", "addr", httpAddr)
 			if err := srv.ListenAndServeTLS(backendTLSCert, backendTLSKey); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("HTTPS server failed: %v", err)
+				slog.Error("HTTPS server failed", "error", err)
+				os.Exit(1)
 			}
 		} else {
-			log.Printf("HTTP server starting on %s", httpAddr)
+			slog.Info("HTTP server starting", "addr", httpAddr)
 			if err := http.ListenAndServe(httpAddr, r); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("HTTP server failed: %v", err)
+				slog.Error("HTTP server failed", "error", err)
+				os.Exit(1)
 			}
 		}
 	}()
@@ -296,7 +305,8 @@ func main() {
 	}
 	grpcListener, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", grpcAddr, err)
+		slog.Error("failed to listen for gRPC", "addr", grpcAddr, "error", err)
+		os.Exit(1)
 	}
 
 	var grpcServer *grpc.Server
@@ -306,19 +316,21 @@ func main() {
 	if backendGRPCTLSCert != "" && backendGRPCTLSKey != "" {
 		creds, err := credentials.NewServerTLSFromFile(backendGRPCTLSCert, backendGRPCTLSKey)
 		if err != nil {
-			log.Fatalf("Failed to load gRPC TLS credentials: %v", err)
+			slog.Error("failed to load gRPC TLS credentials", "error", err)
+			os.Exit(1)
 		}
 		grpcServer = grpc.NewServer(grpc.Creds(creds))
-		log.Printf("gRPC server starting on %s (TLS)", grpcAddr)
+		slog.Info("gRPC server starting with TLS", "addr", grpcAddr)
 	} else {
 		grpcServer = grpc.NewServer()
-		log.Printf("gRPC server starting on %s (plaintext)", grpcAddr)
+		slog.Info("gRPC server starting (plaintext)", "addr", grpcAddr)
 	}
 	pb.RegisterGatewayServiceServer(grpcServer, grpcSrv)
 
 	go func() {
 		if err := grpcServer.Serve(grpcListener); err != nil {
-			log.Fatalf("gRPC server failed: %v", err)
+			slog.Error("gRPC server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -326,7 +338,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down servers...")
+	slog.Info("shutting down servers...")
 	grpcServer.GracefulStop()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)

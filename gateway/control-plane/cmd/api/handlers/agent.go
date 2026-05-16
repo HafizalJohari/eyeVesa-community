@@ -3,7 +3,7 @@ package handlers
 import (
 	"crypto/ed25519"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -108,7 +108,7 @@ func RegisterAgent(w http.ResponseWriter, r *http.Request) {
 	).Scan(&createdAt)
 
 	if err != nil {
-		log.Printf("RegisterAgent: database insert failed: %v", err)
+		slog.Error("register agent failed", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

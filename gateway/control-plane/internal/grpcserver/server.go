@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"time"
 
 	pb "github.com/hafizaljohari/eyeVesa/proto/agentid"
@@ -79,7 +79,7 @@ func (s *GatewayServer) RegisterAgent(ctx context.Context, req *pb.RegisterAgent
 		TrustAfter:  1.0,
 	}
 	if err := s.auditLogger.Log(ctx, auditEntry, s.gatewayPrivKey); err != nil {
-		log.Printf("[grpc] audit log: %v", err)
+		slog.Error("grpc audit log", "error", err)
 	}
 
 	return &pb.RegisterAgentResponse{
@@ -162,7 +162,7 @@ func (s *GatewayServer) Authorize(ctx context.Context, req *pb.AuthorizeRequest)
 	var params map[string]interface{}
 	if req.ParamsJson != "" {
 		if err := json.Unmarshal([]byte(req.ParamsJson), &params); err != nil {
-			log.Printf("[grpc] authorize params unmarshal: %v", err)
+			slog.Warn("grpc authorize params unmarshal", "error", err)
 		}
 		policyInput.Action.Params = params
 	}
@@ -181,14 +181,14 @@ func (s *GatewayServer) Authorize(ctx context.Context, req *pb.AuthorizeRequest)
 		`UPDATE agents SET trust_score = $1, updated_at = NOW() WHERE agent_id = $2`,
 		newTrustScore, req.AgentId,
 	); err != nil {
-		log.Printf("[grpc] trust update: %v", err)
+		slog.Error("grpc trust update", "error", err)
 	}
 
 	if _, err := s.db.Pool.Exec(ctx,
 		`INSERT INTO trust_events (agent_id, event_type, trust_delta, trust_score_after, reason) VALUES ($1, $2, $3, $4, $5)`,
 		req.AgentId, "authorize", decision.TrustDelta, newTrustScore, decision.Reason,
 	); err != nil {
-		log.Printf("[grpc] trust event insert: %v", err)
+		slog.Error("grpc trust event insert", "error", err)
 	}
 
 	auditEntry := audit.AuditEntry{
@@ -201,7 +201,7 @@ func (s *GatewayServer) Authorize(ctx context.Context, req *pb.AuthorizeRequest)
 		TrustAfter:  newTrustScore,
 	}
 	if err := s.auditLogger.Log(ctx, auditEntry, s.gatewayPrivKey); err != nil {
-		log.Printf("[grpc] audit log: %v", err)
+		slog.Error("grpc audit log", "error", err)
 	}
 
 	return &pb.AuthorizeResponse{

@@ -3,7 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -105,7 +105,7 @@ func ProcessChainDecision(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -206,7 +206,7 @@ func GenerateHITLSummary(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -284,7 +284,7 @@ func GenerateAuditNarrative(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -317,7 +317,7 @@ func TranslatePolicy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -353,7 +353,7 @@ func DetectBehavioralAnomalies(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -388,7 +388,7 @@ func GetSimilarAgents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -415,7 +415,7 @@ func UpdateBehaviorEmbedding(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -459,7 +459,7 @@ func CreateTenant(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -521,7 +521,7 @@ func CheckBudget(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -557,7 +557,7 @@ func RecordSpend(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -593,7 +593,7 @@ func RegisterPushToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -614,7 +614,7 @@ func GetPushTokens(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}
@@ -640,7 +640,7 @@ func DeactivatePushToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("handler error: %v", err)
+		slog.Error("handler error", "error", err)
 		json.NewEncoder(w).Encode(map[string]string{"error": "internal_error"})
 		return
 	}

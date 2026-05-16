@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,7 +53,7 @@ func (a *AuditLogger) Log(ctx context.Context, entry AuditEntry, signingKey ed25
 		}
 		signature = sig
 	} else {
-		log.Printf("[audit] Log %s: no signing key provided, entry stored without signature", entry.LogID)
+		slog.Warn("no signing key provided, entry stored without signature", "log_id", entry.LogID)
 	}
 
 	_, err := a.db.Pool.Exec(ctx,

@@ -3,7 +3,7 @@ package hitl
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -423,14 +423,14 @@ func (s *EscalationService) expireOldApprovals(ctx context.Context) {
 		`UPDATE hitl_approvals SET status = 'expired'
 		 WHERE status = 'pending' AND expires_at < NOW()`,
 	); err != nil {
-		log.Printf("[escalation] expireOldApprovals update: %v", err)
+		slog.Error("expireOldApprovals update", "error", err)
 	}
 
 	if _, err := s.db.Exec(ctx,
 		`UPDATE agents a SET trust_score = GREATEST(0, trust_score - 0.01)
 		 WHERE agent_id IN (SELECT agent_id FROM hitl_approvals WHERE status = 'expired' AND expires_at < NOW() - INTERVAL '1 minute')`,
 	); err != nil {
-		log.Printf("[escalation] expireOldApprovals trust: %v", err)
+		slog.Error("expireOldApprovals trust", "error", err)
 	}
 }
 
@@ -455,7 +455,7 @@ func (s *EscalationService) escalateStaleApprovals(ctx context.Context) {
 			`UPDATE hitl_approvals SET escalation_level = escalation_level + 1 WHERE approval_id = $1`,
 			approvalID,
 		); err != nil {
-			log.Printf("[escalation] escalateStale level bump: %v", err)
+			slog.Error("escalateStale level bump", "error", err)
 		}
 
 		s.enqueueNotification(ctx, approvalID, level+1,
@@ -495,7 +495,7 @@ func (s *EscalationService) enqueueNotification(ctx context.Context, approvalID 
 
 	if notifier, ok := s.notifyChans[channel]; ok {
 		if err := notifier.Send(ctx, target, message); err != nil {
-			log.Printf("[escalation] notify send: %v", err)
+			slog.Warn("notify send failed", "error", err)
 		}
 	}
 
@@ -530,7 +530,7 @@ func (s *EscalationService) pushToApprovers(ctx context.Context, approvalID stri
 		}
 
 		if err := pushNotifier.Send(ctx, prefix+deviceToken, message); err != nil {
-			log.Printf("[escalation] push send: %v", err)
+			slog.Warn("push send failed", "error", err)
 		}
 	}
 }
@@ -548,7 +548,7 @@ func (s *EscalationService) updateTrustForApproval(ctx context.Context, approval
 		`UPDATE agents SET trust_score = GREATEST(0, LEAST(1, trust_score + $1)), updated_at = NOW() WHERE agent_id = $2`,
 		delta, agentID,
 	); err != nil {
-		log.Printf("[escalation] trust update: %v", err)
+		slog.Error("trust update failed", "error", err)
 	}
 
 	if _, err := s.db.Exec(ctx,
@@ -556,7 +556,7 @@ func (s *EscalationService) updateTrustForApproval(ctx context.Context, approval
 		 SELECT agent_id, 'hitl_approval', $1, trust_score, $2 FROM agents WHERE agent_id = $3`,
 		delta, reason, agentID,
 	); err != nil {
-		log.Printf("[escalation] trust event insert: %v", err)
+		slog.Error("trust event insert failed", "error", err)
 	}
 }
 

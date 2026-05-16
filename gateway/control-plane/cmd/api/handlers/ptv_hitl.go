@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -36,7 +36,7 @@ func RequestApproval(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := hitlService.RequestApproval(r.Context(), req)
 	if err != nil {
-		log.Printf("RequestApproval: failed: %v", err)
+		slog.Error("HITL request failed", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -84,7 +84,7 @@ func DecideApproval(w http.ResponseWriter, r *http.Request) {
 		ApproverMethod: approverMethod,
 	})
 	if err != nil {
-		log.Printf("DecideApproval: failed: %v", err)
+		slog.Error("HITL decide failed", "error", err)
 		http.Error(w, "internal error", http.StatusBadRequest)
 		return
 	}
@@ -141,7 +141,7 @@ func AttestIdentity(w http.ResponseWriter, r *http.Request) {
 
 	proof, err := ptvService.Prove(r.Context(), req.AgentID, req.Platform, req.FirmwareVersion, tpmPublicKey, runtimeHash, []byte("nonce-1234"))
 	if err != nil {
-		log.Printf("AttestIdentity: PTV prove failed: %v", err)
+		slog.Error("PTV prove failed", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -159,7 +159,7 @@ func BindIdentity(w http.ResponseWriter, r *http.Request) {
 
 	binding, err := ptvService.Transform(r.Context(), &proof, proof.Attestation.TPMPublicKey)
 	if err != nil {
-		log.Printf("BindIdentity: PTV transform failed: %v", err)
+		slog.Error("PTV transform failed", "error", err)
 		http.Error(w, "internal error", http.StatusBadRequest)
 		return
 	}
@@ -177,7 +177,7 @@ func VerifyIdentity(w http.ResponseWriter, r *http.Request) {
 
 	result, err := ptvService.Verify(r.Context(), bindingID)
 	if err != nil {
-		log.Printf("VerifyIdentity: verification failed: %v", err)
+		slog.Error("PTV verify failed", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

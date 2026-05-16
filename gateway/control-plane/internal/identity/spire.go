@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -63,7 +63,7 @@ func (s *SpireProvider) WatchX509SVID(ctx context.Context) (<-chan *SVID, error)
 			case <-updates:
 				svid, err := source.GetX509SVID()
 				if err != nil {
-					log.Printf("SPIRE watch: fetch error: %v", err)
+				slog.Warn("SPIRE watch fetch error", "error", err)
 					continue
 				}
 
@@ -76,7 +76,7 @@ func (s *SpireProvider) WatchX509SVID(ctx context.Context) (<-chan *SVID, error)
 				}
 
 				if err := source.WaitUntilUpdated(ctx); err != nil {
-					log.Printf("SPIRE watch: wait error: %v", err)
+				slog.Warn("SPIRE watch wait error", "error", err)
 					return
 				}
 			}
@@ -144,6 +144,6 @@ func writeSVIDCerts(svid *SVID, certPath, keyPath string) error {
 		}
 	}
 
-	log.Printf("Wrote SVID certificates to %s, %s", certPath, keyPath)
+	slog.Info("wrote SVID certificates", "cert_path", certPath, "key_path", keyPath)
 	return nil
 }

@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -75,7 +75,7 @@ func RegisterResource(w http.ResponseWriter, r *http.Request) {
 	).Scan(&createdAt)
 
 	if err != nil {
-		log.Printf("RegisterResource: database insert failed: %v", err)
+		slog.Error("register resource failed", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

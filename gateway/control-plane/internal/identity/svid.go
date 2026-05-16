@@ -10,7 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/big"
 	"net/url"
 	"os"
@@ -42,7 +42,8 @@ type LocalProvider struct {
 func NewLocalProvider(trustDomain string) *LocalProvider {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		log.Fatalf("Failed to generate local key: %v", err)
+		slog.Error("failed to generate local key", "error", err)
+		os.Exit(1)
 	}
 
 	template := &x509.Certificate{
@@ -63,12 +64,14 @@ func NewLocalProvider(trustDomain string) *LocalProvider {
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
-		log.Fatalf("Failed to create local certificate: %v", err)
+		slog.Error("failed to create local certificate", "error", err)
+		os.Exit(1)
 	}
 
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		log.Fatalf("Failed to parse local certificate: %v", err)
+		slog.Error("failed to parse local certificate", "error", err)
+		os.Exit(1)
 	}
 
 	return &LocalProvider{
@@ -112,7 +115,7 @@ func (l *LocalProvider) WriteCerts(certPath, keyPath string) error {
 		return fmt.Errorf("failed to write key: %w", err)
 	}
 
-	log.Printf("Wrote local development certificates to %s, %s", certPath, keyPath)
+	slog.Info("wrote local development certificates", "cert_path", certPath, "key_path", keyPath)
 	return nil
 }
 
@@ -138,10 +141,9 @@ func NewIdentityProvider() IdentityProvider {
 	)
 	if err == nil {
 		_ = source.Close()
-		log.Printf("SPIRE workload API available at %s, using SPIRE provider", spiffeSocket)
-		return NewSpireProvider(spiffeSocket)
+		slog.Info("SPIRE workload API available, using SPIRE provider", "socket", spiffeSocket)
+		return &SpireProvider{socketPath: spiffeSocket}
 	}
-
-	log.Printf("SPIRE workload API not available (%v), using local development identity provider", err)
+	slog.Info("SPIRE workload API not available, using local development identity provider", "error", err)
 	return NewLocalProvider("agentid.dev")
 }
