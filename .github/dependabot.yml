@@ -1,0 +1,65 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /gateway/control-plane
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - go
+
+  - package-ecosystem: gomod
+    directory: /adapter/resource-adapter-go
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - go
+
+  - package-ecosystem: cargo
+    directory: /gateway/core
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - rust
+
+  - package-ecosystem: cargo
+    directory: /sdk/agent-sdk-rust
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - rust
+
+  - package-ecosystem: docker
+    directory: /gateway/control-plane
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /gateway/core
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /adapter/resource-adapter-go
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - ci

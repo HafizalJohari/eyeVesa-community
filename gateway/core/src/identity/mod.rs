@@ -3,16 +3,7 @@ pub mod svid;
 
 use serde::{Deserialize, Serialize};
 
-/// Prove-Transform-Verify (PTV) Protocol
-///
-/// Binds agent identities to hardware roots of trust (TPM 2.0 / Secure Enclave).
-/// Three phases:
-/// 1. PROVE: Agent attests its runtime environment using a hardware-bound key
-/// 2. TRANSFORM: Gateway verifies the attestation and binds it to the agent's identity
-/// 3. VERIFY: Any party can later verify that the binding is still valid
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct HardwareAttestation {
     pub agent_id: String,
     pub platform: String,
@@ -24,7 +15,6 @@ pub struct HardwareAttestation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct AttestationProof {
     pub attestation: HardwareAttestation,
     pub tpm_signature: Vec<u8>,
@@ -32,7 +22,6 @@ pub struct AttestationProof {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct IdentityBinding {
     pub binding_id: String,
     pub agent_id: String,
@@ -46,7 +35,6 @@ pub struct IdentityBinding {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct VerificationResult {
     pub valid: bool,
     pub agent_id: String,

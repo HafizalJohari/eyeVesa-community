@@ -1,0 +1,626 @@
+# eyeVesa — Identity & Trust Layer for AI Agents
+
+## 1. Problem Statement
+
+Autonomous AI agents need to interact with enterprise systems — databases, Kubernetes, payment gateways, APIs — but existing access control (OAuth, API keys, IAM roles) assumes a human at the keyboard. Agents operate autonomously, at machine speed, with no human in the loop by default. This creates four unsolved problems:
+
+- **Identity**: How does a system know which agent is calling, and that it hasn't been tampered with?
+- **Authorization**: How do you express and enforce fine-grained policies for agent actions (e.g., "deploy to staging OK, prod requires approval")?
+- **Audit**: How do you produce tamper-proof, non-repudiable records of every agent action?
+- **Trust**: How do you detect anomalous agent behavior and adjust trust dynamically?
+
+eyeVesa solves all four with a gateway that sits between AI agents and their target resources.
+
+## 2. Architecture Overview
+
+```
+┌──────────────┐     ┌──────────────────────────────────────┐     ┌──────────────────┐
+│              │     │          eyeVesa Gateway              │     │                  │
+│   AI Agent   │────▶│  ┌────────────┐  ┌────────────────┐  │────▶│    Resource      │
+│  (MCP SDK)   │     │  │ Rust Core  │  │  Go Control    │  │     │    Adapter       │
+│              │◀────│  │ Proxy      │  │  Plane         │  │◀────│  (MCP wrapper)   │
+└──────────────┘     │  │ :9443      │  │ :8080 / :9090  │  │     └──────────────────┘
+                     │  └─────┬──────┘  └───────┬────────┘  │
+                     │        │                  │           │
+                     │        │         ┌────────┴───────┐  │
+                     │        │         │  PostgreSQL    │  │
+                     │        │         │  (state store) │  │
+                     │        │         └────────────────┘  │
+                     │        │                             │
+                     │  ┌─────┴──────┐                      │
+                     │  │  OPA       │                      │
+                     │  │  (:8181)   │                      │
+                     │  └────────────┘                      │
+                     └──────────────────────────────────────┘
+```
+
+### 2.1 Rust Core Proxy (:9443)
+
+The hot path. All agent MCP (Model Context Protocol) requests hit this proxy first.
+
+Responsibilities:
+- Terminate mTLS from agent SDKs
+- Verify Ed25519 agent signatures
+- Verify PTV (Process Trait Verification) attestations
+- Cache agent identity and policy decisions for low latency
+- Forward authorized MCP requests to the appropriate Resource Adapter
+- Route non-MCP requests (registration, policy management, HITL, audit) to Go Control Plane
+- Fast-path authorization via gRPC to Go Control Plane
+
+### 2.2 Go Control Plane (:8080 HTTP, :9090 gRPC)
+
+The control plane. Owns all business logic and persistent state.
+
+Responsibilities:
+- Agent registration and lifecycle management
+- Resource registration and management
+- OPA Rego policy management (CRUD + evaluation)
+- Human-in-the-loop (HITL) approval workflows
+- PTV attestation verification
+- Delegation chain verification
+- Audit log management
+- Trust score calculation
+- Push notifications (APNs, FCM, Slack, PagerDuty, Webhook)
+- Metrics exposition
+
+### 2.3 PostgreSQL
+
+Persistence for all control plane state:
+- `agents` — agent records with public keys, capabilities, metadata
+- `resources` — resource/tool definitions
+- `policies` — Rego policy documents
+- `audit_log` — Ed25519-signed audit entries
+- `hitl_approvals` — pending/completed HITL requests
+- `trust_events` — trust score adjustments
+- `delegation_chains` — issued delegation tokens
+- `ptv_attestations` — PTV measurement records
+
+### 2.4 OPA (Open Policy Agent) (:8181)
+
+Stateless policy engine. Evaluates Rego rules on structured input (agent, action, resource, context). eyeVesa manages OPA lifecycle via its REST API.
+
+### 2.5 Resource Adapter (:8443)
+
+Wraps external enterprise APIs (Kubernetes, AWS, databases, Slack, payment gateways) as MCP-compatible tools. Receives proxy calls from the Rust Core after authorization.
+
+## 3. Agent Identity Model
+
+Every agent gets a cryptographic identity at registration:
+
+- **Ed25519 keypair**: agent signs every MCP request. Gateway verifies the signature before processing.
+- **Agent ID**: UUID v4, e.g. `ag_f8a2c4e0-1b3d-4e5f-8a7b-9c0d1e2f3a4b`
+- **Owner**: `org:devops` or `user:alice` — the entity responsible for the agent
+- **Capabilities**: declarative list like `["read", "write", "deploy"]`
+- **Tools**: specific MCP tools the agent is allowed to use: `["k8s_deploy", "log_search", "db_query"]`
+- **PTV expected hash**: baseline measurement for runtime integrity verification
+
+Registration API:
+
+```
+POST /v1/agents/register
+{
+  "name": "devops-bot",
+  "owner": "org:devops",
+  "public_key": "base64_ed25519_pubkey",
+  "capabilities": ["read", "write", "deploy"],
+  "tools": ["k8s_deploy", "log_search"],
+  "ptv_hash": "sha256_of_known_good_state",
+  "metadata": {
+    "environment": "production",
+    "contact": "devops@company.com"
+  }
+}
+```
+
+## 4. Authorization Model (3-Tier OPA)
+
+Every agent action goes through policy evaluation. Three outcomes:
+
+| Outcome | Meaning |
+|---|---|
+| **allow** | Action proceeds immediately |
+| **hitl** | Human must approve (Slack, PagerDuty, etc.) |
+| **deny** | Action rejected |
+
+The OPA Rego policy receives this input:
+
+```rego
+input = {
+  "agent_id": "ag_f8a2c4e0...",
+  "agent_owner": "org:devops",
+  "action": "deploy",
+  "resource_type": "kubernetes_deployment",
+  "resource_id": "deployments/prod/web-app",
+  "environment": "production",
+  "capabilities": ["read", "write", "deploy"],
+  "trust_score": 0.92
+}
+```
+
+Example Rego policy:
+
+```rego
+package agentid.authz
+
+default decision := "deny"
+
+# DevOps agents can deploy to staging without approval
+decision = "allow" {
+  input.action == "deploy"
+  input.resource_id == "deployments/staging/*"
+  input.agent_owner == "org:devops"
+}
+
+# Production deploys need human approval
+decision = "hitl" {
+  input.action == "deploy"
+  input.resource_id == "deployments/prod/*"
+  input.agent_owner == "org:devops"
+}
+
+# Low-trust agents always require HITL
+decision = "hitl" {
+  input.trust_score < 0.3
+}
+
+# Agents missing deploy capability are denied
+decision = "deny" {
+  input.action == "deploy"
+  not input.capabilities[_] == "deploy"
+}
+```
+
+## 5. Request Lifecycle (12 Steps)
+
+```
+ 1. Agent registers         -> POST /v1/agents/register  -> PostgreSQL stores agent record
+ 2. Resource registers      -> POST /v1/resources/register -> PostgreSQL stores resource record
+ 3. Agent connects via SDK  -> mTLS handshake to Rust Core Proxy (:9443)
+ 4. Agent discovers tools   -> GET /v1/agents/{id} returns assigned tools
+ 5. Agent invokes a tool    -> Ed25519-signed MCP request {tool, params, nonce, timestamp}
+ 6. Gateway verifies sig    -> Rust Core checks Ed25519 signature against stored public key
+ 7. Gateway checks policy   -> OPA evaluates Rego rules with full input context
+ 8. If HITL required        -> Write to hitl_approvals table, push notification to human
+ 9. If allowed              -> Proxy MCP request to Resource Adapter
+10. Result returns          -> Agent gets response + updated trust score
+11. Audit log written       -> Ed25519-signed entry: {agent, action, resource, decision, timestamp}
+12. Trust score updated     -> +0.01 on success, -0.05 on anomaly/denial
+```
+
+## 6. Human-in-the-Loop (HITL)
+
+When OPA returns `decision = "hitl"`, the action is paused until a human approves or rejects.
+
+### HITL Lifecycle
+
+```
+1. Agent action triggers HITL
+2. eyeVesa creates hitl_approval record (status: pending)
+3. Notification sent to configured channels
+4. Human reviews via Slack button, PagerDuty, webhook callback, or API
+5. Human approves/rejects
+6. If approved -> action proceeds. If rejected -> action denied + audit logged.
+7. HITL record updated (status: approved/rejected, reviewer, timestamp)
+```
+
+### Notification Backends
+
+| Backend | Configuration |
+|---|---|
+| **Slack** | Incoming webhook URL, target channel |
+| **PagerDuty** | PagerDuty API key, service ID, severity |
+| **Webhook** | Arbitrary HTTPS endpoint (POST with signed payload) |
+| **APNs** | Apple Push Notification service (iOS) |
+| **FCM** | Firebase Cloud Messaging (Android) |
+
+### HITL API
+
+```
+GET  /v1/hitl/pending              # List pending approvals
+GET  /v1/hitl/{id}                 # Get HITL detail
+POST /v1/hitl/{id}/approve         # Approve with optional note
+POST /v1/hitl/{id}/reject          # Reject with reason
+```
+
+## 7. PTV (Process Trait Verification)
+
+PTV ensures the agent process hasn't been tampered with — detects code injection, binary replacement, or memory manipulation.
+
+How it works:
+1. At registration, agent records a baseline hash of its known-good state
+2. At request time, agent includes a fresh PTV attestation (signed measurement of its runtime integrity)
+3. Gateway verifies the attestation signature and compares measurement against baseline
+4. Mismatch -> request denied, trust score penalized, alert raised
+
+PTV provides **runtime attestation** — beyond just verifying "who" the agent is, you verify "what state" it's in.
+
+## 8. Trust Scoring
+
+Continuous trust scoring based on agent behavior:
+
+| Event | Score Change |
+|---|---|
+| Successful authorized action | +0.01 (cap at 1.0) |
+| Action denied by policy | -0.05 |
+| PTV verification failure | -0.50 |
+| Repeated rapid failures | -0.10 per occurrence |
+| HITL rejected by human | -0.15 |
+
+Trust score feeds back into OPA policy — low-trust agents can be forced into HITL or denied entirely:
+
+```rego
+# Agents below 0.3 trust always go through HITL
+decision = "hitl" {
+  input.trust_score < 0.3
+}
+
+# Agents below 0.1 trust are denied everything
+decision = "deny" {
+  input.trust_score < 0.1
+}
+```
+
+## 9. Agent Delegation
+
+An agent can delegate authority to a sub-agent, creating a verifiable chain of trust.
+
+```
+Parent Agent (org:devops, capabilities: [deploy])
+  |
+  |--- Delegates "deploy to staging" to
+  |
+  v
+Sub-Agent (ci-bot, no direct deploy capability)
+  |
+  |--- Presents delegation chain when calling deploy
+  |
+  v
+eyeVesa verifies: signature chain valid? scope covers this action? chain unbroken? -> allow
+```
+
+Delegation API:
+
+```
+POST /v1/delegation/issue       # Parent issues delegation token
+GET  /v1/delegation/verify      # Verify a delegation chain
+POST /v1/delegation/revoke      # Parent revokes delegation
+GET  /v1/delegation/chain/{id}  # Get full chain for audit
+```
+
+Delegation token structure:
+
+```json
+{
+  "id": "del_abc123",
+  "issuer": "ag_parent_id",
+  "subject": "ag_sub_id",
+  "scope": {"actions": ["deploy"], "resources": ["deployments/staging/*"]},
+  "max_depth": 3,
+  "expires_at": "2026-06-01T00:00:00Z",
+  "signature": "base64_ed25519_sig"
+}
+```
+
+## 10. Audit Log
+
+Every authorized action (allow, hitl-approve, deny) produces an Ed25519-signed audit entry.
+
+Audit entry structure:
+
+```json
+{
+  "id": "aud_001",
+  "timestamp": "2026-04-15T10:30:00Z",
+  "agent_id": "ag_f8a2c4e0...",
+  "action": "deploy",
+  "resource_type": "kubernetes_deployment",
+  "resource_id": "deployments/prod/web-app",
+  "decision": "allow",
+  "policy_id": "pol_042",
+  "hitl_id": "hitl_007",
+  "trust_score_before": 0.85,
+  "trust_score_after": 0.86,
+  "signature": "base64_ed25519_sig"
+}
+```
+
+The signature covers all fields, making the log entry tamper-proof. Re-computing the signature on read verifies integrity.
+
+Audit API:
+```
+POST /v1/audit/log       # Write audit entry (internal)
+GET  /v1/audit/query     # Query audit log with filters (agent, action, time range)
+```
+
+## 11. Gateway Modes
+
+| Mode | Description | Use Case |
+|---|---|---|
+| `plaintext` | No TLS between agent and gateway | Local development |
+| `tls` | Server-side TLS | Internal networks, staging |
+| `mtls` | Mutual TLS (client certs) | Production — every agent needs a valid client cert |
+
+Set via `GATEWAY_MODE` environment variable.
+
+## 12. API Reference (All Endpoints)
+
+### Agents
+```
+POST   /v1/agents/register          # Register a new agent
+GET    /v1/agents/list              # List all agents
+GET    /v1/agents/{id}              # Get agent details
+PUT    /v1/agents/{id}              # Update agent (capabilities, metadata)
+DELETE /v1/agents/{id}              # Decommission agent
+POST   /v1/agents/{id}/trust       # Manually adjust trust score
+```
+
+### Resources
+```
+POST   /v1/resources/register       # Register a resource/tool
+GET    /v1/resources/list           # List all resources
+GET    /v1/resources/{id}           # Get resource details
+PUT    /v1/resources/{id}           # Update resource
+DELETE /v1/resources/{id}           # Remove resource
+```
+
+### Policies
+```
+POST   /v1/policies/upsert          # Create or update Rego policy
+GET    /v1/policies/list            # List all policies
+GET    /v1/policies/{id}            # Get policy detail
+DELETE /v1/policies/{id}            # Delete policy
+POST   /v1/policies/{id}/eval      # Dry-run evaluate a policy
+```
+
+### Authorization
+```
+POST   /v1/authorize                # Check if action is authorized
+```
+
+### HITL
+```
+GET    /v1/hitl/list                # List all HITL records
+GET    /v1/hitl/pending             # List pending approvals
+GET    /v1/hitl/{id}                # Get HITL detail
+POST   /v1/hitl/{id}/approve        # Approve with optional note
+POST   /v1/hitl/{id}/reject         # Reject with reason
+```
+
+### Audit
+```
+POST   /v1/audit/log                # Write audit entry (internal use)
+GET    /v1/audit/query              # Query audit log
+```
+
+### PTV
+```
+POST   /v1/ptv/attest               # Submit PTV attestation for verification
+```
+
+### Delegation
+```
+POST   /v1/delegation/issue         # Issue delegation token
+POST   /v1/delegation/verify        # Verify a delegation chain
+POST   /v1/delegation/revoke        # Revoke a delegation
+GET    /v1/delegation/chain/{id}    # Get full delegation chain
+```
+
+### Trust
+```
+GET    /v1/trust/score/{agent_id}   # Get current trust score
+```
+
+### System
+```
+GET    /v1/health                   # Health check
+GET    /v1/metrics                  # Prometheus metrics
+GET    /v1/config                   # Gateway configuration
+```
+
+## 13. CLI Reference
+
+The `eyevesa` CLI covers all major operations:
+
+```
+# Agent operations
+eyevesa agent register --name hermes-ops --owner org:devops --capabilities "read,write" --tools "k8s_deploy,log_search"
+eyevesa agent list
+eyevesa agent get <agent-id>
+eyevesa agent trust <agent-id>
+
+# Authorization
+eyevesa authorize --agent-id <id> --action read --resource-id <rid>
+
+# HITL approvals
+eyevesa hitl list
+eyevesa hitl approve <hitl-id> --note "approved for maintenance window"
+eyevesa hitl reject <hitl-id> --reason "outside change window"
+
+# Policy management
+eyevesa policy upsert --name prod-deploy --file policy.rego
+eyevesa policy list
+
+# Audit queries
+eyevesa audit query --agent-id <id> --since 2026-04-01
+
+# Resource management
+eyevesa resource register --name k8s-api --type kubernetes --endpoint https://k8s.example.com
+eyevesa resource list
+
+# Trust management
+eyevesa trust score <agent-id>
+eyevesa trust adjust <agent-id> --delta -0.1 --reason "policy violation"
+```
+
+## 14. Hermes Agent SDK Integration
+
+Hermes is a Python agent framework that integrates natively with eyeVesa.
+
+### Installation
+```
+pip install hermes-agent-sdk
+```
+
+### Configuration
+```python
+from hermes import HermesAgent
+
+agent = HermesAgent(
+    name="data-pipeline-agent",
+    owner="org:data-engineering",
+    gateway_url="https://gateway.example.com:9443",
+    private_key_path="/etc/eyevesa/keys/ed25519.pem",
+    capabilities=["read", "write"],
+    tools=["s3_read", "s3_write", "db_query"],
+)
+```
+
+### Automatic Identity
+Hermes generates or loads an Ed25519 keypair. The public key is registered with eyeVesa at startup:
+```python
+agent.register()  # Registers with eyeVesa, stores agent_id in config
+```
+
+### Request Signing
+Every MCP call is automatically signed:
+```python
+result = agent.call_tool("db_query", {"query": "SELECT * FROM users LIMIT 10"})
+# Hermes signs: {tool, params, nonce, timestamp, agent_id} with Ed25519 key
+# eyeVesa verifies: signature + policy + trust + PTV before proxying
+```
+
+### HITL Handling
+When OPA returns `decision = "hitl"`, the Hermes SDK:
+1. Receives a `pending` status with a HITL tracking ID
+2. Polls or subscribes for the HITL outcome
+3. Proceeds when approved, raises exception when rejected
+4. Optionally notifies the agent of HITL wait state via callback
+
+```python
+result = agent.call_tool("deploy", {"environment": "production"})
+# If HITL required, this blocks until human approves
+# or raises HermesHITLRejected exception
+```
+
+### PTV Attestation
+Hermes captures runtime measurements (binary hash, loaded modules, process tree):
+```python
+agent.enable_ptv(measurement_interval=60)  # Attest every 60 seconds
+attestation = agent.get_ptv_attestation()
+# Included automatically in each request header
+```
+
+### Trust Callbacks
+Hermes can react to trust score changes:
+```python
+@agent.on_trust_change
+def handle_trust_change(old_score, new_score):
+    if new_score < 0.3:
+        agent.pause()  # Stop accepting new tasks
+    log.warning(f"Trust score dropped: {old_score} -> {new_score}")
+```
+
+## 15. One-Liners By Scenario
+
+### Agent Registration
+```bash
+curl -X POST https://gateway:8080/v1/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"devops-bot","owner":"org:devops","public_key":"base64key...","capabilities":["deploy"]}'
+```
+
+### Authorize an Action
+```bash
+curl -X POST https://gateway:8080/v1/authorize \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id":"ag_123","action":"deploy","resource_id":"deployments/prod/app"}'
+# Response: {"decision":"hitl","hitl_id":"hitl_007","message":"Human approval required"}
+```
+
+### Approve HITL via Slack
+```
+Slack notification:
+  Agent devops-bot wants to deploy to production
+  [Approve] [Reject] [View Details]
+  -> Click Approve
+  -> eyeVesa calls POST /v1/hitl/{id}/approve
+  -> Action proceeds, audit logged
+```
+
+### Query Audit
+```bash
+curl -X GET "https://gateway:8080/v1/audit/query?agent_id=ag_123&limit=10"
+# Returns last 10 signed audit entries
+```
+
+### Deploy Policy
+```bash
+curl -X POST https://gateway:8080/v1/policies/upsert \
+  -H "Content-Type: application/json" \
+  -d '{"name":"k8s-policy","policy":"package agentid.authz\ndecision = \"allow\" { ... }"}'
+```
+
+## 16. Services Quick Reference
+
+| Service | Port | Start Command |
+|---|---|---|
+| Go Control Plane (HTTP) | 8080 | `cd gateway/control-plane && go run cmd/api/main.go` |
+| Go Control Plane (gRPC) | 9090 | (same process, different listener) |
+| Rust Core Proxy | 9443 | `cd gateway/core && cargo run --release` |
+| Resource Adapter | 8443 | `cd adapter/resource-adapter-go && go run ./cmd/` |
+| PostgreSQL | 5432 | `docker-compose up -d postgres` |
+| OPA | 8181 | `docker-compose up -d opa` |
+
+## 17. Environment
+
+- Database: `agentid` on `localhost:5432`, user `agentid`, password `agentid_dev`
+- `GATEWAY_MODE=plaintext` (default), `tls`, or `mtls`
+- `AUTH_ENABLED=true` enables JWT/API key auth middleware
+- Run migrations: `psql -h localhost -U agentid -d agentid -f registry/migrations/NNN_*.sql`
+- Keys are persisted: Ed25519 at `GATEWAY_KEY_PATH`, PTV ECDSA at `PTV_KEY_PATH`
+- SPIRE: `go-spiffe/v2` Workload API client for X.509 SVID; falls back to LocalProvider if unavailable
+
+## 18. Build & Test Commands
+
+```bash
+# Go control plane
+cd gateway/control-plane && go build ./...
+cd gateway/control-plane && go test ./internal/... -count=1
+cd gateway/control-plane && go vet ./...
+
+# Rust core proxy
+cd gateway/core && cargo build --release
+cd gateway/core && cargo test
+cd gateway/core && cargo clippy -- -D warnings
+
+# Go resource adapter
+cd adapter/resource-adapter-go && go build ./cmd/...
+```
+
+## 19. Scenario: Agent Software Purchase
+
+An AI agent buying a tool from a software marketplace (merchant/user scenario):
+
+```
+1. DevBot registers with eyeVesa        -> Ed25519 keypair + PTV attestation
+2. DevBot sends purchase request        -> action: "purchase", resource: "log-analyzer-pro"
+3. Rust proxy intercepts                -> verifies signature + PTV
+4. OPA policy engine evaluates          -> $50 < $100 threshold -> auto-allow
+5. Trust score check                    -> no past violations -> no extra friction
+6. Authorization token issued           -> signed token for warehouse
+7. Warehouse verifies token             -> confirms + completes sale
+8. Audit log written                    -> non-repudiable entry
+```
+
+If DevBot is a sub-agent without purchase authority, it presents a delegation chain from its parent. For purchases over $100, a HITL approval is triggered.
+
+Key protections:
+
+| Concern | How eyeVesa Handles It |
+|---|---|
+| Is this agent real? | Ed25519 signature + PTV attestation |
+| Is it allowed to buy? | 3-tier OPA policy (price threshold) |
+| Who approves big spend? | HITL -> Slack / PagerDuty |
+| Can we prove it later? | Non-repudiable audit log |
+| Agent compromised? | Trust score decays on anomalies |
+| Sub-agent buying? | Delegation chain verified |

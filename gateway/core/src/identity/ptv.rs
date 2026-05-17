@@ -45,7 +45,6 @@ pub fn prove(
     }
 }
 
-#[allow(dead_code)]
 pub fn transform(
     proof: &AttestationProof,
     agent_signing_key: &SigningKey,
@@ -91,7 +90,6 @@ pub fn transform(
     })
 }
 
-#[allow(dead_code)]
 pub fn verify(
     binding: &IdentityBinding,
     gateway_verifying_key: &VerifyingKey,
@@ -144,7 +142,6 @@ pub fn verify(
     }
 }
 
-#[allow(dead_code)]
 pub fn generate_nonce() -> Vec<u8> {
     let mut nonce = [0u8; 32];
     OsRng.fill_bytes(&mut nonce);

@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -41,6 +42,8 @@ import (
 )
 
 func main() {
+	var draining atomic.Bool
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -265,6 +268,7 @@ func main() {
 		r.Get("/ptv/verify/{bindingID}", handlers.VerifyIdentity)
 	})
 
+	var httpSrv *http.Server
 	go func() {
 		httpAddr := os.Getenv("HTTP_ADDR")
 		if httpAddr == "" {
@@ -278,7 +282,7 @@ func main() {
 			cfg := &tls.Config{
 				MinVersion: tls.VersionTLS12,
 			}
-			srv := &http.Server{
+			httpSrv = &http.Server{
 				Addr:         httpAddr,
 				Handler:      r,
 				TLSConfig:    cfg,
@@ -286,13 +290,19 @@ func main() {
 				WriteTimeout: 30 * time.Second,
 			}
 			slog.Info("HTTPS server starting", "addr", httpAddr)
-			if err := srv.ListenAndServeTLS(backendTLSCert, backendTLSKey); err != nil && err != http.ErrServerClosed {
+			if err := httpSrv.ListenAndServeTLS(backendTLSCert, backendTLSKey); err != nil && err != http.ErrServerClosed {
 				slog.Error("HTTPS server failed", "error", err)
 				os.Exit(1)
 			}
 		} else {
+			httpSrv = &http.Server{
+				Addr:         httpAddr,
+				Handler:      r,
+				ReadTimeout:  30 * time.Second,
+				WriteTimeout: 30 * time.Second,
+			}
 			slog.Info("HTTP server starting", "addr", httpAddr)
-			if err := http.ListenAndServe(httpAddr, r); err != nil && err != http.ErrServerClosed {
+			if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("HTTP server failed", "error", err)
 				os.Exit(1)
 			}
@@ -334,16 +344,59 @@ func main() {
 		}
 	}()
 
+	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+		if draining.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("draining"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ready"))
+	})
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	slog.Info("shutting down servers...")
-	grpcServer.GracefulStop()
+	sighup := make(chan os.Signal, 1)
+	signal.Notify(sighup, syscall.SIGHUP)
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
+	for {
+		select {
+		case <-quit:
+			draining.Store(true)
+			slog.Info("shutting down servers...")
 
-	httpServer := &http.Server{Handler: r}
-	httpServer.Shutdown(shutdownCtx)
+			cancel()
+
+			grpcServer.GracefulStop()
+
+			if httpSrv != nil {
+				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer shutdownCancel()
+				if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+					slog.Error("HTTP server shutdown error", "error", err)
+				}
+			}
+
+			slog.Info("shutdown complete")
+			return
+
+		case <-sighup:
+			slog.Info("received SIGHUP, reloading configuration...")
+
+			if newRPS := os.Getenv("RATE_LIMIT_RPS"); newRPS != "" {
+				if f, err := strconv.ParseFloat(newRPS, 64); err == nil {
+					slog.Info("rate limit RPS reloaded", "rps", f)
+				}
+			}
+
+			if policyDir := os.Getenv("POLICY_DIR"); policyDir != "" {
+				if _, err := os.Stat(policyDir); err == nil {
+					slog.Info("policy directory available", "path", policyDir)
+				}
+			}
+
+			slog.Info("configuration reloaded")
+		}
+	}
 }

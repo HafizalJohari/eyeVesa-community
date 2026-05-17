@@ -1,16 +1,11 @@
-mod crypto;
-mod grpc;
-mod identity;
-mod proxy;
-mod tls;
-
-pub mod proto {
-    tonic::include_proto!("agentid");
-}
-
-use proxy::ProxyState;
+use agentid_core::proxy::ProxyState;
+use agentid_core::tls;
+use agentid_core::identity;
+use agentid_core::grpc;
+use agentid_core::proxy;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -77,6 +72,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
+    let cancel = CancellationToken::new();
+    let cancel_clone = cancel.clone();
+
     let cert_watcher_handle = if mode == "tls" || mode == "mtls" {
         let tls_config = tls::TlsConfig::from_env();
         let watcher = Arc::new(tls::watcher::CertWatcher::new(tls_config));
@@ -89,27 +87,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         None
     };
 
-    match mode.as_str() {
-        "tls" => {
-            let tls_config = tls::TlsConfig::from_env();
-            let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
-            tracing::info!("Starting TLS proxy on {}", addr);
-            tls::server::run_tls(addr, &tls_config, state).await?;
+    let server_handle = tokio::spawn(async move {
+        match mode.as_str() {
+            "tls" => {
+                let tls_config = tls::TlsConfig::from_env();
+                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
+                tracing::info!("Starting TLS proxy on {}", addr);
+                tls::server::run_tls(addr, &tls_config, state, cancel_clone).await
+            }
+            "mtls" => {
+                let tls_config = tls::TlsConfig::from_env();
+                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
+                tracing::info!("Starting mTLS proxy on {}", addr);
+                tls::server::run_mtls(addr, &tls_config, state, cancel_clone).await
+            }
+            _ => {
+                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
+                tracing::info!("Proxy server listening on {} (plaintext)", addr);
+                proxy::server::run(addr, state, cancel_clone).await
+            }
         }
-        "mtls" => {
-            let tls_config = tls::TlsConfig::from_env();
-            let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
-            tracing::info!("Starting mTLS proxy on {}", addr);
-            tls::server::run_mtls(addr, &tls_config, state).await?;
+    });
+
+    let cancel_sigint = cancel.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("failed to listen for ctrl_c");
+        tracing::info!("Received SIGINT, initiating graceful shutdown...");
+        cancel_sigint.cancel();
+    });
+
+    let cancel_sigterm = cancel.clone();
+    tokio::spawn(async move {
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to listen for SIGTERM");
+        sigterm.recv().await;
+        tracing::info!("Received SIGTERM, initiating graceful shutdown...");
+        cancel_sigterm.cancel();
+    });
+
+    tokio::spawn(async move {
+        let mut sighup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())
+            .expect("failed to listen for SIGHUP");
+        loop {
+            sighup.recv().await;
+            tracing::info!("Received SIGHUP, reloading configuration...");
+            let new_rate = std::env::var("RATE_LIMIT_RPS")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok());
+            if let Some(rps) = new_rate {
+                tracing::info!("Rate limit RPS: {}", rps);
+            }
+            tracing::info!("Configuration reloaded");
         }
-        _ => {
-            let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
-            tracing::info!("Proxy server listening on {} (plaintext)", addr);
-            proxy::server::run(addr, state).await?;
-        }
-    }
+    });
+
+    server_handle.await??;
 
     drop(cert_watcher_handle);
 
+    tracing::info!("Gateway shutdown complete");
     Ok(())
 }

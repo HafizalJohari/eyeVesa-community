@@ -3,6 +3,7 @@ name = "agentid-sdk"
 version = "0.1.0"
 edition = "2021"
 description = "AgentID SDK for AI agents to connect to the AgentID Gateway"
+license = "Apache-2.0"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }

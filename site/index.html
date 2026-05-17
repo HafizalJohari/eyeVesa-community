@@ -5,6 +5,120 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>eyeVesa -- Identity &amp; Trust Layer for AI Agents</title>
     <meta name="description" content="eyeVesa connects AI agents to enterprise resources with cryptographic identity, policy enforcement, and non-repudiable audit trails.">
+    <meta name="keywords" content="AI agent security, agent identity, MCP gateway, AI governance, agent authorization, policy enforcement, human-in-the-loop, AI audit trail, enterprise AI, agent trust">
+    <meta name="author" content="Hafizal Johari">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://safrplus.dev/eyevesa">
+    <meta property="og:title" content="eyeVesa -- Identity & Trust Layer for AI Agents">
+    <meta property="og:description" content="Cryptographic identity, real-time authorization, and non-repudiable audit trails for autonomous AI agents.">
+    <meta property="og:image" content="https://safrplus.dev/eyevesa/logo.svg">
+    <meta property="og:url" content="https://safrplus.dev/eyevesa">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="eyeVesa -- Identity & Trust Layer for AI Agents">
+    <meta name="twitter:description" content="Cryptographic identity, real-time authorization, and non-repudiable audit trails for autonomous AI agents.">
+    <meta name="twitter:image" content="https://safrplus.dev/eyevesa/logo.svg">
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "eyeVesa",
+        "applicationCategory": "SecurityApplication",
+        "operatingSystem": "Linux, macOS",
+        "description": "Identity and trust layer for autonomous AI agents. Provides Ed25519 cryptographic identity, 3-tier OPA policy enforcement, human-in-the-loop approvals, PTV runtime attestation, and non-repudiable audit trails.",
+        "url": "https://safrplus.dev/eyevesa",
+        "author": {
+            "@type": "Person",
+            "name": "Hafizal Johari",
+            "url": "https://safrplus.dev"
+        },
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "availability": "https://schema.org/InStock"
+        }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "eyeVesa",
+        "url": "https://safrplus.dev/eyevesa",
+        "description": "Identity and trust layer for the agentic economy.",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://github.com/hafizaljohari/eyeVesa/search?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+        }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "What is eyeVesa?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "eyeVesa is an identity and trust layer for autonomous AI agents. It gives agents cryptographic identity (Ed25519), enforces real-time authorization policies via OPA, and produces non-repudiable audit trails, so enterprises can trust what their agents do."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How does eyeVesa authorize agent actions?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "eyeVesa uses a 3-tier OPA policy engine: auto-allow, human-in-the-loop (HITL), or deny. Policies are written in Rego and evaluated in real-time against the agent's identity, action, resource, environment, and trust score."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What is PTV attestation?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "PTV (Process Trait Verification) ensures the agent process hasn't been tampered with. It detects code injection, binary replacement, or memory manipulation by comparing runtime measurements against a registered baseline hash."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What notification backends does HITL support?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "eyeVesa supports Slack, PagerDuty, webhooks, Apple Push Notification Service (APNs), and Firebase Cloud Messaging (FCM) for human-in-the-loop approval workflows."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How does agent delegation work?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "An agent can delegate authority to a sub-agent via signed delegation tokens. The sub-agent presents the delegation chain when making requests. eyeVesa verifies chain signatures, scope coverage, and that the chain is unbroken before allowing the action."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What gateway modes are available?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Three modes: plaintext (local dev), tls (server-side TLS for staging), and mtls (mutual TLS for production with client certificate verification)."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How is the audit log protected against tampering?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Every audit log entry is signed with Ed25519. The signature covers all fields including agent ID, action, resource, decision, and timestamp. Re-computing the signature on read verifies the entry has not been modified."
+                }
+            }
+        ]
+    }
+    </script>
+    <link rel="icon" type="image/svg+xml" href="logo.svg">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body id="top">
@@ -34,56 +148,17 @@
             <a href="#hermes">[Hermes]</a>
             <a href="#cli">[CLI]</a>
             <a href="#quickstart">[Quick Start]</a>
+            <a href="#faq">[FAQ]</a>
         </center>
     </div>
 
     <hr>
 
-    <style>
-        .hero-container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 40px;
-            margin: 20px auto 40px auto;
-            max-width: 900px;
-            flex-wrap: wrap;
-        }
-        .pixel-bubble {
-            position: relative;
-            background: #000;
-            color: #66ff66;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 13px;
-            padding: 15px;
-            text-align: left;
-            max-width: 320px;
-            box-shadow: 
-                -4px 0 0 0 #66ff66,
-                4px 0 0 0 #66ff66,
-                0 -4px 0 0 #66ff66,
-                0 4px 0 0 #66ff66;
-        }
-        .cursor {
-            display: inline-block;
-            width: 8px;
-            height: 15px;
-            background-color: #66ff66;
-            vertical-align: middle;
-            margin-left: 2px;
-            animation: blink 1s step-end infinite;
-        }
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
-        }
-    </style>
-
     <div class="hero-container">
         <div align="center"><img src="logo.svg" alt="eyeVesa" width="260" height="260"></div>
         <div class="pixel-bubble">
             <span id="typing-text"></span><span class="cursor" id="typing-cursor"></span>
-            <svg style="position: absolute; left: -16px; bottom: 20px; width: 16px; height: 16px; shape-rendering: crispEdges;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4">
+            <svg class="pixel-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4">
                 <rect x="3" y="1" width="1" height="2" fill="#000" />
                 <rect x="2" y="2" width="1" height="1" fill="#000" />
                 <rect x="3" y="0" width="1" height="1" fill="#66ff66" />
@@ -93,31 +168,6 @@
             </svg>
         </div>
     </div>
-
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            const text = "<b>TL;DR</b><br><br>eyeVesa gives AI agents a cryptographic ID, enforces strict rules on what they can do (auto-allow, human-in-the-loop, or deny), and records every action in a tamper-proof audit log.<br><br><i>Think KYC and enterprise access control, but for AI agents.</i>";
-            let i = 0;
-            const textElement = document.getElementById("typing-text");
-            
-            function typeWriter() {
-                if (i < text.length) {
-                    let char = text.charAt(i);
-                    if (char === '<') {
-                        let tagEnd = text.indexOf('>', i);
-                        if (tagEnd !== -1) {
-                            i = tagEnd;
-                        }
-                    }
-                    textElement.innerHTML = text.substring(0, i + 1);
-                    i++;
-                    let delay = (char === '<') ? 0 : 20 + Math.random() * 20;
-                    setTimeout(typeWriter, delay);
-                }
-            }
-            setTimeout(typeWriter, 500);
-        });
-    </script>
 
     <h1 align="center">The Gateway That Keeps AI Agents in Check</h1>
 
@@ -734,48 +784,83 @@ curl http://localhost:8181/v1/data/agentid/authz/allow  # OPA</pre>
 
     <hr>
 
+    <a name="faq"></a>
+    <h2>FAQ</h2>
+
+    <dl>
+        <dt>What is eyeVesa?</dt>
+        <dd>An identity and trust layer for autonomous AI agents. It gives agents cryptographic identity (Ed25519), enforces real-time authorization via OPA, and produces non-repudiable audit trails &mdash; so enterprises can trust what their agents do.</dd>
+
+        <dt>How does eyeVesa authorize agent actions?</dt>
+        <dd>A 3-tier OPA policy engine evaluates each request: <b>auto-allow</b> (routine actions under threshold), <b>human-in-the-loop</b> (risky actions require approval), or <b>deny</b> (unauthorized). Policies are Rego rules evaluated against agent identity, action, resource, environment, and trust score.</dd>
+
+        <dt>What is PTV attestation?</dt>
+        <dd><b>Process Trait Verification</b> detects whether an agent process has been tampered with &mdash; code injection, binary replacement, or memory manipulation. Runtime measurements are compared against a registered baseline hash at every request.</dd>
+
+        <dt>What happens when HITL is triggered?</dt>
+        <dd>The action is paused. A notification is sent to the configured channel (Slack, PagerDuty, webhook, APNs, or FCM). A human reviews and approves or rejects via button, API, or callback. If approved, the action proceeds; if rejected, it is denied and logged.</dd>
+
+        <dt>How does agent delegation work?</dt>
+        <dd>An agent can delegate authority to a sub-agent via a signed delegation token specifying scope (actions, resources, max depth). The sub-agent presents the chain when making requests. eyeVesa verifies all signatures, scope coverage, and chain integrity before allowing the action.</dd>
+
+        <dt>What gateway modes are available?</dt>
+        <dd>Three modes: <b>plaintext</b> (local development), <b>tls</b> (server-side TLS for staging/internal networks), and <b>mtls</b> (mutual TLS for production with client certificate verification).</dd>
+
+        <dt>How is the audit log tamper-proof?</dt>
+        <dd>Every audit entry is signed with Ed25519. The signature covers agent ID, action, resource, decision, and timestamp. Re-computing the signature on read instantly detects any modification.</dd>
+
+        <dt>What protocols does eyeVesa support?</dt>
+        <dd>eyeVesa is built around the <b>Model Context Protocol (MCP)</b> for agent-tool communication. It also provides REST/gRPC APIs for management, and supports SPIRE/X.509 SVID for workload identity.</dd>
+    </dl>
+
+    <hr>
+
     <div id="cta">
-        <h2 align="center">Ready to Put Guardrails on Your AI Agents?</h2>
-        <p align="center">eyeVesa gives you cryptographic identity, real-time policy enforcement,<br>
-        and non-repudiable audit trails -- so your agents can act autonomously<br>
-        without putting production at risk.</p>
-        <p align="center">
-        <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener" style="background:#66ff66;color:#0a0e17;padding:10px 28px;font-weight:bold;text-decoration:none;font-family:'Courier New',Courier,monospace;">Get Started on GitHub</a>
-        &nbsp;
-        <a href="#quickstart" style="border:1px solid #66ff66;padding:10px 28px;color:#66ff66;text-decoration:none;font-family:'Courier New',Courier,monospace;">Quick Start</a>
-        &nbsp;
-        <a href="#architecture" style="border:1px solid #444;padding:10px 28px;color:#c0c0c0;text-decoration:none;font-family:'Courier New',Courier,monospace;">View Architecture</a>
-        </p>
+        <h2 align="center">Are you an agent or a merchant?</h2>
+        <p align="center"><i>eyeVesa works for both sides of the agent economy.</i></p>
+        <br>
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" id="cta-table">
+        <tr valign="top">
+            <td align="center" width="50%" class="cta-cell">
+            <div class="cta-box">
+                <font size="5" color="#66ff66"><b>Agent</b></font>
+                <p><font size="2">You build AI agents that need to<br>
+                access enterprise resources securely.</font></p>
+                <p>
+                <a href="#hermes" class="cta-btn">[Hermes SDK]</a>
+                &nbsp;
+                <a href="#quickstart" class="cta-btn">[Quick Start]</a>
+                </p>
+            </div>
+            </td>
+            <td align="center" width="50%" class="cta-cell">
+            <div class="cta-box">
+                <font size="5" color="#6699ff"><b>Merchant</b></font>
+                <p><font size="2">You run a software marketplace<br>
+                and need agent authentication.</font></p>
+                <p>
+                <a href="#ptv" class="cta-btn">[PTV &amp; Identity]</a>
+                &nbsp;
+                <a href="#api" class="cta-btn">[API Reference]</a>
+                </p>
+            </div>
+            </td>
+        </tr>
+        </table>
     </div>
 
     <hr>
 
     <table width="100%" cellpadding="8"><tr valign="top">
-        <td width="40%">
-            <img src="logo.svg" alt="eyeVesa" height="24"> <b>eyeVesa</b><br>
+        <td width="60%">
+            <b>eyeVesa</b><br>
             <font size="2">Identity and trust layer for the agentic economy.</font>
         </td>
         <td>
-            <font size="2"><b>Product</b><br>
-            <a href="#ptv">PTV</a><br>
-            <a href="#opa">Policy Engine</a><br>
-            <a href="#hitl">HITL</a><br>
-            <a href="#delegation">Delegation</a><br>
-            <a href="#use-cases">Use Cases</a></font>
-        </td>
-        <td>
-            <font size="2"><b>Developers</b><br>
-            <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener">GitHub</a><br>
-            <a href="#api">API Reference</a><br>
-            <a href="#cli">CLI</a><br>
-            <a href="#quickstart">Quick Start</a><br>
-            <a href="https://github.com/hafizaljohari/eyeVesa/blob/main/eyeVesa.md" target="_blank" rel="noopener">Documentation</a></font>
-        </td>
-        <td>
             <font size="2"><b>Stack</b><br>
-            Rust Gateway<br>
-            Go Control Plane<br>
-            PostgreSQL<br>
+            Rust Gateway, 
+            Go Control Plane, 
+            PostgreSQL, 
             OPA/Rego</font>
         </td>
     </tr></table>
@@ -783,6 +868,8 @@ curl http://localhost:8181/v1/data/agentid/authz/allow  # OPA</pre>
     <hr>
 
     <p align="center"><font size="1">&copy; 2026 eyeVesa. Proprietary license.</font></p>
+
+    <p align="center"><font size="1">Developed by <a href="https://safrplus.dev" target="_blank" rel="noopener" style="text-decoration:none"><b>Hafizal Johari</b></a> &middot; <a href="llm.txt" style="text-decoration:none">llm.txt</a></font></p>
 
     <a href="#top" id="goUp" title="Go to top">&#9650;</a>
 
