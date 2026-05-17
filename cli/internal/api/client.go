@@ -12,6 +12,8 @@ import (
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
+	APIKey     string
+	JWTToken   string
 }
 
 func NewClient(baseURL string) *Client {
@@ -41,6 +43,12 @@ func (c *Client) doRequest(method, path string, body interface{}) (map[string]in
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	if c.APIKey != "" {
+		req.Header.Set("X-API-Key", c.APIKey)
+	} else if c.JWTToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.JWTToken)
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -232,4 +240,211 @@ func (c *Client) MCPToolsList() (map[string]interface{}, error) {
 
 func (c *Client) Identity() (map[string]interface{}, error) {
 	return c.Get("/identity")
+}
+
+func (c *Client) Ready() (map[string]interface{}, error) {
+	resp, err := c.HTTPClient.Get(c.BaseURL + "/ready")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return map[string]interface{}{
+		"status": resp.StatusCode,
+	}, nil
+}
+
+func (c *Client) RequestHITL(agentID, action, resourceID string, params map[string]interface{}, riskLevel string) (map[string]interface{}, error) {
+	if params == nil {
+		params = map[string]interface{}{}
+	}
+	body := map[string]interface{}{
+		"agent_id":    agentID,
+		"action":      action,
+		"resource_id": resourceID,
+		"params":      params,
+		"risk_level":  riskLevel,
+	}
+	return c.Post("/v1/hitl/request", body)
+}
+
+func (c *Client) GetHITLStatus(approvalID string) (map[string]interface{}, error) {
+	return c.Get("/v1/hitl/" + approvalID)
+}
+
+func (c *Client) EscalateHITL(agentID, action, resourceID, riskLevel, reason string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"agent_id":    agentID,
+		"action":      action,
+		"resource_id": resourceID,
+		"risk_level":  riskLevel,
+		"reason":      reason,
+	}
+	return c.Post("/v1/hitl/escalate", body)
+}
+
+func (c *Client) AttestPTV(agentID, platform, firmwareVersion string, tpmPublicKey []byte, runtimeHash []byte) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"agent_id":        agentID,
+		"platform":        platform,
+		"firmware_version": firmwareVersion,
+		"tpm_public_key":  tpmPublicKey,
+		"runtime_hash":    runtimeHash,
+	}
+	return c.Post("/v1/ptv/attest", body)
+}
+
+func (c *Client) BindPTV(attestationProof map[string]interface{}) (map[string]interface{}, error) {
+	return c.Post("/v1/ptv/bind", attestationProof)
+}
+
+func (c *Client) VerifyPTV(bindingID string) (map[string]interface{}, error) {
+	return c.Get("/v1/ptv/verify/" + bindingID)
+}
+
+func (c *Client) CheckBudget(agentID string) (map[string]interface{}, error) {
+	return c.Get(fmt.Sprintf("/v1/budget/check?agent_id=%s", agentID))
+}
+
+func (c *Client) RecordSpend(agentID string, amount float64, currency, category string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"agent_id":  agentID,
+		"amount":    amount,
+		"currency":  currency,
+		"category":  category,
+	}
+	return c.Post("/v1/budget/spend", body)
+}
+
+func (c *Client) CreateTenant(name, description string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"name":        name,
+		"description": description,
+	}
+	return c.Post("/v1/tenants", body)
+}
+
+func (c *Client) ListTenants() (map[string]interface{}, error) {
+	return c.Get("/v1/tenants")
+}
+
+func (c *Client) GetTenant(tenantID string) (map[string]interface{}, error) {
+	return c.Get("/v1/tenants/" + tenantID)
+}
+
+func (c *Client) RegisterPushToken(agentID, token, platform string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"agent_id": agentID,
+		"token":    token,
+		"platform": platform,
+	}
+	return c.Post("/v1/push/register", body)
+}
+
+func (c *Client) GetPushTokens() (map[string]interface{}, error) {
+	return c.Get("/v1/push/tokens")
+}
+
+func (c *Client) DeactivatePushToken(tokenID string) (map[string]interface{}, error) {
+	return c.Delete("/v1/push/tokens/" + tokenID)
+}
+
+func (c *Client) MCPCallTool(agentID, toolName string, arguments map[string]interface{}) (map[string]interface{}, error) {
+	if arguments == nil {
+		arguments = map[string]interface{}{}
+	}
+	body := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      toolName,
+			"arguments": arguments,
+		},
+	}
+	return c.Post("/v1/mcp", body)
+}
+
+func (c *Client) CreateTrustBundle(trustDomain, bundleData, bundleType, source, endpointURL string, isFederated bool) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"trust_domain":  trustDomain,
+		"bundle_data":   bundleData,
+		"bundle_type":   bundleType,
+		"source":        source,
+		"endpoint_url":  endpointURL,
+		"is_federated":  isFederated,
+	}
+	return c.Post("/v1/spire/bundles", body)
+}
+
+func (c *Client) GetTrustBundle(trustDomain string) (map[string]interface{}, error) {
+	return c.Get("/v1/spire/bundles/" + trustDomain)
+}
+
+func (c *Client) ListTrustBundles(federatedOnly bool) (map[string]interface{}, error) {
+	path := "/v1/spire/bundles"
+	if federatedOnly {
+		path += "?federated=true"
+	}
+	return c.Get(path)
+}
+
+func (c *Client) UpdateTrustBundle(trustDomain, bundleData string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"bundle_data": bundleData,
+	}
+	return c.doRequest(http.MethodPut, "/v1/spire/bundles/"+trustDomain, body)
+}
+
+func (c *Client) VerifyTrustBundle(trustDomain string) (map[string]interface{}, error) {
+	return c.Post("/v1/spire/bundles/"+trustDomain+"/verify", nil)
+}
+
+func (c *Client) DeleteTrustBundle(trustDomain string) (map[string]interface{}, error) {
+	return c.Delete("/v1/spire/bundles/" + trustDomain)
+}
+
+func (c *Client) FetchBundleFromEndpoint(endpointURL, trustDomain string, save, isFederated bool) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"endpoint_url":  endpointURL,
+		"trust_domain":  trustDomain,
+		"save":          save,
+		"is_federated":  isFederated,
+	}
+	return c.Post("/v1/spire/bundles/fetch", body)
+}
+
+func (c *Client) RegisterWorkload(spiffeID, agentID, trustDomain string, selectors []string, parentID string, autoRegister bool) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"spiffe_id":     spiffeID,
+		"agent_id":      agentID,
+		"trust_domain":  trustDomain,
+		"selectors":     selectors,
+		"parent_id":     parentID,
+		"auto_register": autoRegister,
+	}
+	return c.Post("/v1/spire/workloads", body)
+}
+
+func (c *Client) GetWorkload(spiffeID string) (map[string]interface{}, error) {
+	return c.Get("/v1/spire/workloads/" + spiffeID)
+}
+
+func (c *Client) ListWorkloads(agentID string) (map[string]interface{}, error) {
+	path := "/v1/spire/workloads"
+	if agentID != "" {
+		path += "?agent_id=" + agentID
+	}
+	return c.Get(path)
+}
+
+func (c *Client) AttestWorkload(spiffeID string) (map[string]interface{}, error) {
+	return c.Post("/v1/spire/workloads/"+spiffeID+"/attest", nil)
+}
+
+func (c *Client) DeleteWorkload(spiffeID string) (map[string]interface{}, error) {
+	return c.Delete("/v1/spire/workloads/" + spiffeID)
+}
+
+func (c *Client) SpireStatus() (map[string]interface{}, error) {
+	return c.Get("/v1/spire/status")
 }

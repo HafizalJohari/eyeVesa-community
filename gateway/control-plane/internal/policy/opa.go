@@ -83,6 +83,16 @@ func (e *PolicyEngine) Evaluate(ctx context.Context, input PolicyInput) *Decisio
 	return LocalEvaluate(input)
 }
 
+func (e *PolicyEngine) Reload(policyDir string) error {
+	embedded, err := NewEmbeddedOPA(policyDir)
+	if err != nil {
+		return fmt.Errorf("reload embedded OPA: %w", err)
+	}
+	e.embeddedOPA = embedded
+	e.useEmbedded = true
+	return nil
+}
+
 type OPAClient struct {
 	endpoint string
 	client   *http.Client

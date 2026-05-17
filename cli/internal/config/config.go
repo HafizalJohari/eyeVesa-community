@@ -12,6 +12,8 @@ type Config struct {
 	Owner           string `toml:"owner" json:"owner" yaml:"owner"`
 	KeyPath         string `toml:"key_path" json:"key_path" yaml:"key_path"`
 	TimeoutSecs     int    `toml:"timeout_secs" json:"timeout_secs" yaml:"timeout_secs"`
+	APIKey          string `toml:"api_key" json:"api_key" yaml:"api_key"`
+	JWTToken        string `toml:"jwt_token" json:"jwt_token" yaml:"jwt_token"`
 }
 
 func DefaultConfigDir() string {
@@ -111,6 +113,10 @@ func parseTOML(data []byte, cfg *Config) error {
 			cfg.KeyPath = unquote(val)
 		case "timeout_secs":
 			cfg.TimeoutSecs = atoi(val)
+		case "api_key":
+			cfg.APIKey = unquote(val)
+		case "jwt_token":
+			cfg.JWTToken = unquote(val)
 		}
 	}
 	return nil
@@ -127,6 +133,13 @@ func formatTOML(cfg *Config) ([]byte, error) {
 	b = append(b, "timeout_secs = "+itoa(cfg.TimeoutSecs)+"\n"...)
 	b = append(b, "\n[identity]\n"...)
 	b = append(b, "key_path = "+quote(cfg.KeyPath)+"\n"...)
+	if cfg.APIKey != "" {
+		b = append(b, "\n[auth]\n"...)
+		b = append(b, "api_key = "+quote(cfg.APIKey)+"\n"...)
+		if cfg.JWTToken != "" {
+			b = append(b, "jwt_token = "+quote(cfg.JWTToken)+"\n"...)
+		}
+	}
 	return b, nil
 }
 

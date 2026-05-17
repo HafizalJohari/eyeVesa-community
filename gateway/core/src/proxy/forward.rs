@@ -14,7 +14,8 @@ pub async fn forward_to_control_plane(
 
     let client = &state.http_client;
     let scheme = if state.backend_tls.enabled { "https" } else { "http" };
-    let url = format!("{}://{}{}", scheme, state.control_plane_http_addr, path);
+    let cp_addr = state.control_plane_http_addr.read().await.clone();
+    let url = format!("{}://{}{}", scheme, cp_addr, path);
 
     let mut builder = match method.as_str() {
         "GET" => client.get(&url),
@@ -29,16 +30,28 @@ pub async fn forward_to_control_plane(
         builder = builder.header("content-type", ct);
     }
 
+    if let Some(auth) = parts.headers.get("authorization") {
+        builder = builder.header("authorization", auth);
+    }
+
+    if let Some(api_key) = parts.headers.get("x-api-key") {
+        builder = builder.header("x-api-key", api_key);
+    }
+
     if !bytes.is_empty() {
         builder = builder.body(bytes);
     }
 
     let resp = builder.send().await.map_err(|e| format!("forward error: {}", e))?;
     let status = resp.status();
+    let resp_ct = resp.headers().get("content-type").cloned();
     let body_text = resp.text().await.map_err(|e| format!("forward body error: {}", e))?;
 
-    Ok(Response::builder()
-        .status(status.as_u16())
-        .header("content-type", "application/json")
-        .body(body_text)?)
+    let mut response_builder = Response::builder().status(status.as_u16());
+    if let Some(ct) = resp_ct {
+        response_builder = response_builder.header("content-type", ct);
+    } else if !body_text.is_empty() {
+        response_builder = response_builder.header("content-type", "application/json");
+    }
+    Ok(response_builder.body(body_text)?)
 }

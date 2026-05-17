@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let state = Arc::new(ProxyState {
         control_plane: Arc::new(Mutex::new(None)),
         control_plane_addr: grpc_addr.clone(),
-        control_plane_http_addr: control_plane_http_addr.clone(),
+        control_plane_http_addr: Arc::new(tokio::sync::RwLock::new(control_plane_http_addr.clone())),
         http_client,
         backend_tls,
     });
@@ -87,24 +87,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         None
     };
 
+    let server_state = state.clone();
     let server_handle = tokio::spawn(async move {
         match mode.as_str() {
             "tls" => {
                 let tls_config = tls::TlsConfig::from_env();
                 let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
                 tracing::info!("Starting TLS proxy on {}", addr);
-                tls::server::run_tls(addr, &tls_config, state, cancel_clone).await
+                tls::server::run_tls(addr, &tls_config, server_state, cancel_clone).await
             }
             "mtls" => {
                 let tls_config = tls::TlsConfig::from_env();
                 let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
                 tracing::info!("Starting mTLS proxy on {}", addr);
-                tls::server::run_mtls(addr, &tls_config, state, cancel_clone).await
+                tls::server::run_mtls(addr, &tls_config, server_state, cancel_clone).await
             }
             _ => {
                 let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
                 tracing::info!("Proxy server listening on {} (plaintext)", addr);
-                proxy::server::run(addr, state, cancel_clone).await
+                proxy::server::run(addr, server_state, cancel_clone).await
             }
         }
     });
@@ -131,11 +132,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         loop {
             sighup.recv().await;
             tracing::info!("Received SIGHUP, reloading configuration...");
+            if let Ok(new_addr) = std::env::var("CONTROL_PLANE_HTTP_ADDR") {
+                let mut guard = state.control_plane_http_addr.write().await;
+                let old_addr = guard.clone();
+                *guard = new_addr.clone();
+                tracing::info!("Control plane HTTP address: {} -> {}", old_addr, new_addr);
+            }
             let new_rate = std::env::var("RATE_LIMIT_RPS")
                 .ok()
                 .and_then(|v| v.parse::<f64>().ok());
             if let Some(rps) = new_rate {
-                tracing::info!("Rate limit RPS: {}", rps);
+                tracing::info!("Rate limit RPS (info only, enforced by Go control plane): {}", rps);
             }
             tracing::info!("Configuration reloaded");
         }

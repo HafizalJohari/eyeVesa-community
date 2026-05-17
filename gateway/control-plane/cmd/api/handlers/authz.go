@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/audit"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
@@ -142,8 +145,96 @@ func VerifySignature(w http.ResponseWriter, r *http.Request) {
 	valid := crypto.VerifySignature(pubKeyBytes, []byte(req.Message), sig)
 
 	w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"agent_id": req.AgentID,
+			"valid":    valid,
+	})
+}
+
+// GetAuditLog returns audit trail for an agent
+func GetAuditLog(w http.ResponseWriter, r *http.Request) {
+	agentID := r.URL.Query().Get("agent_id")
+	if agentID == "" {
+		http.Error(w, "agent_id is required", http.StatusBadRequest)
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 10
+	if limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	offsetStr := r.URL.Query().Get("offset")
+	offset := 0
+	if offsetStr != "" {
+		if parsed, err := strconv.Atoi(offsetStr); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	rows, err := querier.Query(r.Context(),
+		`SELECT log_id, agent_id, COALESCE(resource_id::text, ''), action, method, params, result, result_status, trust_score_before, trust_score_after, session_id, signature, created_at FROM audit_logs WHERE agent_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+		agentID, limit, offset,
+	)
+	if err != nil {
+		http.Error(w, "failed to query audit logs", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var entries []map[string]interface{}
+	for rows.Next() {
+		var logID, agentID, resourceID, action, method, status, sessionID string
+		var trustBefore, trustAfter float64
+		var paramsJSON, resultJSON []byte
+		var signature []byte
+		var createdAt time.Time
+		if err := rows.Scan(&logID, &agentID, &resourceID, &action, &method, &paramsJSON, &resultJSON, &status, &trustBefore, &trustAfter, &sessionID, &signature, &createdAt); err != nil {
+			continue
+		}
+
+		var params, result map[string]interface{}
+		if len(paramsJSON) > 0 {
+			json.Unmarshal(paramsJSON, &params)
+		} else {
+			params = make(map[string]interface{})
+		}
+		if len(resultJSON) > 0 {
+			json.Unmarshal(resultJSON, &result)
+		} else {
+			result = make(map[string]interface{})
+		}
+
+		var sig string
+		if len(signature) > 0 {
+			sig = fmt.Sprintf("%x", signature)
+		}
+
+		entries = append(entries, map[string]interface{}{
+			"log_id":         logID,
+			"agent_id":       agentID,
+			"resource_id":    resourceID,
+			"action":         action,
+			"method":         method,
+			"params":         params,
+			"result":         result,
+			"result_status":  status,
+			"trust_score_before": trustBefore,
+			"trust_score_after":  trustAfter,
+			"session_id":     sessionID,
+			"signature":      sig,
+			"created_at":     createdAt.Format(time.RFC3339),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"agent_id": req.AgentID,
-		"valid":    valid,
+		"agent_id": agentID,
+		"entries":  entries,
+		"limit":    limit,
+		"offset":   offset,
 	})
 }

@@ -3,7 +3,7 @@ use agentid_core::proxy::server;
 use agentid_core::tls::BackendTlsConfig;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use wiremock::MockServer;
 
@@ -11,7 +11,7 @@ fn make_state(mock_server: &MockServer) -> Arc<ProxyState> {
     Arc::new(ProxyState {
         control_plane: Arc::new(Mutex::new(None)),
         control_plane_addr: "http://localhost:9999".to_string(),
-        control_plane_http_addr: mock_server.uri().replace("http://", "").replace("https://", ""),
+        control_plane_http_addr: Arc::new(tokio::sync::RwLock::new(mock_server.uri().replace("http://", "").replace("https://", ""))),
         http_client: reqwest::Client::builder()
             .no_proxy()
             .build()

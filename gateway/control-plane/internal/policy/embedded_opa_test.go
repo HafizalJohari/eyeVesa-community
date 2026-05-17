@@ -91,3 +91,20 @@ func TestEmbeddedOPAEvaluate(t *testing.T) {
 	t.Logf("Test 2: allowed=%v, hitl=%v, reason=%s, delta=%f", decision2.Allowed, decision2.RequiresHITL, decision2.Reason, decision2.TrustDelta)
 	t.Logf("Test 3: allowed=%v, hitl=%v, reason=%s, delta=%f", decision3.Allowed, decision3.RequiresHITL, decision3.Reason, decision3.TrustDelta)
 }
+
+func TestPolicyEngineReload(t *testing.T) {
+	eng := NewPolicyEngine("../../policies", "")
+	if eng.embeddedOPA == nil {
+		t.Fatal("embedded OPA should be initialized")
+	}
+
+	err := eng.Reload("../../policies")
+	if err != nil {
+		t.Fatalf("Reload should succeed: %v", err)
+	}
+
+	err = eng.Reload("/nonexistent/path")
+	if err == nil {
+		t.Error("Reload with nonexistent path should fail")
+	}
+}

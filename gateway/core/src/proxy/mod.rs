@@ -4,7 +4,7 @@ pub mod forward;
 pub mod server;
 
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::grpc::ControlPlaneClient;
 use crate::tls::BackendTlsConfig;
@@ -12,7 +12,7 @@ use crate::tls::BackendTlsConfig;
 pub struct ProxyState {
     pub control_plane: Arc<Mutex<Option<ControlPlaneClient>>>,
     pub control_plane_addr: String,
-    pub control_plane_http_addr: String,
+    pub control_plane_http_addr: Arc<RwLock<String>>,
     pub http_client: reqwest::Client,
     pub backend_tls: BackendTlsConfig,
 }

@@ -60,7 +60,10 @@ func getClient() *api.Client {
 		addr = "http://localhost:8080"
 	}
 
-	return api.NewClient(addr)
+	client := api.NewClient(addr)
+	client.APIKey = appCfg.APIKey
+	client.JWTToken = appCfg.JWTToken
+	return client
 }
 
 func printResult(result map[string]interface{}) {

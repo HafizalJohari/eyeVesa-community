@@ -88,6 +88,23 @@ func (rl *RateLimiter) RouteLimiter(next http.Handler) http.Handler {
 	})
 }
 
+func (rl *RateLimiter) Reload(maxTokens, refillPerSecond float64) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.maxTokens = maxTokens
+	rl.refillPerSecond = refillPerSecond
+	for _, b := range rl.buckets {
+		b.maxTokens = maxTokens
+		b.refill = refillPerSecond
+		if b.tokens > maxTokens {
+			b.tokens = maxTokens
+		}
+		if b.tokens < 1 {
+			b.tokens = 1
+		}
+	}
+}
+
 func SetupRateLimits(r chi.Router, globalRPS, routeRPS float64) {
 	globalLimiter := NewRateLimiter(globalRPS*10, globalRPS)
 	routeLimiter := NewRateLimiter(routeRPS*5, routeRPS)

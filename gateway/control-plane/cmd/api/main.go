@@ -86,14 +86,15 @@ func main() {
 		slog.Warn("could not write certs", "error", err)
 	}
 
-	delegationTracker := delegation.NewDelegationTracker(db.Pool, identityProvider)
+	delegationTracker := delegation.NewDelegationTracker(db, identityProvider)
 	ptvService := ptv.NewPTVService(db.Pool)
 	hitlService := hitl.NewHITLService(db.Pool)
 	escalationService := hitl.NewEscalationService(db.Pool)
 	llmService := llm.NewLLMService(nil)
 	embeddingService := behavior.NewEmbeddingService(db.Pool, llmService)
-	tenantService := tenant.NewTenantService(db.Pool)
+	tenantService := tenant.NewTenantService(db)
 	pushService := hitl.NewPushService(db.Pool)
+	spireService := identity.NewSpireService(db.Pool)
 
 	webhookNotifier := hitl.NewWebhookNotifier()
 	escalationService.RegisterNotifier(hitl.ChannelWebhook, webhookNotifier)
@@ -147,6 +148,14 @@ func main() {
 
 	go escalationService.RunEscalationTicker(ctx)
 
+	bundleRefreshInterval := 5 * time.Minute
+	if v := os.Getenv("SPIRE_BUNDLE_REFRESH_SECS"); v != "" {
+		if secs, err := strconv.ParseInt(v, 10, 64); err == nil && secs > 0 {
+			bundleRefreshInterval = time.Duration(secs) * time.Second
+		}
+	}
+	go spireService.RunBundleRefresh(ctx, bundleRefreshInterval)
+
 	opaEndpoint := os.Getenv("OPA_ENDPOINT")
 	policyDir := os.Getenv("POLICY_DIR")
 	if policyDir == "" {
@@ -170,6 +179,8 @@ func main() {
 	handlers.SetEmbeddingService(embeddingService)
 	handlers.SetTenantService(tenantService)
 	handlers.SetPushService(pushService)
+	handlers.SetSpireService(spireService)
+	handlers.SetIdentityProvider(identityProvider)
 
 	grpcSrv := grpcserver.NewGatewayServer(db, auditLogger, privKey, policyEngine)
 
@@ -262,10 +273,32 @@ func main() {
 		r.Post("/push/register", handlers.RegisterPushToken)
 		r.Get("/push/tokens", handlers.GetPushTokens)
 		r.Delete("/push/tokens/{tokenID}", handlers.DeactivatePushToken)
+		
+		// Phase 3: Audit log retrieval
+		r.Get("/audit", handlers.GetAuditLog)
 
 		r.Post("/ptv/attest", handlers.AttestIdentity)
 		r.Post("/ptv/bind", handlers.BindIdentity)
 		r.Get("/ptv/verify/{bindingID}", handlers.VerifyIdentity)
+
+		// Phase 5: SPIRE trust bundles & federation
+		r.Post("/spire/bundles", handlers.CreateTrustBundle)
+		r.Get("/spire/bundles", handlers.ListTrustBundles)
+		r.Get("/spire/bundles/{trustDomain}", handlers.GetTrustBundle)
+		r.Put("/spire/bundles/{trustDomain}", handlers.UpdateTrustBundle)
+		r.Post("/spire/bundles/{trustDomain}/verify", handlers.VerifyTrustBundle)
+		r.Delete("/spire/bundles/{trustDomain}", handlers.DeleteTrustBundle)
+		r.Post("/spire/bundles/fetch", handlers.FetchBundleFromEndpoint)
+
+		// Phase 5: SPIRE workload registrations
+		r.Post("/spire/workloads", handlers.RegisterWorkload)
+		r.Get("/spire/workloads", handlers.ListWorkloads)
+		r.Get("/spire/workloads/{spiffeID}", handlers.GetWorkload)
+		r.Post("/spire/workloads/{spiffeID}/attest", handlers.AttestWorkload)
+		r.Delete("/spire/workloads/{spiffeID}", handlers.DeleteWorkload)
+
+		// Phase 5: SPIRE status
+		r.Get("/spire/status", handlers.GetSpireStatus)
 	})
 
 	var httpSrv *http.Server
@@ -386,13 +419,22 @@ func main() {
 
 			if newRPS := os.Getenv("RATE_LIMIT_RPS"); newRPS != "" {
 				if f, err := strconv.ParseFloat(newRPS, 64); err == nil {
+					rateLimiter.Reload(f*10, f)
 					slog.Info("rate limit RPS reloaded", "rps", f)
 				}
 			}
 
-			if policyDir := os.Getenv("POLICY_DIR"); policyDir != "" {
-				if _, err := os.Stat(policyDir); err == nil {
-					slog.Info("policy directory available", "path", policyDir)
+			reloadPolicyDir := os.Getenv("POLICY_DIR")
+			if reloadPolicyDir == "" {
+				reloadPolicyDir = policyDir
+			}
+			if reloadPolicyDir != "" {
+				if _, err := os.Stat(reloadPolicyDir); err == nil {
+					if reloadErr := policyEngine.Reload(reloadPolicyDir); reloadErr != nil {
+						slog.Error("policy reload failed", "error", reloadErr)
+					} else {
+						slog.Info("policy reloaded", "path", reloadPolicyDir)
+					}
 				}
 			}
 

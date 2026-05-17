@@ -115,3 +115,30 @@ func TestRouteLimiter(t *testing.T) {
 		t.Errorf("expected 429 for route rate limit, got %d", w.Code)
 	}
 }
+
+func TestRateLimiterReload(t *testing.T) {
+	rl := NewRateLimiter(2, 0.1)
+
+	if !rl.allow("1.2.3.4") {
+		t.Error("first request should allow")
+	}
+	if !rl.allow("1.2.3.4") {
+		t.Error("second request should allow")
+	}
+	if rl.allow("1.2.3.4") {
+		t.Error("third request should be rate limited with max=2")
+	}
+
+	rl.Reload(10, 1000)
+
+	if !rl.allow("1.2.3.4") {
+		t.Error("after reload with higher limit, request should allow")
+	}
+
+	if rl.maxTokens != 10 {
+		t.Errorf("expected maxTokens=10, got %f", rl.maxTokens)
+	}
+	if rl.refillPerSecond != 1000 {
+		t.Errorf("expected refillPerSecond=1000, got %f", rl.refillPerSecond)
+	}
+}

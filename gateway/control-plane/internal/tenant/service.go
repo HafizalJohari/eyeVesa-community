@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/database"
 )
 
 type Tenant struct {
@@ -24,16 +25,25 @@ type Tenant struct {
 }
 
 type TenantService struct {
-	db *pgxpool.Pool
+	q  database.Querier
+	db *database.DB
 }
 
-func NewTenantService(db *pgxpool.Pool) *TenantService {
-	return &TenantService{db: db}
+func NewTenantService(db *database.DB) *TenantService {
+	var q database.Querier
+	if db != nil && db.Pool != nil {
+		q = &database.PoolQuerier{Pool: db.Pool}
+	}
+	return &TenantService{db: db, q: q}
+}
+
+func NewTenantServiceWithQuerier(q database.Querier) *TenantService {
+	return &TenantService{q: q}
 }
 
 func (s *TenantService) CreateTenant(ctx context.Context, name, slug, plan string, maxAgents, maxResources int) (*Tenant, error) {
 	id := uuid.New()
-	_, err := s.db.Exec(ctx,
+	_, err := s.q.Exec(ctx,
 		`INSERT INTO tenants (tenant_id, name, slug, plan, max_agents, max_resources)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
 		id, name, slug, plan, maxAgents, maxResources,
@@ -56,7 +66,7 @@ func (s *TenantService) CreateTenant(ctx context.Context, name, slug, plan strin
 
 func (s *TenantService) GetTenant(ctx context.Context, tenantID string) (*Tenant, error) {
 	var t Tenant
-	err := s.db.QueryRow(ctx,
+	err := s.q.QueryRow(ctx,
 		`SELECT tenant_id, name, slug, plan, max_agents, max_resources, sso_enabled, COALESCE(sso_provider, ''), COALESCE(sso_config::text, ''), created_at, updated_at
 		 FROM tenants WHERE tenant_id = $1`,
 		tenantID,
@@ -69,7 +79,7 @@ func (s *TenantService) GetTenant(ctx context.Context, tenantID string) (*Tenant
 
 func (s *TenantService) GetTenantBySlug(ctx context.Context, slug string) (*Tenant, error) {
 	var t Tenant
-	err := s.db.QueryRow(ctx,
+	err := s.q.QueryRow(ctx,
 		`SELECT tenant_id, name, slug, plan, max_agents, max_resources, sso_enabled, COALESCE(sso_provider, ''), COALESCE(sso_config::text, ''), created_at, updated_at
 		 FROM tenants WHERE slug = $1`,
 		slug,
@@ -81,7 +91,7 @@ func (s *TenantService) GetTenantBySlug(ctx context.Context, slug string) (*Tena
 }
 
 func (s *TenantService) ListTenants(ctx context.Context) ([]Tenant, error) {
-	rows, err := s.db.Query(ctx,
+	rows, err := s.q.Query(ctx,
 		`SELECT tenant_id, name, slug, plan, max_agents, max_resources, sso_enabled, COALESCE(sso_provider, ''), COALESCE(sso_config::text, ''), created_at, updated_at
 		 FROM tenants ORDER BY created_at DESC`,
 	)
@@ -102,7 +112,7 @@ func (s *TenantService) ListTenants(ctx context.Context) ([]Tenant, error) {
 }
 
 func (s *TenantService) UpdatePlan(ctx context.Context, tenantID, plan string, maxAgents, maxResources int) error {
-	_, err := s.db.Exec(ctx,
+	_, err := s.q.Exec(ctx,
 		`UPDATE tenants SET plan = $1, max_agents = $2, max_resources = $3, updated_at = NOW() WHERE tenant_id = $4`,
 		plan, maxAgents, maxResources, tenantID,
 	)
@@ -110,7 +120,7 @@ func (s *TenantService) UpdatePlan(ctx context.Context, tenantID, plan string, m
 }
 
 func (s *TenantService) EnableSSO(ctx context.Context, tenantID, provider, config string) error {
-	_, err := s.db.Exec(ctx,
+	_, err := s.q.Exec(ctx,
 		`UPDATE tenants SET sso_enabled = TRUE, sso_provider = $1, sso_config = $2::jsonb, updated_at = NOW() WHERE tenant_id = $3`,
 		provider, config, tenantID,
 	)
@@ -120,7 +130,7 @@ func (s *TenantService) EnableSSO(ctx context.Context, tenantID, provider, confi
 func (s *TenantService) CheckAgentLimit(ctx context.Context, tenantID string) (bool, int, int, error) {
 	var maxAgents int
 	var current int
-	err := s.db.QueryRow(ctx,
+	err := s.q.QueryRow(ctx,
 		`SELECT t.max_agents, COUNT(a.agent_id) FROM tenants t LEFT JOIN agents a ON a.tenant_id = t.tenant_id WHERE t.tenant_id = $1 GROUP BY t.max_agents`,
 		tenantID,
 	).Scan(&maxAgents, &current)
@@ -133,7 +143,7 @@ func (s *TenantService) CheckAgentLimit(ctx context.Context, tenantID string) (b
 func (s *TenantService) CheckResourceLimit(ctx context.Context, tenantID string) (bool, int, int, error) {
 	var maxResources int
 	var current int
-	err := s.db.QueryRow(ctx,
+	err := s.q.QueryRow(ctx,
 		`SELECT t.max_resources, COUNT(r.resource_id) FROM tenants t LEFT JOIN resources r ON r.tenant_id = t.tenant_id WHERE t.tenant_id = $1 GROUP BY t.max_resources`,
 		tenantID,
 	).Scan(&maxResources, &current)
@@ -158,7 +168,7 @@ type Approver struct {
 
 func (s *TenantService) CreateApprover(ctx context.Context, tenantID, email, name, role string) (*Approver, error) {
 	id := uuid.New()
-	_, err := s.db.Exec(ctx,
+	_, err := s.q.Exec(ctx,
 		`INSERT INTO approvers (approver_id, tenant_id, email, name, role) VALUES ($1, $2, $3, $4, $5)`,
 		id, tenantID, email, name, role,
 	)
@@ -177,7 +187,7 @@ func (s *TenantService) CreateApprover(ctx context.Context, tenantID, email, nam
 }
 
 func (s *TenantService) ListApprovers(ctx context.Context, tenantID string) ([]Approver, error) {
-	rows, err := s.db.Query(ctx,
+	rows, err := s.q.Query(ctx,
 		`SELECT approver_id, tenant_id, email, name, role, COALESCE(sso_subject, ''), notification_channel, COALESCE(notification_target, ''), is_active, created_at
 		 FROM approvers WHERE tenant_id = $1 AND is_active = TRUE ORDER BY name`,
 		tenantID,
@@ -200,7 +210,7 @@ func (s *TenantService) ListApprovers(ctx context.Context, tenantID string) ([]A
 
 func (s *TenantService) FindApproverBySSO(ctx context.Context, tenantID, ssoSubject string) (*Approver, error) {
 	var a Approver
-	err := s.db.QueryRow(ctx,
+	err := s.q.QueryRow(ctx,
 		`SELECT approver_id, tenant_id, email, name, role, COALESCE(sso_subject, ''), notification_channel, COALESCE(notification_target, ''), is_active
 		 FROM approvers WHERE tenant_id = $1 AND sso_subject = $2 AND is_active = TRUE`,
 		tenantID, ssoSubject,
@@ -212,7 +222,7 @@ func (s *TenantService) FindApproverBySSO(ctx context.Context, tenantID, ssoSubj
 }
 
 func (s *TenantService) DeactivateApprover(ctx context.Context, approverID string) error {
-	_, err := s.db.Exec(ctx,
+	_, err := s.q.Exec(ctx,
 		`UPDATE approvers SET is_active = FALSE, updated_at = NOW() WHERE approver_id = $1`,
 		approverID,
 	)

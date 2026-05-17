@@ -6,19 +6,30 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/database"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/identity"
 )
 
 type DelegationTracker struct {
-	db     *pgxpool.Pool
+	q        database.Querier
 	provider identity.IdentityProvider
 }
 
-func NewDelegationTracker(db *pgxpool.Pool, provider identity.IdentityProvider) *DelegationTracker {
+func NewDelegationTracker(db *database.DB, provider identity.IdentityProvider) *DelegationTracker {
+	var q database.Querier
+	if db != nil && db.Pool != nil {
+		q = &database.PoolQuerier{Pool: db.Pool}
+	}
 	return &DelegationTracker{
-		db:       db,
+		q:        q,
+		provider: provider,
+	}
+}
+
+func NewDelegationTrackerWithQuerier(q database.Querier, provider identity.IdentityProvider) *DelegationTracker {
+	return &DelegationTracker{
+		q:        q,
 		provider: provider,
 	}
 }
@@ -44,7 +55,7 @@ type DelegateRequest struct {
 
 func (dt *DelegationTracker) Delegate(ctx context.Context, req DelegateRequest) (*DelegationChain, error) {
 	var chainDepth int
-	err := dt.db.QueryRow(ctx,
+	err := dt.q.QueryRow(ctx,
 		`SELECT COUNT(*) FROM delegations WHERE child_agent_id = $1`,
 		req.ChildAgentID,
 	).Scan(&chainDepth)
@@ -66,7 +77,7 @@ func (dt *DelegationTracker) Delegate(ctx context.Context, req DelegateRequest) 
 	}
 
 	var parentOwner string
-	err = dt.db.QueryRow(ctx,
+	err = dt.q.QueryRow(ctx,
 		`SELECT owner FROM agents WHERE agent_id = $1 AND status = 'active'`,
 		req.ParentAgentID,
 	).Scan(&parentOwner)
@@ -75,7 +86,7 @@ func (dt *DelegationTracker) Delegate(ctx context.Context, req DelegateRequest) 
 	}
 
 	var childOwner string
-	err = dt.db.QueryRow(ctx,
+	err = dt.q.QueryRow(ctx,
 		`SELECT owner FROM agents WHERE agent_id = $1 AND status = 'active'`,
 		req.ChildAgentID,
 	).Scan(&childOwner)
@@ -99,7 +110,7 @@ func (dt *DelegationTracker) Delegate(ctx context.Context, req DelegateRequest) 
 		effectiveScope = []string{}
 	}
 
-	_, err = dt.db.Exec(ctx,
+	_, err = dt.q.Exec(ctx,
 		`INSERT INTO delegations (delegation_id, parent_agent_id, child_agent_id, scope, max_depth, expires_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
 		delegationID, parentID, childID, effectiveScope, req.MaxDepth, expiresAt,
@@ -121,7 +132,7 @@ func (dt *DelegationTracker) Delegate(ctx context.Context, req DelegateRequest) 
 
 func (dt *DelegationTracker) ValidateDelegation(ctx context.Context, parentAgentID, childAgentID string) (bool, error) {
 	var count int
-	err := dt.db.QueryRow(ctx,
+	err := dt.q.QueryRow(ctx,
 		`SELECT COUNT(*) FROM delegations
 		 WHERE parent_agent_id = $1 AND child_agent_id = $2 AND expires_at > NOW()`,
 		parentAgentID, childAgentID,
@@ -133,7 +144,7 @@ func (dt *DelegationTracker) ValidateDelegation(ctx context.Context, parentAgent
 }
 
 func (dt *DelegationTracker) GetDelegationChain(ctx context.Context, agentID string) ([]DelegationChain, error) {
-	rows, err := dt.db.Query(ctx,
+	rows, err := dt.q.Query(ctx,
 		`SELECT delegation_id, parent_agent_id, child_agent_id, scope, max_depth, expires_at
 		 FROM delegations
 		 WHERE parent_agent_id = $1 OR child_agent_id = $1
@@ -157,7 +168,7 @@ func (dt *DelegationTracker) GetDelegationChain(ctx context.Context, agentID str
 }
 
 func (dt *DelegationTracker) Revoke(ctx context.Context, delegationID string) error {
-	_, err := dt.db.Exec(ctx,
+	_, err := dt.q.Exec(ctx,
 		`DELETE FROM delegations WHERE delegation_id = $1`,
 		delegationID,
 	)

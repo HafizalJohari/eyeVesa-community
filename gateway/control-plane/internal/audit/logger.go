@@ -31,10 +31,19 @@ type AuditEntry struct {
 
 type AuditLogger struct {
 	db *database.DB
+	q  database.Querier
 }
 
 func NewAuditLogger(db *database.DB) *AuditLogger {
-	return &AuditLogger{db: db}
+	var q database.Querier
+	if db != nil && db.Pool != nil {
+		q = &database.PoolQuerier{Pool: db.Pool}
+	}
+	return &AuditLogger{db: db, q: q}
+}
+
+func NewAuditLoggerWithQuerier(q database.Querier) *AuditLogger {
+	return &AuditLogger{q: q}
 }
 
 func (a *AuditLogger) Log(ctx context.Context, entry AuditEntry, signingKey ed25519.PrivateKey) error {
@@ -56,7 +65,7 @@ func (a *AuditLogger) Log(ctx context.Context, entry AuditEntry, signingKey ed25
 		slog.Warn("no signing key provided, entry stored without signature", "log_id", entry.LogID)
 	}
 
-	_, err := a.db.Pool.Exec(ctx,
+	_, err := a.q.Exec(ctx,
 		`INSERT INTO audit_logs (log_id, agent_id, resource_id, action, method, params, result, result_status, trust_score_before, trust_score_after, session_id, signature)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		entry.LogID, entry.AgentID, nilIfEmpty(entry.ResourceID), entry.Action, entry.Method,
@@ -82,7 +91,7 @@ func (a *AuditLogger) VerifyIntegrity(ctx context.Context, logID string, publicK
 	var action, method, status, agentID, resourceID string
 	var signature []byte
 
-	err := a.db.Pool.QueryRow(ctx,
+	err := a.q.QueryRow(ctx,
 		`SELECT agent_id, resource_id, action, method, result_status, signature FROM audit_logs WHERE log_id = $1`,
 		logID,
 	).Scan(&agentID, &resourceID, &action, &method, &status, &signature)

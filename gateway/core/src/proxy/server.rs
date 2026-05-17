@@ -132,6 +132,18 @@ pub async fn handle_request(
         ("GET", p) if p.starts_with("/v1/hitl/") => {
             crate::proxy::forward::forward_to_control_plane(req, state).await
         }
+        ("POST", p) if p.starts_with("/v1/spire/") => {
+            crate::proxy::forward::forward_to_control_plane(req, state).await
+        }
+        ("GET", p) if p.starts_with("/v1/spire/") => {
+            crate::proxy::forward::forward_to_control_plane(req, state).await
+        }
+        ("PUT", p) if p.starts_with("/v1/spire/") => {
+            crate::proxy::forward::forward_to_control_plane(req, state).await
+        }
+        ("DELETE", p) if p.starts_with("/v1/spire/") => {
+            crate::proxy::forward::forward_to_control_plane(req, state).await
+        }
         ("GET", p) if p.starts_with("/v1/agents/") && p.ends_with("/trust") => {
             crate::proxy::forward::forward_to_control_plane(req, state).await
         }
