@@ -289,3 +289,295 @@ func TestMCPProtocol(t *testing.T) {
 		t.Errorf("expected protocol version 2024-11-05, got %s", protoVersion)
 	}
 }
+
+func TestSkillsCRUD(t *testing.T) {
+	createBody, _ := json.Marshal(map[string]interface{}{
+		"skill_name":     "integration-k8s",
+		"description":   "Kubernetes deployment skill",
+		"category":      "infrastructure",
+		"min_proficiency": 3,
+		"min_trust":     0.5,
+	})
+
+	createResp, err := http.Post("http://localhost:8080/v1/skills", "application/json", bytes.NewReader(createBody))
+	if err != nil {
+		t.Fatalf("create skill failed: %v", err)
+	}
+	defer createResp.Body.Close()
+
+	if createResp.StatusCode != http.StatusCreated && createResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 201/200, got %d", createResp.StatusCode)
+	}
+
+	var createResult map[string]interface{}
+	json.NewDecoder(createResp.Body).Decode(&createResult)
+
+	skillID, ok := createResult["skill_id"].(string)
+	if !ok || skillID == "" {
+		skillID, _ = createResult["id"].(string)
+	}
+	if skillID == "" {
+		t.Fatal("expected skill_id in create response")
+	}
+
+	listResp, err := http.Get("http://localhost:8080/v1/skills")
+	if err != nil {
+		t.Fatalf("list skills failed: %v", err)
+	}
+	defer listResp.Body.Close()
+
+	if listResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for list, got %d", listResp.StatusCode)
+	}
+}
+
+func TestSkillsAssignmentAndEndorsement(t *testing.T) {
+	agentBody, _ := json.Marshal(map[string]interface{}{
+		"name":          "skill-test-agent",
+		"owner":         "test-team",
+		"capabilities":  []string{"mcp"},
+		"allowed_tools": []string{"read", "k8s_deploy"},
+	})
+	agentResp, err := http.Post("http://localhost:8080/v1/agents/register", "application/json", bytes.NewReader(agentBody))
+	if err != nil {
+		t.Fatalf("register agent failed: %v", err)
+	}
+	defer agentResp.Body.Close()
+
+	var agentResult map[string]interface{}
+	json.NewDecoder(agentResp.Body).Decode(&agentResult)
+	agentID, _ := agentResult["agent_id"].(string)
+
+	skillBody, _ := json.Marshal(map[string]interface{}{
+		"skill_name":     "endorse-test-skill",
+		"description":   "Skill for endorsement testing",
+		"category":      "testing",
+		"min_proficiency": 2,
+		"min_trust":     0.3,
+	})
+	skillResp, err := http.Post("http://localhost:8080/v1/skills", "application/json", bytes.NewReader(skillBody))
+	if err != nil {
+		t.Fatalf("create skill failed: %v", err)
+	}
+	defer skillResp.Body.Close()
+
+	var skillResult map[string]interface{}
+	json.NewDecoder(skillResp.Body).Decode(&skillResult)
+	skillID, _ := skillResult["skill_id"].(string)
+	if skillID == "" {
+		skillID, _ = skillResult["id"].(string)
+	}
+
+	if skillID != "" && agentID != "" {
+		assignBody, _ := json.Marshal(map[string]interface{}{
+			"proficiency": 3,
+		})
+		assignResp, err := http.Post(fmt.Sprintf("http://localhost:8080/v1/skills/%s/assign?agent_id=%s", skillID, agentID), "application/json", bytes.NewReader(assignBody))
+		if err != nil {
+			t.Fatalf("assign skill failed: %v", err)
+		}
+		defer assignResp.Body.Close()
+
+		endorseBody, _ := json.Marshal(map[string]interface{}{
+			"endorser_id": agentID,
+			"comment":     "Integration test endorsement",
+		})
+		endorseResp, err := http.Post(fmt.Sprintf("http://localhost:8080/v1/skills/%s/endorse?agent_id=%s", skillID, agentID), "application/json", bytes.NewReader(endorseBody))
+		if err != nil {
+			t.Fatalf("endorse skill failed: %v", err)
+		}
+		defer endorseResp.Body.Close()
+	}
+}
+
+func TestTransactionProtocol(t *testing.T) {
+	agentBody, _ := json.Marshal(map[string]interface{}{
+		"name":          "tx-test-agent",
+		"owner":         "test-team",
+		"capabilities":  []string{"mcp"},
+		"allowed_tools": []string{"read", "write", "deploy"},
+	})
+	agentResp, err := http.Post("http://localhost:8080/v1/agents/register", "application/json", bytes.NewReader(agentBody))
+	if err != nil {
+		t.Fatalf("register agent failed: %v", err)
+	}
+	defer agentResp.Body.Close()
+
+	var agentResult map[string]interface{}
+	json.NewDecoder(agentResp.Body).Decode(&agentResult)
+	agentID, _ := agentResult["agent_id"].(string)
+	if agentID == "" {
+		t.Fatal("expected agent_id from registration")
+	}
+
+	issueBody, _ := json.Marshal(map[string]interface{}{
+		"agent_id":    agentID,
+		"resource_id": "res-tx-test",
+		"action":      "read",
+		"scopes":      []string{"read"},
+	})
+	issueResp, err := http.Post("http://localhost:8080/v1/tx/issue", "application/json", bytes.NewReader(issueBody))
+	if err != nil {
+		t.Fatalf("issue token failed: %v", err)
+	}
+	defer issueResp.Body.Close()
+
+	var issueResult map[string]interface{}
+	json.NewDecoder(issueResp.Body).Decode(&issueResult)
+
+	allowed, _ := issueResult["allowed"].(bool)
+	if !allowed {
+		t.Fatalf("expected token issuance to be allowed, got: %v", issueResult)
+	}
+
+	tokenData, _ := issueResult["capability_token"].(map[string]interface{})
+	if tokenData == nil {
+		t.Fatal("expected capability_token in response")
+	}
+
+	tokenID, _ := tokenData["jti"].(string)
+	if tokenID == "" {
+		t.Fatal("expected jti in capability token")
+	}
+
+	verifyBody, _ := json.Marshal(map[string]interface{}{
+		"token": tokenData,
+	})
+	verifyResp, err := http.Post("http://localhost:8080/v1/tx/verify", "application/json", bytes.NewReader(verifyBody))
+	if err != nil {
+		t.Fatalf("verify token failed: %v", err)
+	}
+	defer verifyResp.Body.Close()
+
+	var verifyResult map[string]interface{}
+	json.NewDecoder(verifyResp.Body).Decode(&verifyResult)
+
+	valid, _ := verifyResult["valid"].(bool)
+	if !valid {
+		t.Errorf("expected token to be valid, got: %v", verifyResult)
+	}
+
+	receiptBody, _ := json.Marshal(map[string]interface{}{
+		"token": tokenData,
+	})
+	receiptResp, err := http.Post("http://localhost:8080/v1/tx/receipt", "application/json", bytes.NewReader(receiptBody))
+	if err != nil {
+		t.Fatalf("issue receipt failed: %v", err)
+	}
+	defer receiptResp.Body.Close()
+
+	var receiptResult map[string]interface{}
+	json.NewDecoder(receiptResp.Body).Decode(&receiptResult)
+
+	receiptValid, _ := receiptResult["valid"].(bool)
+	if !receiptValid {
+		t.Fatalf("expected receipt to be valid, got: %v", receiptResult)
+	}
+
+	receiptData, _ := receiptResult["receipt"].(map[string]interface{})
+	if receiptData == nil {
+		t.Fatal("expected receipt in response")
+	}
+
+	receiptVerifyBody, _ := json.Marshal(map[string]interface{}{
+		"receipt": receiptData,
+	})
+	receiptVerifyResp, err := http.Post("http://localhost:8080/v1/tx/receipt/verify", "application/json", bytes.NewReader(receiptVerifyBody))
+	if err != nil {
+		t.Fatalf("verify receipt failed: %v", err)
+	}
+	defer receiptVerifyResp.Body.Close()
+
+	var receiptVerifyResult map[string]interface{}
+	json.NewDecoder(receiptVerifyResp.Body).Decode(&receiptVerifyResult)
+
+	rvValid, _ := receiptVerifyResult["valid"].(bool)
+	if !rvValid {
+		t.Errorf("expected receipt verification to be valid, got: %v", receiptVerifyResult)
+	}
+
+	if tokenID != "" {
+		revokeBody, _ := json.Marshal(map[string]interface{}{
+			"reason": "integration test revocation",
+		})
+		revokeResp, err := http.Post(fmt.Sprintf("http://localhost:8080/v1/tx/revoke/%s", tokenID), "application/json", bytes.NewReader(revokeBody))
+		if err != nil {
+			t.Fatalf("revoke token failed: %v", err)
+		}
+		defer revokeResp.Body.Close()
+
+		var revokeResult map[string]interface{}
+		json.NewDecoder(revokeResp.Body).Decode(&revokeResult)
+	}
+}
+
+func TestTransactionTokenDenied(t *testing.T) {
+	agentBody, _ := json.Marshal(map[string]interface{}{
+		"name":          "tx-denied-agent",
+		"owner":         "test-team",
+		"capabilities":  []string{"mcp"},
+		"allowed_tools": []string{"read"},
+	})
+	agentResp, err := http.Post("http://localhost:8080/v1/agents/register", "application/json", bytes.NewReader(agentBody))
+	if err != nil {
+		t.Fatalf("register agent failed: %v", err)
+	}
+	defer agentResp.Body.Close()
+
+	var agentResult map[string]interface{}
+	json.NewDecoder(agentResp.Body).Decode(&agentResult)
+	agentID, _ := agentResult["agent_id"].(string)
+
+	issueBody, _ := json.Marshal(map[string]interface{}{
+		"agent_id": agentID,
+		"action":   "nuclear_launch",
+	})
+	issueResp, err := http.Post("http://localhost:8080/v1/tx/issue", "application/json", bytes.NewReader(issueBody))
+	if err != nil {
+		t.Fatalf("issue token request failed: %v", err)
+	}
+	defer issueResp.Body.Close()
+
+	var issueResult map[string]interface{}
+	json.NewDecoder(issueResp.Body).Decode(&issueResult)
+
+	allowed, _ := issueResult["allowed"].(bool)
+	if allowed {
+		t.Error("nuclear_launch should be denied for basic agent")
+	}
+}
+
+func TestSPIREIdentity(t *testing.T) {
+	listResp, err := http.Get("http://localhost:8080/v1/spire/trust-bundle")
+	if err != nil {
+		t.Fatalf("get trust bundle failed: %v", err)
+	}
+	defer listResp.Body.Close()
+
+	if listResp.StatusCode == http.StatusOK {
+		var result map[string]interface{}
+		json.NewDecoder(listResp.Body).Decode(&result)
+		t.Logf("SPIRE trust bundle returned: %v", result)
+	} else {
+		t.Logf("SPIRE not configured (status %d), skipping SPIRE tests", listResp.StatusCode)
+	}
+}
+
+func TestSPIREWorkloadRegistration(t *testing.T) {
+	regBody, _ := json.Marshal(map[string]interface{}{
+		"spiffe_id": "spiffe://example.com/integration-test",
+		"selector":  "unix:uid:1000",
+		"ttl":       3600,
+	})
+	regResp, err := http.Post("http://localhost:8080/v1/spire/register", "application/json", bytes.NewReader(regBody))
+	if err != nil {
+		t.Fatalf("SPIRE register request failed: %v", err)
+	}
+	defer regResp.Body.Close()
+
+	if regResp.StatusCode == http.StatusOK || regResp.StatusCode == http.StatusCreated {
+		t.Log("SPIRE workload registration succeeded")
+	} else {
+		t.Logf("SPIRE not available (status %d), workload registration skipped", regResp.StatusCode)
+	}
+}

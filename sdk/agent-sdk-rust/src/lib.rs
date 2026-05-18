@@ -8,6 +8,8 @@ pub mod hitl;
 pub mod mcp;
 pub mod verify;
 pub mod skills;
+pub mod airport;
+pub mod integrations;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

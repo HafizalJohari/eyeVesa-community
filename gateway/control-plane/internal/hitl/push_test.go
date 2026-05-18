@@ -88,6 +88,60 @@ func TestFCMLegacyNotConfigured(t *testing.T) {
 	}
 }
 
+func TestPushNotifierSendAPNsNotConfigured(t *testing.T) {
+	notifier := NewPushNotifier()
+	err := notifier.sendAPNs(nil, "device-token", "test")
+	if err == nil {
+		t.Fatal("should fail when APNs not configured")
+	}
+}
+
+func TestPushNotifierSendFCMNotConfigured(t *testing.T) {
+	notifier := NewPushNotifier()
+	err := notifier.sendFCM(nil, "fcm-token", "test")
+	if err == nil {
+		t.Fatal("should fail when FCM not configured")
+	}
+}
+
+func TestPushToken_Fields(t *testing.T) {
+	pt := PushToken{
+		TokenID:     "t1",
+		ApproverID:  "a1",
+		DeviceToken: "device-abc",
+		Platform:    "ios",
+		BundleID:    "com.test.app",
+		IsActive:    true,
+	}
+	if pt.TokenID != "t1" {
+		t.Fatalf("TokenID mismatch: got %s", pt.TokenID)
+	}
+	if !pt.IsActive {
+		t.Fatal("IsActive should be true")
+	}
+}
+
+func TestPushService_NewWithNilDB(t *testing.T) {
+	svc := NewPushService(nil)
+	if svc == nil {
+		t.Fatal("NewPushService should return non-nil")
+	}
+}
+
+func TestParseECPrivateKeyInvalid(t *testing.T) {
+	_, err := parseECPrivateKey([]byte("not-a-key"))
+	if err == nil {
+		t.Fatal("should fail for invalid key data")
+	}
+}
+
+func TestParseECPrivateKeyEmpty(t *testing.T) {
+	_, err := parseECPrivateKey([]byte(""))
+	if err == nil {
+		t.Fatal("should fail for empty key data")
+	}
+}
+
 func newTestHTTPClient() *http.Client {
 	return &http.Client{Timeout: 1}
 }

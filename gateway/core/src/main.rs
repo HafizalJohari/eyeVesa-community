@@ -26,6 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .unwrap_or_else(|_| "localhost:8080".to_string());
     let mode = std::env::var("GATEWAY_MODE")
         .unwrap_or_else(|_| "plaintext".to_string());
+    let listen_port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(9443);
     let backend_tls = tls::BackendTlsConfig::from_env();
     tracing::info!("Control plane gRPC address: {}", control_plane_addr);
     tracing::info!("Control plane HTTP address: {}", control_plane_http_addr);
@@ -92,18 +96,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match mode.as_str() {
             "tls" => {
                 let tls_config = tls::TlsConfig::from_env();
-                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
+                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], listen_port));
                 tracing::info!("Starting TLS proxy on {}", addr);
                 tls::server::run_tls(addr, &tls_config, server_state, cancel_clone).await
             }
             "mtls" => {
                 let tls_config = tls::TlsConfig::from_env();
-                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
+                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], listen_port));
                 tracing::info!("Starting mTLS proxy on {}", addr);
                 tls::server::run_mtls(addr, &tls_config, server_state, cancel_clone).await
             }
             _ => {
-                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 9443));
+                let addr = std::net::SocketAddr::from(([0, 0, 0, 0], listen_port));
                 tracing::info!("Proxy server listening on {} (plaintext)", addr);
                 proxy::server::run(addr, server_state, cancel_clone).await
             }

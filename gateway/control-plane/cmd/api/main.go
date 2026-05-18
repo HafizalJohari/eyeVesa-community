@@ -42,6 +42,7 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ratelimit"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/tenant"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/tx"
 )
 
 func main() {
@@ -90,6 +91,17 @@ func main() {
 	}
 	slog.Info("gateway key loaded", "public_key", fmt.Sprintf("%x", pubKey))
 
+	keyRotationGracePeriod := 5 * time.Minute
+	if v := os.Getenv("KEY_ROTATION_GRACE_SECS"); v != "" {
+		if secs, err := strconv.ParseInt(v, 10, 64); err == nil && secs > 0 {
+			keyRotationGracePeriod = time.Duration(secs) * time.Second
+		}
+	}
+	keyRotationService, err := gwcrypto.NewKeyRotationService(keyPath, keyRotationGracePeriod)
+	if err != nil {
+		slog.Warn("key rotation service not available", "error", err)
+	}
+
 	auditLogger := audit.NewAuditLogger(db)
 
 	identityProvider := identity.NewIdentityProvider()
@@ -114,6 +126,15 @@ func main() {
 	tenantService := tenant.NewTenantService(db)
 	pushService := hitl.NewPushService(db.Pool)
 	spireService := identity.NewSpireService(db.Pool)
+
+	txTokenExpiry := 5 * time.Minute
+	if v := os.Getenv("TX_TOKEN_EXPIRY_SECS"); v != "" {
+		if secs, err := strconv.ParseInt(v, 10, 64); err == nil && secs > 0 {
+			txTokenExpiry = time.Duration(secs) * time.Second
+		}
+	}
+	tokenService := tx.NewTokenService(privKey, pubKey, txTokenExpiry)
+	revocationStore := tx.NewRevocationStore(&database.PoolQuerier{Pool: db.Pool})
 
 	webhookNotifier := hitl.NewWebhookNotifier()
 	escalationService.RegisterNotifier(hitl.ChannelWebhook, webhookNotifier)
@@ -215,6 +236,9 @@ func main() {
 	handlers.SetPushService(pushService)
 	handlers.SetSpireService(spireService)
 	handlers.SetIdentityProvider(identityProvider)
+	handlers.SetTokenService(tokenService)
+	handlers.SetRevocationStore(revocationStore)
+	handlers.SetKeyRotationService(keyRotationService)
 
 	grpcSrv := grpcserver.NewGatewayServer(db, auditLogger, privKey, policyEngine)
 
@@ -365,6 +389,27 @@ func main() {
 
 		r.Post("/agents/{agentID}/skill-authz", handlers.CheckSkillAuthz)
 		r.Post("/agents/{agentID}/missing-skills", handlers.FindMissingSkills)
+
+		// Phase 7: Transaction Protocol
+		r.Post("/tx/issue", handlers.IssueCapabilityToken)
+		r.Post("/tx/verify", handlers.VerifyCapabilityToken)
+		r.Post("/tx/revoke/{tokenID}", handlers.RevokeCapabilityToken)
+		r.Get("/tx/revoked", handlers.ListRevokedTokens)
+		r.Post("/tx/receipt", handlers.IssueTransactionReceipt)
+		r.Post("/tx/receipt/verify", handlers.VerifyTransactionReceipt)
+
+		// Phase 8: Key Rotation
+		r.Post("/keys/rotate", handlers.RotateKey)
+		r.Get("/keys/status", handlers.GetKeyRotationStatus)
+		r.Post("/keys/clear-previous", handlers.ClearPreviousKey)
+
+		// Airport: Where agents meet
+		r.Post("/airport/heartbeat", handlers.AirportHeartbeatHandler)
+		r.Get("/airport/agents", handlers.AirportSearchHandler)
+		r.Get("/airport/online", handlers.AirportListOnlineHandler)
+		r.Get("/airport/agents/{agentID}", handlers.AirportGetProfileHandler)
+		r.Put("/airport/agents/{agentID}", handlers.AirportUpdateProfileHandler)
+		r.Get("/airport/connections", handlers.AirportConnectionsHandler)
 	})
 
 	var httpSrv *http.Server

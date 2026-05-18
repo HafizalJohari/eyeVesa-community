@@ -219,3 +219,23 @@ eyeVesa supports integration with Agentic AI systems from Claude, OpenAI, Anthro
 - Database: `agentid` on `localhost:5432`, user `agentid`, password `agentid_dev`
 - Keys: Ed25519 at `GATEWAY_KEY_PATH`, PTV ECDSA at `PTV_KEY_PATH`
 - Migrations: `psql -h localhost -U agentid -d agentid -f registry/migrations/NNN_*.sql`
+
+## 17. Agent SDK
+
+First-party SDKs for Python, Rust, and TypeScript. All three provide Ed25519 identity, MCP invocation, HITL approvals, PTV attestation, delegation, skills management, and a transaction protocol.
+
+| Feature | Python | Rust | TypeScript |
+|---|---|---|---|
+| Package | agentid-sdk | agentid-sdk | agentid-sdk |
+| Registration | connect() | AgentClient::connect() | connect() |
+| MCP Invoke | invoke() | client.invoke() | invoke() |
+| Ed25519 | PyNaCl | ed25519-dalek | tweetnacl |
+| HITL | request_approval() | client.request_approval() | requestApproval() |
+| PTV | attest() / bind() | client.attest() / bind() | attest() / bind() |
+| Delegation | delegate() | client.delegate() | delegate() |
+| Skills | create_skill() / assign_skill() | client.create_skill() / assign() | createSkill() / assignSkill() |
+| Token TX | issue_token() / issue_receipt() | - | issueToken() / issueReceipt() |
+| Framework integrations | LangGraph, CrewAI, AutoGen | - | LangGraph, CrewAI, AutoGen |
+| from_env() | Yes | No | Yes |
+| Min version | Python 3.10+ | Rust 2021 Edition | Node 18+ |
+| HTTP | httpx.AsyncClient | reqwest | fetch() (native) |

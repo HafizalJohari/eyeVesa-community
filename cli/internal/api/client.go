@@ -579,3 +579,101 @@ func (c *Client) FindMissingSkills(agentID string, requiredSkills []string) (map
 	}
 	return c.Post("/v1/agents/"+agentID+"/missing-skills", body)
 }
+
+func (c *Client) IssueCapabilityToken(agentID, resourceID, action string, scopes []string, params map[string]interface{}) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"agent_id":    agentID,
+		"resource_id": resourceID,
+		"action":      action,
+		"scopes":      scopes,
+		"params":      params,
+	}
+	return c.Post("/v1/tx/issue", body)
+}
+
+func (c *Client) VerifyCapabilityToken(token string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"token": token,
+	}
+	return c.Post("/v1/tx/verify", body)
+}
+
+func (c *Client) RevokeCapabilityToken(tokenID, reason string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"reason": reason,
+	}
+	return c.Post("/v1/tx/revoke/"+tokenID, body)
+}
+
+func (c *Client) ListRevokedTokens() (map[string]interface{}, error) {
+	return c.Get("/v1/tx/revoked")
+}
+
+func (c *Client) IssueTransactionReceipt(token string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"token": token,
+	}
+	return c.Post("/v1/tx/receipt", body)
+}
+
+func (c *Client) VerifyTransactionReceipt(receipt string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"receipt": receipt,
+	}
+	return c.Post("/v1/tx/receipt/verify", body)
+}
+
+func (c *Client) AirportHeartbeat(agentID, status string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"agent_id": agentID,
+		"status":   status,
+	}
+	return c.Post("/v1/airport/heartbeat", body)
+}
+
+func (c *Client) AirportSearch(params map[string]interface{}) (map[string]interface{}, error) {
+	query := "/v1/airport/agents?"
+	parts := []string{}
+	if v, ok := params["capability"].(string); ok && v != "" {
+		parts = append(parts, "capability="+v)
+	}
+	if v, ok := params["skill"].(string); ok && v != "" {
+		parts = append(parts, "skill="+v)
+	}
+	if v, ok := params["status"].(string); ok && v != "" {
+		parts = append(parts, "status="+v)
+	}
+	if v, ok := params["tag"].(string); ok && v != "" {
+		parts = append(parts, "tag="+v)
+	}
+	if v, ok := params["owner"].(string); ok && v != "" {
+		parts = append(parts, "owner="+v)
+	}
+	if v, ok := params["min_trust"].(float64); ok {
+		parts = append(parts, fmt.Sprintf("min_trust=%f", v))
+	}
+	limit := 50
+	if v, ok := params["limit"].(int); ok && v > 0 {
+		limit = v
+	}
+	parts = append(parts, fmt.Sprintf("limit=%d", limit))
+	query += strings.Join(parts, "&")
+	return c.Get(query)
+}
+
+func (c *Client) AirportGetProfile(agentID string) (map[string]interface{}, error) {
+	return c.Get("/v1/airport/agents/" + agentID)
+}
+
+func (c *Client) AirportUpdateProfile(agentID string, update map[string]interface{}) (map[string]interface{}, error) {
+	return c.Put("/v1/airport/agents/"+agentID, update)
+}
+
+func (c *Client) AirportListOnline() (map[string]interface{}, error) {
+	return c.Get("/v1/airport/online")
+}
+
+func (c *Client) AirportConnections(agentID string, limit int) (map[string]interface{}, error) {
+	path := fmt.Sprintf("/v1/airport/connections?agent_id=%s&limit=%d", agentID, limit)
+	return c.Get(path)
+}

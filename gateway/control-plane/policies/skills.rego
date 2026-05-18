@@ -69,7 +69,3 @@ trust_delta := 0.00 {
 	not trust_sufficient
 	count(input.required_skills) > 0
 }
-
-min_val(arr) = min_val if {
-	min_val := min(arr)
-}

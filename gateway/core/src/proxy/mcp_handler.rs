@@ -170,6 +170,69 @@ pub async fn handle_mcp_request(
                 Err(_) => serde_json::json!({"error": "failed to endorse skill"}),
             }
         },
+        "airport/search" => {
+            let base_url = state.control_plane_http_addr.read().await.clone();
+            let capability = rpc_req.params.as_ref().and_then(|p| p.get("capability")).and_then(|v| v.as_str()).unwrap_or("");
+            let skill = rpc_req.params.as_ref().and_then(|p| p.get("skill")).and_then(|v| v.as_str()).unwrap_or("");
+            let min_trust = rpc_req.params.as_ref().and_then(|p| p.get("min_trust")).and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let status = rpc_req.params.as_ref().and_then(|p| p.get("status")).and_then(|v| v.as_str()).unwrap_or("");
+            let limit = rpc_req.params.as_ref().and_then(|p| p.get("limit")).and_then(|v| v.as_u64()).unwrap_or(50);
+            let mut url = format!("{}/v1/airport/agents?min_trust={}&limit={}", base_url, min_trust, limit);
+            if !capability.is_empty() { url = format!("{}&capability={}", url, capability); }
+            if !skill.is_empty() { url = format!("{}&skill={}", url, skill); }
+            if !status.is_empty() { url = format!("{}&status={}", url, status); }
+            match state.http_client.get(&url).send().await {
+                Ok(resp) => resp.json().await.unwrap_or(serde_json::json!({"agents": []})),
+                Err(_) => serde_json::json!({"agents": []}),
+            }
+        }
+        "airport/heartbeat" => {
+            let url = format!("{}/v1/airport/heartbeat", state.control_plane_http_addr.read().await.clone());
+            let body = serde_json::json!({
+                "agent_id": rpc_req.params.as_ref().and_then(|p| p.get("agent_id")).and_then(|v| v.as_str()).unwrap_or(""),
+                "status": rpc_req.params.as_ref().and_then(|p| p.get("status")).and_then(|v| v.as_str()).unwrap_or("online"),
+                "metadata": rpc_req.params.as_ref().and_then(|p| p.get("metadata")).cloned().unwrap_or(serde_json::json!({})),
+            });
+            match state.http_client.post(&url).json(&body).send().await {
+                Ok(resp) => resp.json().await.unwrap_or(serde_json::json!({})),
+                Err(_) => serde_json::json!({"error": "heartbeat failed"}),
+            }
+        }
+        "airport/profile" => {
+            let agent_id = rpc_req.params.as_ref().and_then(|p| p.get("agent_id")).and_then(|v| v.as_str()).unwrap_or("");
+            let base_url = state.control_plane_http_addr.read().await.clone();
+            if rpc_req.method.as_str() == "airport/profile" && rpc_req.params.as_ref().and_then(|p| p.get("update")).is_some() {
+                let url = format!("{}/v1/airport/agents/{}", base_url, agent_id);
+                let update = rpc_req.params.as_ref().and_then(|p| p.get("update")).cloned().unwrap_or(serde_json::json!({}));
+                match state.http_client.put(&url).json(&update).send().await {
+                    Ok(resp) => resp.json().await.unwrap_or(serde_json::json!({})),
+                    Err(_) => serde_json::json!({"error": "profile update failed"}),
+                }
+            } else {
+                let url = format!("{}/v1/airport/agents/{}", base_url, agent_id);
+                match state.http_client.get(&url).send().await {
+                    Ok(resp) => resp.json().await.unwrap_or(serde_json::json!({})),
+                    Err(_) => serde_json::json!({"error": "agent not found"}),
+                }
+            }
+        }
+        "airport/online" => {
+            let url = format!("{}/v1/airport/online", state.control_plane_http_addr.read().await.clone());
+            match state.http_client.get(&url).send().await {
+                Ok(resp) => resp.json().await.unwrap_or(serde_json::json!({"agents": []})),
+                Err(_) => serde_json::json!({"agents": []}),
+            }
+        }
+        "airport/connections" => {
+            let agent_id = rpc_req.params.as_ref().and_then(|p| p.get("agent_id")).and_then(|v| v.as_str()).unwrap_or("");
+            let limit = rpc_req.params.as_ref().and_then(|p| p.get("limit")).and_then(|v| v.as_u64()).unwrap_or(50);
+            let url = format!("{}/v1/airport/connections?agent_id={}&limit={}",
+                state.control_plane_http_addr.read().await.clone(), agent_id, limit);
+            match state.http_client.get(&url).send().await {
+                Ok(resp) => resp.json().await.unwrap_or(serde_json::json!({"connections": []})),
+                Err(_) => serde_json::json!({"connections": []}),
+            }
+        }
         _ => {
             let resp = JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),

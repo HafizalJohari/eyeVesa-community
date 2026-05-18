@@ -1,7 +1,14 @@
 package auth
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestGenerateAPIKey(t *testing.T) {
@@ -12,6 +19,9 @@ func TestGenerateAPIKey(t *testing.T) {
 	}
 	if len(key1) < 20 {
 		t.Fatalf("API key too short: %s", key1)
+	}
+	if !strings.HasPrefix(key1, "eyevesa_") {
+		t.Fatalf("API key should have eyevesa_ prefix, got: %s", key1)
 	}
 }
 
@@ -105,5 +115,306 @@ func TestIsPublicPath(t *testing.T) {
 		if got := isPublicPath(tt.path); got != tt.expected {
 			t.Errorf("isPublicPath(%q) = %v, want %v", tt.path, got, tt.expected)
 		}
+	}
+}
+
+func TestMiddleware_PublicPath(t *testing.T) {
+	auth := NewAuthMiddleware(nil, "test-secret")
+	called := false
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	for _, path := range []string{"/health", "/identity", "/v1/agents/register", "/v1/resources/register", "/v1/mcp"} {
+		called = false
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if !called {
+			t.Errorf("public path %s should pass through", path)
+		}
+	}
+}
+
+func TestMiddleware_Unauthorized(t *testing.T) {
+	auth := NewAuthMiddleware(nil, "test-secret")
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("should not call next handler for unauthorized request")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/agents", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestMiddleware_BearerToken(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	called := false
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		TenantID:  "t1",
+		Email:    "u@test.com",
+		Role:     "admin",
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		IssuedAt:  time.Now().Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/agents", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("bearer token should pass through")
+	}
+}
+
+func TestMiddleware_ExpiredBearerToken(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("expired token should not pass")
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		ExpiresAt: time.Now().Add(-time.Hour).Unix(),
+		IssuedAt:  time.Now().Add(-2 * time.Hour).Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/agents", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for expired token, got %d", rec.Code)
+	}
+}
+
+func TestMiddleware_InvalidBearerToken(t *testing.T) {
+	auth := NewAuthMiddleware(nil, "test-secret")
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("invalid token should not pass")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/agents", nil)
+	req.Header.Set("Authorization", "Bearer invalid-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for invalid token, got %d", rec.Code)
+	}
+}
+
+func TestMiddleware_SSO(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	var gotTenant string
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = GetTenantID(r.Context())
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		TenantID:  "tenant-abc",
+		Role:     "approver",
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		IssuedAt:  time.Now().Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/agents", nil)
+	req.AddCookie(&http.Cookie{Name: "eyevesa_sso", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if gotTenant != "tenant-abc" {
+		t.Fatalf("expected tenant-abc, got %s", gotTenant)
+	}
+}
+
+func TestMiddleware_ExpiredSSO(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("expired SSO should not pass")
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		TenantID:  "tenant-abc",
+		ExpiresAt: time.Now().Add(-time.Hour).Unix(),
+		IssuedAt:  time.Now().Add(-2 * time.Hour).Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/agents", nil)
+	req.AddCookie(&http.Cookie{Name: "eyevesa_sso", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for expired SSO, got %d", rec.Code)
+	}
+}
+
+func TestMiddleware_SSONoTenantID(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("SSO without tenant_id should not pass")
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		IssuedAt:  time.Now().Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/agents", nil)
+	req.AddCookie(&http.Cookie{Name: "eyevesa_sso", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestRequireRole_AdminSucceeds(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	called := false
+	handler := auth.RequireRole("operator")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		Role:      "admin",
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		IssuedAt:  time.Now().Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("admin should pass operator role check")
+	}
+}
+
+func TestRequireRole_ViewerFails(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	handler := auth.RequireRole("operator")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("viewer should not pass operator role check")
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		Role:      "viewer",
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		IssuedAt:  time.Now().Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+}
+
+func TestRequireRole_NoBearer(t *testing.T) {
+	auth := NewAuthMiddleware(nil, "secret")
+	handler := auth.RequireRole("admin")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("should not pass without bearer")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+}
+
+func TestRequireRole_SameRole(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	called := false
+	handler := auth.RequireRole("operator")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		Role:      "operator",
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		IssuedAt:  time.Now().Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("operator should pass operator role check")
+	}
+}
+
+func TestGetTenantID_Empty(t *testing.T) {
+	if tid := GetTenantID(context.Background()); tid != "" {
+		t.Fatalf("expected empty tenant, got %s", tid)
+	}
+}
+
+func TestJWTClaims_Valid(t *testing.T) {
+	claims := &JWTClaims{ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	if err := claims.Valid(); err != nil {
+		t.Fatalf("valid claims should pass: %v", err)
+	}
+}
+
+func TestJWTClaims_Expired(t *testing.T) {
+	claims := &JWTClaims{ExpiresAt: time.Now().Add(-time.Hour).Unix()}
+	if err := claims.Valid(); err == nil {
+		t.Fatal("expired claims should fail Valid()")
+	}
+}
+
+func TestParseJWT_WrongSigningMethod(t *testing.T) {
+	claims := jwt.MapClaims{
+		"tenant_id": "t1",
+		"exp":       float64(time.Now().Add(time.Hour).Unix()),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
+	tokenString, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+
+	_, err := parseJWT(tokenString, []byte("any-secret"))
+	if err == nil {
+		t.Fatal("none signing method should be rejected")
+	}
+}
+
+func TestParsePEMCertificate_Invalid(t *testing.T) {
+	_, err := ParsePEMCertificate([]byte("not-a-pem"))
+	if err == nil {
+		t.Fatal("invalid PEM should fail")
+	}
+}
+
+func TestParsePEMCertificate_Empty(t *testing.T) {
+	_, err := ParsePEMCertificate([]byte(""))
+	if err == nil {
+		t.Fatal("empty PEM should fail")
 	}
 }

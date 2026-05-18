@@ -9,5 +9,5 @@ RUN cd gateway/core && cargo build --release
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/gateway/core/target/release/agentid-core /usr/local/bin/agentid-core
-EXPOSE 9443
+EXPOSE 8080
 CMD ["agentid-core"]

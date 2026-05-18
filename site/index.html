@@ -11,7 +11,7 @@
     <link rel="canonical" href="https://eyevesa.pages.dev/">
     <meta property="og:title" content="eyeVesa -- Identity & Trust Layer for AI Agents">
     <meta property="og:description" content="Cryptographic identity, real-time authorization, and non-repudiable audit trails for autonomous AI agents.">
-    <meta property="og:image" content="https://eyevesa.pages.dev/social-preview.png">
+    <meta property="og:image" content="https://eyevesa.pages.dev/logo.svg">
     <meta property="og:url" content="https://eyevesa.pages.dev/">
     <meta property="og:type" content="website">
     <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="eyeVesa -- Identity & Trust Layer for AI Agents">
     <meta name="twitter:description" content="Cryptographic identity, real-time authorization, and non-repudiable audit trails for autonomous AI agents.">
-    <meta name="twitter:image" content="https://eyevesa.pages.dev/social-preview.png">
+    <meta name="twitter:image" content="https://eyevesa.pages.dev/logo.svg">
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -151,6 +151,7 @@
             <a href="#hermes">[Hermes]</a>
             <a href="#cli">[CLI]</a>
             <a href="#quickstart">[Quick Start]</a>
+            <a href="#sdk">[SDK]</a>
             <a href="#faq">[FAQ]</a>
         </center>
     </div>
@@ -799,6 +800,157 @@ cd gateway/control-plane &amp;&amp; go run cmd/api/main.go</pre>
     <pre>curl http://localhost:8080/health     # Control plane
 curl http://localhost:9443/health     # Gateway core
 curl http://localhost:8181/v1/data/agentid/authz/allow  # OPA</pre>
+
+    <hr>
+
+    <a name="sdk"></a>
+    <h2>SDK</h2>
+    <p>Agent SDKs for Python, Rust, and TypeScript. Every SDK provides cryptographic identity (Ed25519), MCP tool invocation, policy-based authorization, HITL approvals, PTV attestation, agent delegation, skills management, and a transaction protocol with signed capability tokens and receipts.</p>
+
+    <h3>SDK Comparison</h3>
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Feature</th><th>Python</th><th>Rust</th><th>TypeScript</th></tr>
+        <tr><td>Agent Registration</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>MCP Invocation</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Ed25519 Signing</td><td>PyNaCl</td><td>ed25519-dalek</td><td>tweetnacl</td></tr>
+        <tr><td>HITL Approvals</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>PTV Attestation</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Agent Delegation</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Skills System</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+        <tr><td>Token TX Protocol</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+        <tr><td>Framework Integrations</td><td>LangGraph, CrewAI, AutoGen</td><td>None</td><td>LangGraph, CrewAI, AutoGen</td></tr>
+        <tr><td>from_env() Config</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+        <tr><td>Async / Sync</td><td>Async (httpx)</td><td>Async (tokio)</td><td>Async (fetch)</td></tr>
+        <tr><td>Min Version</td><td>Python 3.10+</td><td>Rust 2021 Edition</td><td>Node 18+</td></tr>
+    </table>
+
+    <h3>Python SDK</h3>
+
+    <p>Package: <tt>agentid-sdk</tt> &middot; Dependencies: httpx, pydantic, PyNaCl</p>
+
+    <pre>
+    import asyncio
+    from agentid_sdk import AgentClient, AgentConfig
+
+    async def main():
+        config = AgentConfig(
+            agent_id="my-agent-001",
+            name="my-agent",
+            owner="my-team",
+            gateway_endpoint="http://localhost:9443",
+        )
+        async with AgentClient(config) as client:
+            await client.connect()
+            print(f"Trust score: {client.trust_score}")
+            tools = await client.discover("mcp")
+            result = await client.invoke(
+                resource_id="d4385f9f-bcf8-47b9-90f4-b1fce91def59",
+                tool="read",
+                params={"location": "Kuala Lumpur"},
+            )
+            print(f"Result: {result.data}")
+
+    asyncio.run(main())
+    </pre>
+
+    <h3>Rust SDK</h3>
+
+    <p>Crate: <tt>agentid-sdk</tt> &middot; Dependencies: tokio, reqwest, ed25519-dalek, serde</p>
+
+    <pre>
+    use agentid_sdk::{AgentClient, AgentConfig};
+    use ed25519_dalek::SigningKey;
+    use rand::rngs::OsRng;
+
+    #[tokio::main]
+    async fn main() {
+        let config = AgentConfig {
+            agent_id: "my-agent-001".into(),
+            name: "my-agent".into(),
+            owner: "my-team".into(),
+            gateway_endpoint: "http://localhost:9443".into(),
+            capabilities: vec!["read".into(), "write".into()],
+            allowed_tools: vec!["log_search".into()],
+        };
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let client = AgentClient::connect(config, signing_key).await.unwrap();
+        println!("Trust score: {}", client.trust_score());
+        let result = client.invoke(
+            "d4385f9f-bcf8-47b9-90f4-b1fce91def59",
+            "read",
+            serde_json::json!({"location": "Kuala Lumpur"}),
+        ).await.unwrap();
+        println!("Result: {}", result.data);
+    }
+    </pre>
+
+    <h3>TypeScript SDK</h3>
+
+    <p>Package: <tt>agentid-sdk</tt> &middot; Dependencies: tweetnacl</p>
+
+    <pre>
+    import { AgentClient, AgentConfig } from "agentid-sdk";
+
+    const config: AgentConfig = {
+        agentId: "my-agent-001",
+        name: "my-agent",
+        owner: "my-team",
+        gatewayEndpoint: "http://localhost:9443",
+    };
+    const client = new AgentClient(config);
+    await client.connect();
+    console.log(`Trust score: ${client.trustScore}`);
+    const tools = await client.discover("mcp");
+    const result = await client.invoke(
+        "d4385f9f-bcf8-47b9-90f4-b1fce91def59",
+        "read",
+        { location: "Kuala Lumpur" },
+    );
+    console.log(`Result: ${result.data}`);
+    </pre>
+
+    <h3>Framework Integrations</h3>
+    <p>Python and TypeScript SDKs include ready-made integrations for popular agent frameworks:</p>
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Framework</th><th>Integration</th><th>Methods</th></tr>
+        <tr><td><b>LangGraph</b></td><td>LangGraphIntegration</td><td>from_config(), connect(), get_tools(), call_tool(), authorize_and_invoke()</td></tr>
+        <tr><td><b>CrewAI</b></td><td>CrewAIIntegration</td><td>from_config(), connect(), create_tool_definition()</td></tr>
+        <tr><td><b>AutoGen</b></td><td>AutoGenIntegration</td><td>from_config(), connect(), get_function_definitions(), execute_function()</td></tr>
+    </table>
+
+    <h3>Configuration</h3>
+    <p>All three SDKs read from environment variables or constructor arguments:</p>
+    <table border="1" cellpadding="8" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Variable</th><th>Default</th><th>Description</th></tr>
+        <tr><td><tt>AGENT_ID</tt></td><td>UUID v4</td><td>Unique agent identifier</td></tr>
+        <tr><td><tt>AGENT_NAME</tt></td><td>python-agent/node-agent</td><td>Human-readable name</td></tr>
+        <tr><td><tt>AGENT_OWNER</tt></td><td>default</td><td>Owning entity (org:team)</td></tr>
+        <tr><td><tt>GATEWAY_ENDPOINT</tt></td><td>http://localhost:9443</td><td>eyeVesa Gateway URL</td></tr>
+    </table>
+
+    <h3>SDK API Endpoints</h3>
+    <table border="1" cellpadding="4" cellspacing="0" width="100%">
+        <tr bgcolor="#333"><th>Method</th><th>Path</th><th>SDK Method</th></tr>
+        <tr><td>POST</td><td><tt>/v1/register</tt></td><td>connect()</td></tr>
+        <tr><td>GET</td><td><tt>/v1/resources</tt></td><td>discover()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/auth</tt></td><td>authorize (internal)</td></tr>
+        <tr><td>POST</td><td><tt>/v1/mcp</tt></td><td>mcp_initialize / mcp_list_tools / mcp_call_tool</td></tr>
+        <tr><td>POST</td><td><tt>/v1/delegate</tt></td><td>delegate()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/ptv/attest</tt></td><td>attest()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/ptv/bind</tt></td><td>bind()</td></tr>
+        <tr><td>GET</td><td><tt>/v1/ptv/verify/{id}</tt></td><td>verify_binding()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/hitl/request</tt></td><td>request_approval()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/hitl/{id}/decide</tt></td><td>decide_approval()</td></tr>
+        <tr><td>GET</td><td><tt>/v1/hitl/{id}</tt></td><td>get_approval_status()</td></tr>
+        <tr><td>GET</td><td><tt>/v1/hitl/pending</tt></td><td>list_pending_approvals()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/verify-signature</tt></td><td>verify_signature()</td></tr>
+        <tr><td>GET/POST</td><td><tt>/v1/skills</tt></td><td>list_skills() / create_skill()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/agents/{id}/skills</tt></td><td>assign_skill()</td></tr>
+        <tr><td>GET</td><td><tt>/v1/agents/{id}/skill-trust</tt></td><td>get_skill_trust()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/tx/issue</tt></td><td>issue_token()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/tx/verify</tt></td><td>verify_token()</td></tr>
+        <tr><td>POST</td><td><tt>/v1/tx/receipt</tt></td><td>issue_receipt()</td></tr>
+    </table>
 
     <hr>
 

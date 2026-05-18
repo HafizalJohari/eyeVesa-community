@@ -212,6 +212,90 @@ fi
 
 echo ""
 
+# === Skills ===
+echo "--- Skills: Create → Assign → Endorse → Verify ---"
+
+SKILL_CREATE=$(curl -s -X POST "$GATEWAY_HTTP/v1/skills" \
+  -H "Content-Type: application/json" \
+  -d '{"skill_name":"e2e-k8s","description":"Kubernetes deployment","category":"infrastructure","min_proficiency":3,"min_trust":0.5}')
+SKILL_ID=$(echo "$SKILL_CREATE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('skill_id',''))" 2>/dev/null)
+check_contains "Skill created" "skill_id" "$SKILL_CREATE"
+
+SKILL_LIST=$(curl -s "$GATEWAY_HTTP/v1/skills")
+check_contains "Skills listed" "skills" "$SKILL_LIST"
+
+if [ -n "$SKILL_ID" ]; then
+  SKILL_ASSIGN=$(curl -s -X POST "$GATEWAY_HTTP/v1/skills/$SKILL_ID/assign?agent_id=$AGENT_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"proficiency":3}')
+  check_contains "Skill assigned" "skill_id" "$SKILL_ASSIGN"
+
+  SKILL_ENDORSE=$(curl -s -X POST "$GATEWAY_HTTP/v1/skills/$SKILL_ID/endorse?agent_id=$AGENT_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"endorser_id":"e2e-approver","comment":"Endorsed via E2E test"}')
+  check_contains "Skill endorsed" "skill_id" "$SKILL_ENDORSE"
+fi
+
+echo ""
+
+# === Transaction Protocol ===
+echo "--- Transaction: Issue → Verify → Receipt → Revoke ---"
+
+TX_ISSUE=$(curl -s -X POST "$GATEWAY_HTTP/v1/tx/issue" \
+  -H "Content-Type: application/json" \
+  -d "{\"agent_id\":\"$AGENT_ID\",\"resource_id\":\"res-tx-e2e\",\"action\":\"read\",\"scopes\":[\"read\"]}")
+check_contains "Token issued" '"allowed":true' "$TX_ISSUE"
+check_contains "Token has capability_token" "capability_token" "$TX_ISSUE"
+
+TX_TOKEN_ID=$(echo "$TX_ISSUE" | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('capability_token',{}); print(t.get('jti',''))" 2>/dev/null)
+TX_TOKEN_JSON=$(echo "$TX_ISSUE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('capability_token',{})))" 2>/dev/null)
+
+if [ -n "$TX_TOKEN_JSON" ] && [ "$TX_TOKEN_JSON" != "{}" ]; then
+  TX_VERIFY=$(curl -s -X POST "$GATEWAY_HTTP/v1/tx/verify" \
+    -H "Content-Type: application/json" \
+    -d "{\"token\":$TX_TOKEN_JSON}")
+  check_contains "Token verified" '"valid":true' "$TX_VERIFY"
+
+  TX_RECEIPT=$(curl -s -X POST "$GATEWAY_HTTP/v1/tx/receipt" \
+    -H "Content-Type: application/json" \
+    -d "{\"token\":$TX_TOKEN_JSON}")
+  check_contains "Receipt issued" '"valid":true' "$TX_RECEIPT"
+
+  TX_RECEIPT_JSON=$(echo "$TX_RECEIPT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('receipt',{})))" 2>/dev/null)
+
+  if [ -n "$TX_RECEIPT_JSON" ] && [ "$TX_RECEIPT_JSON" != "{}" ]; then
+    TX_RECEIPT_VERIFY=$(curl -s -X POST "$GATEWAY_HTTP/v1/tx/receipt/verify" \
+      -H "Content-Type: application/json" \
+      -d "{\"receipt\":$TX_RECEIPT_JSON}")
+    check_contains "Receipt verified" '"valid":true' "$TX_RECEIPT_VERIFY"
+  fi
+fi
+
+if [ -n "$TX_TOKEN_ID" ]; then
+  TX_REVOKE=$(curl -s -X POST "$GATEWAY_HTTP/v1/tx/revoke/$TX_TOKEN_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"reason":"E2E test revocation"}')
+  check_contains "Token revoked" "revoked" "$TX_REVOKE"
+
+  TX_REVOKED=$(curl -s "$GATEWAY_HTTP/v1/tx/revoked")
+  check_contains "Revoked tokens listed" "token_id" "$TX_REVOKED"
+fi
+
+echo ""
+
+# === SPIRE Identity ===
+echo "--- SPIRE: Trust Bundle + Workload Registration ---"
+
+SPIRE_BUNDLE=$(curl -s "$GATEWAY_HTTP/v1/spire/trust-bundle" 2>/dev/null)
+if echo "$SPIRE_BUNDLE" | grep -q "bundle\|spiffe\|error"; then
+  check_contains "SPIRE endpoint reachable" "bundle\|spiffe\|error" "$SPIRE_BUNDLE"
+  echo "  (SPIRE endpoint responded; full integration requires SPIRE server)"
+else
+  echo "  ⊘ SPIRE not reachable (expected without SPIRE server running)"
+fi
+
+echo ""
+
 # === Key Persistence ===
 echo "--- Key Persistence ---"
 if [ -f /tmp/agentid-gateway-ed25519.key ]; then

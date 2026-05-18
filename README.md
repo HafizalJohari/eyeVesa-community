@@ -42,11 +42,53 @@ Agent (SDK) ──mTLS──▶ Gateway Core ──gRPC──▶ Control Plane �
 | `gateway/core` | Rust | MCP proxy, crypto, mTLS termination, PTV identity |
 | `gateway/control-plane` | Go | HTTP + gRPC APIs, OPA policy, audit, DB, HITL, PTV |
 | `sdk/agent-sdk-rust` | Rust | Client library for AI agents (connect, invoke, discover, delegate) |
+| `sdk/agent-sdk-python` | Python | Client library with LangGraph/CrewAI/AutoGen/Claude/OpenAI integrations |
+| `sdk/agent-sdk-typescript` | TypeScript | Client library for Node.js agents with Claude/OpenAI framework integrations |
 | `adapter/resource-adapter-go` | Go | MCP server wrapper for enterprise resources |
 | `proto/agentid.proto` | Protobuf | gRPC service definition (7 RPCs) |
-| `registry/migrations/` | SQL | PostgreSQL schema (6 migrations, pgvector) |
+| `registry/migrations/` | SQL | PostgreSQL schema (16 migrations, pgvector) |
 | `policies/authz.rego` | Rego | OPA authorization policies |
 | `deploy/` | YAML | Docker, K8s, cloud configs |
+
+## Agent Integrations
+
+eyeVesa provides SDK integrations for major agentic AI frameworks:
+
+| Provider | Integration Class | Method |
+|---|---|---|
+| **Claude (Anthropic)** | `ClaudeIntegration` | Tool calling via Messages API + MCP server for Claude Code |
+| **OpenAI** | `OpenAIIntegration` | Responses API `computer` + `function_call` + MCP connector |
+| **LangGraph** | `LangGraphIntegration` | LangChain function-calling format |
+| **CrewAI** | `CrewAIIntegration` | CrewAI tool definitions |
+| **AutoGen** | `AutoGenIntegration` | AutoGen function definitions |
+| **Hermes** | `HermesIntegration` | Action specs with Airport heartbeat + peer discovery |
+| **OpenClaw** | `OpenClawIntegration` | Tool registry with Airport registration |
+| **NanoClaw** | `NanoClawIntegration` | Guardrails function defs with trust gating |
+
+### Quick Start: Claude
+
+```python
+from agentid_sdk import ClaudeIntegration
+
+claude = ClaudeIntegration.from_config(gateway_endpoint="http://localhost:9443")
+await claude.connect()
+tools = claude.get_tool_definitions()  # Anthropic tool format
+result = await claude.handle_tool_call("eyevesa_read", {"resource_id": "res-001"})
+```
+
+### Quick Start: OpenAI
+
+```python
+from agentid_sdk import OpenAIIntegration
+
+openai_int = OpenAIIntegration.from_config(gateway_endpoint="http://localhost:9443")
+await openai_int.connect()
+function_tools = openai_int.get_function_tools()       # OpenAI function format
+all_tools = openai_int.get_computer_and_function_tools()  # computer + functions
+result = await openai_int.handle_function_call("eyevesa_read", {"resource_id": "res-001"})
+```
+
+See [docs/integrations/](docs/integrations/) for detailed guides.
 
 ## API Endpoints
 
@@ -246,6 +288,55 @@ Policy decisions:
 | Gateway Control | Built in-tree | 8080, 9090 |
 | Resource Adapter | Built in-tree | 8443 |
 
+## Deploying to Google Cloud Platform
+
+eyeVesa can be deployed to GCP using **Cloud Run** + **Cloud SQL** with VPC-internal networking:
+
+| GCP Resource | eyeVesa Service | Notes |
+|---|---|---|
+| Cloud Run | gateway-core | Rust proxy, auto-scaling |
+| Cloud Run | gateway-control | Go API server, auto-scaling |
+| Cloud Run | resource-adapter | Go MCP adapter |
+| Cloud SQL | PostgreSQL 16 + pgvector | Private IP, VPC-peered |
+| Artifact Registry | Docker images | Built from in-tree Dockerfiles |
+| Secret Manager | DB password, JWT secret, Ed25519 key | Auto-populated by deploy script |
+| VPC + Connector | Private networking | Cloud Run ↔ Cloud SQL |
+
+### Quick Deploy
+
+```bash
+# 1. Prerequisites
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+
+# 2. Initialize (creates artifact registry, secrets, .env.gcp)
+bash deploy/scripts/deploy-gcp.sh init
+
+# 3. Review and update deploy/terraform/.env.gcp
+
+# 4. Build and push Docker images
+bash deploy/scripts/deploy-gcp.sh build
+
+# 5. Plan infrastructure
+bash deploy/scripts/deploy-gcp.sh plan
+
+# 6. Deploy infrastructure
+bash deploy/scripts/deploy-gcp.sh apply
+
+# 7. Run database migrations
+bash deploy/scripts/deploy-gcp.sh migrate
+
+# 8. Register a test agent
+bash deploy/scripts/deploy-gcp.sh register
+
+# 9. Check status
+bash deploy/scripts/deploy-gcp.sh status
+```
+
+Terraform config: `deploy/terraform/gcp.tf`
+Deploy script: `deploy/scripts/deploy-gcp.sh`
+Env template: `deploy/terraform/env.gcp.example`
+
 ## Database Schema
 
 13 PostgreSQL migrations in `registry/migrations/`:
@@ -263,6 +354,10 @@ Policy decisions:
 11. **budget_metering** - Agent spend tracking, rate limit counters
 12. **push_tokens** - APNs/FCM device tokens for HITL push notifications
 13. **api_keys** - API key authentication for gateway access
+14. **skills** - Skill catalog with categories, risk levels, and proficiency thresholds
+15. **agent_skills** - Agent-skill assignments with proficiency scores, endorsements, verification
+16. **licenses** - License management for agents and tenants
+17. **airport** - Agent heartbeats, profiles, and airport_connections (where agents meet)
 
 ## Development Status
 
