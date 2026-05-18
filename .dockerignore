@@ -1,39 +1,4 @@
-# Build artifacts
+.git
 **/target/
-**/debug/
-**/release/
-
-# Dependencies
 **/node_modules/
-
-# Git
-.git/
-.gitignore
-
-# IDE files
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Environment
-.env
-.env.*
-
-# Data directories
-**/data/
-**/.tmp/
-
-# Binary artifacts
-*.exe
-*.dll
-*.so
-*.dylib
-*.out
-*.prof
-*.tmp
-
-# Platform specific
-**/*.bak
-**/*.orig
+sdk/agent-sdk-typescript/node_modules/

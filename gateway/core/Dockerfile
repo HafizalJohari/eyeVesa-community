@@ -1,10 +1,10 @@
 FROM rust:1.86-bookworm AS builder
 RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY gateway/core/Cargo.toml gateway/core/Cargo.lock gateway/core/build.rs ./gateway/core/
+COPY gateway/core ./gateway/core
 COPY proto ./proto
-COPY gateway/core/src ./gateway/core/src
-RUN cd gateway/core && cargo build --release
+WORKDIR /app/gateway/core
+RUN cargo build --release
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*

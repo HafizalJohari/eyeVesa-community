@@ -1,6 +1,6 @@
-crete # Wrote cloudbuild.yaml
 steps:
   - name: 'gcr.io/cloud-builders/docker'
+    dir: '.'
     args:
       - 'build'
       - '-t'
@@ -11,6 +11,7 @@ steps:
       - 'gateway/core/Dockerfile'
       - '.'
     timeout: '600s'
+
 images:
   - 'gcr.io/$PROJECT_ID/eyevesa:$COMMIT_SHA'
-  - 'gcr.io/$PROJECT_ID/eyevesa:latest' 
+  - 'gcr.io/$PROJECT_ID/eyevesa:latest'
