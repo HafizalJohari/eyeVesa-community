@@ -141,6 +141,13 @@ func Authorize(w http.ResponseWriter, r *http.Request) {
 		req.AgentID, "authorize", decision.TrustDelta, newTrustScore, decision.Reason,
 	)
 
+	action := "authorize"
+	outcome := "denied"
+	if decision.Allowed {
+		outcome = "allowed"
+	}
+	logAirportConnection(r.Context(), req.AgentID, req.ResourceID, action, outcome, trustScore)
+
 	auditEntry := audit.AuditEntry{
 		AgentID:     req.AgentID,
 		ResourceID:  req.ResourceID,

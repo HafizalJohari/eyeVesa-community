@@ -380,6 +380,7 @@ func TestRegisterAgentSuccess(t *testing.T) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"name":          "test-agent",
 		"owner":         "test-team",
+		"public_key":    "Px0i2rDYwBKKDYICrOgaLRb+AqOoydHQalPjYzZe3i4=",
 		"capabilities":  []string{"mcp"},
 		"allowed_tools": []string{"read"},
 	})
@@ -414,8 +415,9 @@ func TestRegisterAgentDBError(t *testing.T) {
 	defer ts.Close()
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"name":  "test-agent",
-		"owner": "test-team",
+		"name":       "test-agent",
+		"owner":      "test-team",
+		"public_key": "Px0i2rDYwBKKDYICrOgaLRb+AqOoydHQalPjYzZe3i4=",
 	})
 	resp, err := http.Post(ts.URL+"/v1/agents/register", "application/json", bytes.NewReader(body))
 	if err != nil {

@@ -170,6 +170,9 @@ func main() {
 	escalationService.RegisterNotifier("push", pushNotifier)
 
 	authEnabled := os.Getenv("AUTH_ENABLED") != "false"
+	if !authEnabled {
+		slog.Warn("authentication is DISABLED — this is insecure and should only be used in development")
+	}
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
 		jwtSecret = string(auth.GenerateJWTSecret())
@@ -239,6 +242,7 @@ func main() {
 	handlers.SetTokenService(tokenService)
 	handlers.SetRevocationStore(revocationStore)
 	handlers.SetKeyRotationService(keyRotationService)
+	handlers.SetJWTSecret(jwtSecret)
 
 	grpcSrv := grpcserver.NewGatewayServer(db, auditLogger, privKey, policyEngine)
 
@@ -249,6 +253,7 @@ func main() {
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(metrics.Middleware)
 	r.Use(license.Middleware)
+	r.Use(maxBodySize(1<<20))
 
 	if authEnabled && authMiddleware != nil {
 		r.Use(authMiddleware.Middleware)
@@ -290,6 +295,13 @@ func main() {
 	})
 
 	r.Route("/v1", func(r chi.Router) {
+		r.Post("/api-keys", handlers.CreateAPIKey)
+		r.Post("/auth/challenge", handlers.AuthChallenge)
+		r.Post("/auth/login", handlers.AgentLogin)
+
+		r.Get("/api-keys", handlers.ListAPIKeys)
+		r.Delete("/api-keys/{keyID}", handlers.RevokeAPIKey)
+
 		r.Post("/agents/register", handlers.RegisterAgent)
 		r.Get("/agents", handlers.ListAgents)
 		r.Get("/agents/{agentID}", handlers.GetAgent)
@@ -410,7 +422,10 @@ func main() {
 		r.Get("/airport/agents/{agentID}", handlers.AirportGetProfileHandler)
 		r.Put("/airport/agents/{agentID}", handlers.AirportUpdateProfileHandler)
 		r.Get("/airport/connections", handlers.AirportConnectionsHandler)
+		r.Get("/airport/health", handlers.AirportHealthHandler)
 	})
+
+	handlers.StartHeartbeatCleanup(context.Background(), 2*time.Minute)
 
 	var httpSrv *http.Server
 	go func() {
@@ -562,5 +577,14 @@ func main() {
 
 			slog.Info("configuration reloaded")
 		}
+	}
+}
+
+func maxBodySize(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			next.ServeHTTP(w, r)
+		})
 	}
 }

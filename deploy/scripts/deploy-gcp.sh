@@ -44,7 +44,7 @@ load_env() {
     fi
 
     : "${GCP_PROJECT:=}"
-    : "${GCP_REGION:=europe-west1}"
+    : "${GCP_REGION:=asia-southeast1}"
     : "${GCP_ENVIRONMENT:=production}"
     : "${GCP_DOMAIN:=gateway.eyevesa.ai}"
     : "${ARTIFACT_REGISTRY:=}"

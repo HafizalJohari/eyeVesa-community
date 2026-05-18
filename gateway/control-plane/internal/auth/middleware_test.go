@@ -104,9 +104,14 @@ func TestIsPublicPath(t *testing.T) {
 	}{
 		{"/health", true},
 		{"/identity", true},
+		{"/ready", true},
+		{"/metrics", true},
 		{"/v1/agents/register", true},
 		{"/v1/resources/register", true},
 		{"/v1/mcp", true},
+		{"/v1/api-keys", true},
+		{"/v1/auth/challenge", true},
+		{"/v1/auth/login", true},
 		{"/v1/authorize", false},
 		{"/v1/hitl/request", false},
 		{"/v1/delegate", false},
@@ -125,7 +130,7 @@ func TestMiddleware_PublicPath(t *testing.T) {
 		called = true
 	}))
 
-	for _, path := range []string{"/health", "/identity", "/v1/agents/register", "/v1/resources/register", "/v1/mcp"} {
+	for _, path := range []string{"/health", "/identity", "/v1/auth/challenge", "/v1/auth/login", "/v1/agents/register", "/v1/resources/register", "/v1/mcp", "/v1/api-keys"} {
 		called = false
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
@@ -174,6 +179,66 @@ func TestMiddleware_BearerToken(t *testing.T) {
 
 	if !called {
 		t.Fatal("bearer token should pass through")
+	}
+}
+
+func TestMiddleware_BearerToken_InjectsContext(t *testing.T) {
+	secret := string(GenerateJWTSecret())
+	auth := NewAuthMiddleware(nil, secret)
+	var gotTenant, gotRole, gotEmail string
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = GetTenantID(r.Context())
+		gotRole = GetRole(r.Context())
+		gotEmail = GetEmail(r.Context())
+	}))
+
+	token := buildJWTToken(&JWTClaims{
+		TenantID:  "tenant-42",
+		Email:    "admin@example.com",
+		Role:     "admin",
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		IssuedAt:  time.Now().Unix(),
+	}, []byte(secret))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/agents", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if gotTenant != "tenant-42" {
+		t.Fatalf("expected tenant-42, got %s", gotTenant)
+	}
+	if gotRole != "admin" {
+		t.Fatalf("expected admin, got %s", gotRole)
+	}
+	if gotEmail != "admin@example.com" {
+		t.Fatalf("expected admin@example.com, got %s", gotEmail)
+	}
+}
+
+func TestMiddleware_ProtectedPaths_RequireAuth(t *testing.T) {
+	auth := NewAuthMiddleware(nil, "test-secret")
+	handler := auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("protected paths should require authentication")
+	}))
+
+	protectedPaths := []string{
+		"/v1/authorize",
+		"/v1/delegate",
+		"/v1/agents",
+		"/v1/hitl/request",
+		"/v1/airport/agents",
+		"/v1/airport/heartbeat",
+	}
+
+	for _, path := range protectedPaths {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for %s, got %d", path, rec.Code)
+		}
 	}
 }
 
@@ -286,21 +351,15 @@ func TestMiddleware_SSONoTenantID(t *testing.T) {
 }
 
 func TestRequireRole_AdminSucceeds(t *testing.T) {
-	secret := string(GenerateJWTSecret())
-	auth := NewAuthMiddleware(nil, secret)
+	auth := NewAuthMiddleware(nil, "test-secret")
 	called := false
 	handler := auth.RequireRole("operator")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 	}))
 
-	token := buildJWTToken(&JWTClaims{
-		Role:      "admin",
-		ExpiresAt: time.Now().Add(time.Hour).Unix(),
-		IssuedAt:  time.Now().Unix(),
-	}, []byte(secret))
-
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	ctx := context.WithValue(req.Context(), roleCtxKey{}, "admin")
+	req = req.WithContext(ctx)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -310,20 +369,14 @@ func TestRequireRole_AdminSucceeds(t *testing.T) {
 }
 
 func TestRequireRole_ViewerFails(t *testing.T) {
-	secret := string(GenerateJWTSecret())
-	auth := NewAuthMiddleware(nil, secret)
+	auth := NewAuthMiddleware(nil, "test-secret")
 	handler := auth.RequireRole("operator")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("viewer should not pass operator role check")
 	}))
 
-	token := buildJWTToken(&JWTClaims{
-		Role:      "viewer",
-		ExpiresAt: time.Now().Add(time.Hour).Unix(),
-		IssuedAt:  time.Now().Unix(),
-	}, []byte(secret))
-
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	ctx := context.WithValue(req.Context(), roleCtxKey{}, "viewer")
+	req = req.WithContext(ctx)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -332,10 +385,10 @@ func TestRequireRole_ViewerFails(t *testing.T) {
 	}
 }
 
-func TestRequireRole_NoBearer(t *testing.T) {
+func TestRequireRole_NoRole(t *testing.T) {
 	auth := NewAuthMiddleware(nil, "secret")
 	handler := auth.RequireRole("admin")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("should not pass without bearer")
+		t.Fatal("should not pass without role in context")
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin", nil)
@@ -348,21 +401,15 @@ func TestRequireRole_NoBearer(t *testing.T) {
 }
 
 func TestRequireRole_SameRole(t *testing.T) {
-	secret := string(GenerateJWTSecret())
-	auth := NewAuthMiddleware(nil, secret)
+	auth := NewAuthMiddleware(nil, "test-secret")
 	called := false
 	handler := auth.RequireRole("operator")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 	}))
 
-	token := buildJWTToken(&JWTClaims{
-		Role:      "operator",
-		ExpiresAt: time.Now().Add(time.Hour).Unix(),
-		IssuedAt:  time.Now().Unix(),
-	}, []byte(secret))
-
 	req := httptest.NewRequest(http.MethodGet, "/v1/admin", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	ctx := context.WithValue(req.Context(), roleCtxKey{}, "operator")
+	req = req.WithContext(ctx)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -374,6 +421,18 @@ func TestRequireRole_SameRole(t *testing.T) {
 func TestGetTenantID_Empty(t *testing.T) {
 	if tid := GetTenantID(context.Background()); tid != "" {
 		t.Fatalf("expected empty tenant, got %s", tid)
+	}
+}
+
+func TestGetRole_Empty(t *testing.T) {
+	if role := GetRole(context.Background()); role != "" {
+		t.Fatalf("expected empty role, got %s", role)
+	}
+}
+
+func TestGetEmail_Empty(t *testing.T) {
+	if email := GetEmail(context.Background()); email != "" {
+		t.Fatalf("expected empty email, got %s", email)
 	}
 }
 
@@ -416,5 +475,93 @@ func TestParsePEMCertificate_Empty(t *testing.T) {
 	_, err := ParsePEMCertificate([]byte(""))
 	if err == nil {
 		t.Fatal("empty PEM should fail")
+	}
+}
+
+func TestSafeRedirect_Empty(t *testing.T) {
+	if got := safeRedirect("", nil); got != "/" {
+		t.Fatalf("expected /, got %s", got)
+	}
+}
+
+func TestSafeRedirect_RelativePath(t *testing.T) {
+	if got := safeRedirect("/dashboard", nil); got != "/dashboard" {
+		t.Fatalf("expected /dashboard, got %s", got)
+	}
+}
+
+func TestSafeRedirect_SlashOnly(t *testing.T) {
+	if got := safeRedirect("/", nil); got != "/" {
+		t.Fatalf("expected /, got %s", got)
+	}
+}
+
+func TestSafeRedirect_DoubleSlash(t *testing.T) {
+	if got := safeRedirect("//evil.com", nil); got != "/" {
+		t.Fatalf("expected / for protocol-relative URL, got %s", got)
+	}
+}
+
+func TestSafeRedirect_ExternalDisallowed(t *testing.T) {
+	if got := safeRedirect("https://evil.com/phish", []string{" trusted.example.com"}); got != "/" {
+		t.Fatalf("expected / for disallowed host, got %s", got)
+	}
+}
+
+func TestSafeRedirect_ExternalAllowed(t *testing.T) {
+	if got := safeRedirect("https://app.example.com/dashboard", []string{"app.example.com"}); got != "https://app.example.com/dashboard" {
+		t.Fatalf("expected original URL for allowed host, got %s", got)
+	}
+}
+
+func TestSafeRedirect_ExternalNoAllowedHosts(t *testing.T) {
+	if got := safeRedirect("https://evil.com/phish", nil); got != "/" {
+		t.Fatalf("expected / for external URL with no allowed hosts, got %s", got)
+	}
+}
+
+func TestSafeRedirect_Backslash(t *testing.T) {
+	if got := safeRedirect("\\evil.com", nil); got != "/" {
+		t.Fatalf("expected / for non-absolute, non-slash path, got %s", got)
+	}
+}
+
+func TestSAMLHandler_ParseSAMLResponse_NotImplemented(t *testing.T) {
+	handler := NewSAMLHandler(nil, nil, "test-secret", nil)
+	_, err := handler.parseSAMLResponse("dGVzdA==")
+	if err == nil {
+		t.Fatal("parseSAMLResponse should return error when SAML not implemented")
+	}
+}
+
+func TestSAMLHandler_InitiateSSO_NotConfigured(t *testing.T) {
+	handler := NewSAMLHandler(nil, nil, "test-secret", nil)
+	req := httptest.NewRequest(http.MethodGet, "/sso?tenant_id=t1", nil)
+	rec := httptest.NewRecorder()
+	handler.InitiateSSO(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for unconfigured SSO, got %d", rec.Code)
+	}
+}
+
+func TestSAMLHandler_ACS_NotConfigured(t *testing.T) {
+	handler := NewSAMLHandler(nil, nil, "test-secret", nil)
+	req := httptest.NewRequest(http.MethodPost, "/sso/acs", strings.NewReader("SAMLResponse=dGVzdA=="))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	handler.ACS(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for unconfigured SSO ACS, got %d", rec.Code)
+	}
+}
+
+func TestSAMLHandler_ACS_NoCertificate(t *testing.T) {
+	handler := NewSAMLHandler(&SAMLConfig{EntityID: "test", SsoURL: "https://sso.example.com"}, nil, "test-secret", nil)
+	req := httptest.NewRequest(http.MethodPost, "/sso/acs", strings.NewReader("SAMLResponse=dGVzdA=="))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	handler.ACS(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for SSO without certificate, got %d", rec.Code)
 	}
 }

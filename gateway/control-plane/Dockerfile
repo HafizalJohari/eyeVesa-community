@@ -1,10 +1,10 @@
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /app
-COPY registry/migrations /app/registry/migrations
-COPY gateway/control-plane /app/gateway/control-plane
-COPY proto /app/proto
-RUN cd gateway/control-plane && go mod download
-RUN cd gateway/control-plane && CGO_ENABLED=0 go build -o /agentid-control ./cmd/api
+COPY gateway/control-plane/go.mod gateway/control-plane/go.sum ./gateway/control-plane/
+COPY proto ./proto
+COPY registry/migrations ./registry/migrations
+COPY gateway/control-plane ./gateway/control-plane
+RUN cd gateway/control-plane && go mod download && CGO_ENABLED=0 go build -o /agentid-control ./cmd/api
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*

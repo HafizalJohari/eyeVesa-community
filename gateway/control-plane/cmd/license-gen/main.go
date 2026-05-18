@@ -40,11 +40,20 @@ type LicenseClaims struct {
 func main() {
 	keyPath := os.Getenv("LICENSE_SIGNING_KEY")
 	if keyPath == "" {
-		keyPath = "license-signing-key.pem"
+		fmt.Fprintln(os.Stderr, "ERROR: LICENSE_SIGNING_KEY environment variable is required")
+		fmt.Fprintln(os.Stderr, "  Set it to the path of the Ed25519 private key PEM file")
+		fmt.Fprintln(os.Stderr, "  Generate one first: go run cmd/license-gen/main.go --gen-key")
+		os.Exit(1)
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "--gen-key" {
-		generateKey(keyPath)
+		outPath := getFlag("--output")
+		if outPath == "" {
+			fmt.Fprintln(os.Stderr, "ERROR: --output flag is required with --gen-key")
+			fmt.Fprintln(os.Stderr, "  Example: go run cmd/license-gen/main.go --gen-key --output /secure/path/license-signing-key.pem")
+			os.Exit(1)
+		}
+		generateKey(outPath)
 		return
 	}
 
@@ -133,12 +142,15 @@ func generateKey(keyPath string) {
 		os.Exit(1)
 	}
 
-	fmt.Println("✓ Signing key generated!")
-	fmt.Println("  Private key:", keyPath, "(KEEP SECRET!)")
+	fmt.Println("Signing key generated successfully!")
+	fmt.Println("  Private key saved to:", keyPath, "(KEEP SECRET!)")
 	fmt.Println("  Public key (hex):", hex.EncodeToString(pub))
 	fmt.Println("")
-	fmt.Println("  Update your Pro build's public key with this hex value in:")
-	fmt.Println("    internal/license/license_pro.go")
+	fmt.Println("  IMPORTANT: Set these environment variables for the Pro build:")
+	fmt.Println("    EYEVESA_PUBLIC_KEY=" + hex.EncodeToString(pub))
+	fmt.Println("    LICENSE_SIGNING_KEY=" + keyPath)
+	fmt.Println("")
+	fmt.Println("  Store the private key in a secrets manager. Do NOT commit it to version control.")
 }
 
 func loadPrivateKey(path string) ed25519.PrivateKey {

@@ -19,6 +19,7 @@ import (
 type AgentRegistration struct {
 	Name             string   `json:"name"`
 	Owner            string   `json:"owner"`
+	PublicKey        string   `json:"public_key"`
 	Capabilities     []string `json:"capabilities"`
 	AllowedTools     []string `json:"allowed_tools"`
 	MaxBudgetUSD     float64  `json:"max_budget_usd"`
@@ -75,9 +76,19 @@ func RegisterAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keypair, err := crypto.GenerateAgentKeypair()
+	if req.PublicKey == "" {
+		http.Error(w, "public_key is required (generate an ed25519 keypair locally and provide the base64-encoded public key)", http.StatusBadRequest)
+		return
+	}
+
+	publicKeyBytes, err := crypto.DecodeBase64(req.PublicKey)
 	if err != nil {
-		http.Error(w, "failed to generate keypair", http.StatusInternalServerError)
+		http.Error(w, "invalid public_key: must be base64-encoded ed25519 public key (32 bytes)", http.StatusBadRequest)
+		return
+	}
+
+	if len(publicKeyBytes) != ed25519.PublicKeySize {
+		http.Error(w, "invalid public_key: ed25519 public key must be 32 bytes", http.StatusBadRequest)
 		return
 	}
 
@@ -103,7 +114,7 @@ func RegisterAgent(w http.ResponseWriter, r *http.Request) {
 	err = querier.QueryRow(r.Context(),
 		`INSERT INTO agents (agent_id, name, owner, public_key, capabilities, allowed_tools, max_budget_usd, delegation_policy, behavioral_tags)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING created_at`,
-		agentID, req.Name, req.Owner, keypair.PublicKey, capabilities, allowedTools,
+		agentID, req.Name, req.Owner, publicKeyBytes, capabilities, allowedTools,
 		req.MaxBudgetUSD, delegationPolicy, behavioralTags,
 	).Scan(&createdAt)
 
@@ -125,9 +136,12 @@ func RegisterAgent(w http.ResponseWriter, r *http.Request) {
 		auditLogger.Log(r.Context(), auditEntry, gatewayPrivateKey)
 	}
 
+	autoCreateHeartbeat(r.Context(), agentID.String())
+	autoCreateProfile(r.Context(), agentID.String(), req.Name, req.Owner)
+
 	resp := AgentResponse{
 		AgentID:    agentID,
-		PublicKey:  crypto.EncodeBase64(keypair.PublicKey),
+		PublicKey:  req.PublicKey,
 		Name:       req.Name,
 		Owner:      req.Owner,
 		Status:     "active",

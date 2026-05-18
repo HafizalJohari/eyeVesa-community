@@ -126,6 +126,15 @@ pub async fn handle_request(
         ("POST", p) if p.starts_with("/v1/ptv/") => {
             crate::proxy::forward::forward_to_control_plane(req, state).await
         }
+        ("POST", p) if p.starts_with("/v1/airport/") || p == "/v1/airport/heartbeat" => {
+            crate::proxy::forward::forward_to_control_plane(req, state).await
+        }
+        ("GET", p) if p.starts_with("/v1/airport/") => {
+            crate::proxy::forward::forward_to_control_plane(req, state).await
+        }
+        ("PUT", p) if p.starts_with("/v1/airport/") => {
+            crate::proxy::forward::forward_to_control_plane(req, state).await
+        }
         ("POST", p) if p.starts_with("/v1/hitl/") => {
             crate::proxy::forward::forward_to_control_plane(req, state).await
         }

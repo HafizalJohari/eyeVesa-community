@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -229,7 +230,6 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 	args := []interface{}{}
 	argIdx := 1
 	conditions := []string{"ap.listed = true"}
-	joinHeartbeat := false
 	joinSkills := false
 
 	if req.MinTrust > 0 {
@@ -245,7 +245,6 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Status != "" {
-		joinHeartbeat = true
 		conditions = append(conditions, "ah.status = $"+itoa(argIdx))
 		args = append(args, req.Status)
 		argIdx++
@@ -280,11 +279,6 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	where := strings.Join(conditions, " AND ")
 
-	hbJoin := ""
-	if joinHeartbeat {
-		hbJoin = " LEFT JOIN agent_heartbeats ah ON ah.agent_id = a.agent_id "
-	}
-
 	skillJoin := ""
 	if joinSkills {
 		skillJoin = " JOIN agent_skills askl ON askl.agent_id = a.agent_id JOIN skills sk ON sk.skill_id = askl.skill_id "
@@ -301,7 +295,8 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 		COALESCE(ah.status, 'offline') as status
 		FROM agents a
 		LEFT JOIN agent_profiles ap ON ap.agent_id = a.agent_id
-	` + hbJoin + skillJoin +
+		LEFT JOIN agent_heartbeats ah ON ah.agent_id = a.agent_id
+	` + skillJoin +
 		" WHERE " + where +
 		" ORDER BY a.trust_score DESC " +
 		" LIMIT $" + itoa(argIdx) + " OFFSET $" + itoa(argIdx+1)
@@ -557,4 +552,83 @@ func parseInt(s string) (int, error) {
 
 func itoa(i int) string {
 	return fmt.Sprintf("%d", i)
+}
+
+func logAirportConnection(ctx context.Context, requesterID, responderID, action, outcome string, trustScore float64) {
+	connectionID := uuid.New()
+	_, err := querier.Exec(ctx, `
+		INSERT INTO airport_connections (connection_id, requester_id, responder_id, action, outcome, trust_score_at_time, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+	`, connectionID, requesterID, responderID, action, outcome, trustScore)
+	if err != nil {
+		slog.Error("airport connection log failed", "error", err)
+	}
+}
+
+func autoCreateHeartbeat(ctx context.Context, agentID string) {
+	_, err := querier.Exec(ctx, `
+		INSERT INTO agent_heartbeats (agent_id, last_heartbeat, status, metadata, updated_at)
+		VALUES ($1, NOW(), 'online', '{}', NOW())
+		ON CONFLICT (agent_id) DO UPDATE SET
+			last_heartbeat = NOW(),
+			status = 'online',
+			updated_at = NOW()
+	`, agentID)
+	if err != nil {
+		slog.Error("auto heartbeat failed", "error", err)
+	}
+}
+
+func autoCreateProfile(ctx context.Context, agentID, name, owner string) {
+	_, err := querier.Exec(ctx, `
+		INSERT INTO agent_profiles (agent_id, description, services_offered, endpoints, tags, listed, total_actions, approval_rate, updated_at)
+		VALUES ($1, '', '[]'::jsonb, '{}'::jsonb, '{}', true, 0, 1.0, NOW())
+		ON CONFLICT (agent_id) DO NOTHING
+	`, agentID)
+	if err != nil {
+		slog.Error("auto profile creation failed", "error", err)
+	}
+}
+
+func StartHeartbeatCleanup(ctx context.Context, interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				result, err := querier.Exec(ctx, `
+					UPDATE agent_heartbeats SET status = 'offline', updated_at = NOW()
+					WHERE last_heartbeat < NOW() - INTERVAL '5 minutes' AND status != 'offline'
+				`)
+				if err != nil {
+					slog.Error("heartbeat cleanup failed", "error", err)
+				} else {
+					rows := result.RowsAffected
+					if rows > 0 {
+						slog.Info("heartbeat cleanup", "marked_offline", rows)
+					}
+				}
+			}
+		}
+	}()
+}
+
+func AirportHealthHandler(w http.ResponseWriter, r *http.Request) {
+	onlineCount := 0
+	querier.QueryRow(r.Context(), `
+		SELECT COUNT(*) FROM agent_heartbeats WHERE status = 'online' AND last_heartbeat > NOW() - INTERVAL '2 minutes'
+	`).Scan(&onlineCount)
+
+	totalProfiles := 0
+	querier.QueryRow(r.Context(), `SELECT COUNT(*) FROM agent_profiles`).Scan(&totalProfiles)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":         "healthy",
+		"online_agents":  onlineCount,
+		"total_profiles": totalProfiles,
+	})
 }

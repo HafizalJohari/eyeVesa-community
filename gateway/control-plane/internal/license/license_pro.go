@@ -47,13 +47,14 @@ func getPublicKey() []byte {
 	loadKeyOnce.Do(func() {
 		keyHex := os.Getenv("EYEVESA_PUBLIC_KEY")
 		if keyHex == "" {
-			keyHex = "042363af45a1ea0de43df17d79d161b3a47d671b3eaa395866886bfa05f5dd48"
+			fmt.Fprintf(os.Stderr, "FATAL: EYEVESA_PUBLIC_KEY environment variable is required\n")
+			os.Exit(1)
 		}
 		var err error
 		publicKey, err = hex.DecodeString(keyHex)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: invalid EYEVESA_PUBLIC_KEY, using default\n")
-			publicKey, _ = hex.DecodeString("32a08486c94ebe89055c12f25cdd179d695cf12eef3de4774d7ed83a5e355908")
+		if err != nil || len(publicKey) != ed25519.PublicKeySize {
+			fmt.Fprintf(os.Stderr, "FATAL: invalid EYEVESA_PUBLIC_KEY: must be a %d-byte Ed25519 public key hex string\n", ed25519.PublicKeySize)
+			os.Exit(1)
 		}
 	})
 	return publicKey

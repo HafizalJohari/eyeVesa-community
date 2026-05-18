@@ -36,13 +36,17 @@ func (a *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if a.checkAPIKey(r) {
-			next.ServeHTTP(w, r)
+		if tenantID, ok := a.checkAPIKey(r); ok {
+			ctx := context.WithValue(r.Context(), tenantCtxKey{}, tenantID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
-		if a.checkBearerToken(r) {
-			next.ServeHTTP(w, r)
+		if claims, ok := a.checkBearerToken(r); ok {
+			ctx := context.WithValue(r.Context(), tenantCtxKey{}, claims.TenantID)
+			ctx = context.WithValue(ctx, roleCtxKey{}, claims.Role)
+			ctx = context.WithValue(ctx, emailCtxKey{}, claims.Email)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -59,7 +63,7 @@ func (a *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 }
 
 func isPublicPath(path string) bool {
-	public := []string{"/health", "/identity"}
+	public := []string{"/health", "/identity", "/ready", "/metrics"}
 	for _, p := range public {
 		if path == p {
 			return true
@@ -67,51 +71,58 @@ func isPublicPath(path string) bool {
 	}
 	if strings.HasPrefix(path, "/v1/agents/register") ||
 		strings.HasPrefix(path, "/v1/resources/register") ||
-		strings.HasPrefix(path, "/v1/mcp") {
+		strings.HasPrefix(path, "/v1/mcp") ||
+		strings.HasPrefix(path, "/v1/api-keys") ||
+		strings.HasPrefix(path, "/v1/auth/challenge") ||
+		strings.HasPrefix(path, "/v1/auth/login") {
 		return true
 	}
 	return false
 }
 
-func (a *AuthMiddleware) checkAPIKey(r *http.Request) bool {
+func (a *AuthMiddleware) checkAPIKey(r *http.Request) (string, bool) {
 	key := r.Header.Get("X-API-Key")
 	if key == "" {
-		return false
+		return "", false
 	}
 
-	var apiKey, tenantID string
+	var apiKey string
+	var tenantID *string
 	err := a.db.QueryRow(r.Context(),
 		`SELECT api_key, tenant_id FROM api_keys WHERE api_key = $1 AND is_active = TRUE`,
 		key,
 	).Scan(&apiKey, &tenantID)
 	if err != nil {
-		return false
+		return "", false
 	}
 
-	return true
+	if tenantID != nil {
+		return *tenantID, true
+	}
+	return "", true
 }
 
-func (a *AuthMiddleware) checkBearerToken(r *http.Request) bool {
+func (a *AuthMiddleware) checkBearerToken(r *http.Request) (*JWTClaims, bool) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
-		return false
+		return nil, false
 	}
 
 	token := strings.TrimPrefix(auth, "Bearer ")
 	if token == "" {
-		return false
+		return nil, false
 	}
 
 	claims, err := parseJWT(token, a.jwtSecret)
 	if err != nil {
-		return false
+		return nil, false
 	}
 
 	if claims.ExpiresAt < time.Now().Unix() {
-		return false
+		return nil, false
 	}
 
-	return true
+	return claims, true
 }
 
 func (a *AuthMiddleware) checkSSOToken(r *http.Request) (string, bool) {
@@ -188,6 +199,8 @@ func parseJWT(tokenString string, secret []byte) (*JWTClaims, error) {
 }
 
 type tenantCtxKey struct{}
+type roleCtxKey struct{}
+type emailCtxKey struct{}
 
 func GetTenantID(ctx context.Context) string {
 	if v, ok := ctx.Value(tenantCtxKey{}).(string); ok {
@@ -196,26 +209,32 @@ func GetTenantID(ctx context.Context) string {
 	return ""
 }
 
+func GetRole(ctx context.Context) string {
+	if v, ok := ctx.Value(roleCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
+func GetEmail(ctx context.Context) string {
+	if v, ok := ctx.Value(emailCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
 func (a *AuthMiddleware) RequireRole(role string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			auth := r.Header.Get("Authorization")
-			if !strings.HasPrefix(auth, "Bearer ") {
-				w.WriteHeader(http.StatusForbidden)
-				_, _ = w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
-				return
-			}
-
-			token := strings.TrimPrefix(auth, "Bearer ")
-			claims, err := parseJWT(token, a.jwtSecret)
-			if err != nil {
+			userRole := GetRole(r.Context())
+			if userRole == "" {
 				w.WriteHeader(http.StatusForbidden)
 				_, _ = w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
 				return
 			}
 
 			roleOrder := map[string]int{"admin": 3, "operator": 2, "viewer": 1}
-			if roleOrder[claims.Role] < roleOrder[role] {
+			if roleOrder[userRole] < roleOrder[role] {
 				w.WriteHeader(http.StatusForbidden)
 				_, _ = w.Write([]byte(`{"error":"forbidden","message":"insufficient role"}`))
 				return
@@ -235,20 +254,27 @@ type SAMLConfig struct {
 }
 
 type SAMLHandler struct {
-	config *SAMLConfig
-	db     *pgxpool.Pool
-	secret []byte
+	config        *SAMLConfig
+	db            *pgxpool.Pool
+	secret        []byte
+	allowedHosts  []string
 }
 
-func NewSAMLHandler(config *SAMLConfig, db *pgxpool.Pool, jwtSecret string) *SAMLHandler {
+func NewSAMLHandler(config *SAMLConfig, db *pgxpool.Pool, jwtSecret string, allowedHosts []string) *SAMLHandler {
 	return &SAMLHandler{
-		config: config,
-		db:     db,
-		secret: []byte(jwtSecret),
+		config:       config,
+		db:           db,
+		secret:       []byte(jwtSecret),
+		allowedHosts: allowedHosts,
 	}
 }
 
 func (h *SAMLHandler) InitiateSSO(w http.ResponseWriter, r *http.Request) {
+	if h.config == nil || h.config.SsoURL == "" || h.config.EntityID == "" {
+		http.Error(w, "SSO not configured", http.StatusServiceUnavailable)
+		return
+	}
+
 	tenantID := r.URL.Query().Get("tenant_id")
 	if tenantID == "" {
 		http.Error(w, "tenant_id required", http.StatusBadRequest)
@@ -265,6 +291,11 @@ func (h *SAMLHandler) InitiateSSO(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SAMLHandler) ACS(w http.ResponseWriter, r *http.Request) {
+	if h.config == nil || h.config.Certificate == nil {
+		http.Error(w, "SSO not configured", http.StatusServiceUnavailable)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid SAML response", http.StatusBadRequest)
 		return
@@ -275,11 +306,16 @@ func (h *SAMLHandler) ACS(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := h.parseSAMLResponse(samlResponse)
 	if err != nil {
-		http.Error(w, "SAML validation failed: "+err.Error(), http.StatusUnauthorized)
+		http.Error(w, "SAML validation failed", http.StatusUnauthorized)
 		return
 	}
 
 	claims.TenantID = relayState
+	if claims.TenantID == "" {
+		http.Error(w, "tenant_id required in RelayState", http.StatusBadRequest)
+		return
+	}
+
 	token := buildJWTToken(claims, h.secret)
 
 	http.SetCookie(w, &http.Cookie{
@@ -292,26 +328,47 @@ func (h *SAMLHandler) ACS(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   86400,
 	})
 
-	redirectURL := r.URL.Query().Get("redirect")
-	if redirectURL == "" {
-		redirectURL = "/"
-	}
+	redirectURL := safeRedirect(r.URL.Query().Get("redirect"), h.allowedHosts)
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
-func (h *SAMLHandler) parseSAMLResponse(encoded string) (*JWTClaims, error) {
-	data, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, fmt.Errorf("decode SAML: %w", err)
+func safeRedirect(raw string, allowedHosts []string) string {
+	if raw == "" {
+		return "/"
 	}
+	if strings.HasPrefix(raw, "//") {
+		return "/"
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		parsed, err := parseURL(raw)
+		if err != nil {
+			return "/"
+		}
+		for _, host := range allowedHosts {
+			if parsed == host {
+				return raw
+			}
+		}
+		return "/"
+	}
+	if strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//") {
+		return raw
+	}
+	return "/"
+}
 
-	_ = data // Production: use github.com/crewjam/saml for actual SAML parsing
+func parseURL(raw string) (string, error) {
+	parts := strings.SplitN(raw, "/", 4)
+	if len(parts) < 3 {
+		return "", fmt.Errorf("invalid URL")
+	}
+	hostPort := parts[2]
+	host := strings.SplitN(hostPort, ":", 2)[0]
+	return host, nil
+}
 
-	return &JWTClaims{
-		Role:      "approver",
-		ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
-		IssuedAt:  time.Now().Unix(),
-	}, nil
+func (h *SAMLHandler) parseSAMLResponse(encoded string) (*JWTClaims, error) {
+	return nil, fmt.Errorf("SAML response validation not implemented: configure github.com/crewjam/saml for production SSO")
 }
 
 func buildSAMLRequest(config *SAMLConfig, tenantID string) []byte {

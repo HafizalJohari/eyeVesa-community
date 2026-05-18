@@ -59,7 +59,7 @@ services:
       - "9090:9090"
     environment:
       DATABASE_URL: postgres://agentid:agentid_dev@postgres:5432/agentid?sslmode=disable
-      AUTH_ENABLED: "false"
+      JWT_SECRET: ${EYEVESA_JWT_SECRET:?EYEVESA_JWT_SECRET must be set}
       OPA_ENDPOINT: http://opa:8181
       SPIRE_ENDPOINT: spire-agent:8090
       POLICY_DIR: /policies

@@ -15,3 +15,5 @@ Cargo.lock
 !**/Cargo.lock
 docs/
 docs-all/
+eyevesa-pro
+*_license.json
