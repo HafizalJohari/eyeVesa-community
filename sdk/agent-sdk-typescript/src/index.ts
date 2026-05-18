@@ -1,4 +1,5 @@
-export { AgentClient } from './client';
+export { AgentClient, generateSigningKey, signingKeyFromSecretKey } from './client';
+export type { SigningKey } from './client';
 export type {
   AgentConfig,
   ToolInfo,

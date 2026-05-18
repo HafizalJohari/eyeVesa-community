@@ -7,7 +7,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 import httpx
-from nacl.signing import SigningKey
+from nacl.signing import SigningKey, VerifyKey
 
 from .exceptions import (
     AuthFailedError,
@@ -61,6 +61,7 @@ class AgentClient:
         self._registered: bool = False
         self._api_key = api_key
         self._jwt_token = jwt_token
+        self._agent_id: str = config.agent_id
 
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if api_key:
@@ -74,21 +75,9 @@ class AgentClient:
             timeout=30.0,
         )
 
-    @classmethod
-    def from_env(cls, signing_key: Optional[SigningKey] = None) -> "AgentClient":
-        import os
-
-        config = AgentConfig(
-            agent_id=os.getenv("AGENT_ID", str(uuid4())),
-            name=os.getenv("AGENT_NAME", "python-agent"),
-            owner=os.getenv("AGENT_OWNER", "default"),
-            gateway_endpoint=os.getenv("GATEWAY_ENDPOINT", "http://localhost:9443"),
-        )
-        return cls(config, signing_key)
-
     @property
     def agent_id(self) -> str:
-        return self._config.agent_id
+        return self._agent_id
 
     @property
     def name(self) -> str:
@@ -110,32 +99,96 @@ class AgentClient:
     def gateway_endpoint(self) -> str:
         return self._config.gateway_endpoint
 
+    @property
+    def public_key_base64(self) -> str:
+        return base64.b64encode(bytes(self._signing_key.verify_key)).decode()
+
     def _url(self, path: str) -> str:
         return f"{self._config.gateway_endpoint.rstrip('/')}{path}"
 
-    async def connect(self) -> "AgentClient":
-        logger.info("Connecting to gateway at %s", self._config.gateway_endpoint)
+    async def register(self) -> "AgentClient":
+        logger.info("Registering agent %s at %s", self._config.name, self._config.gateway_endpoint)
 
         body = {
             "name": self._config.name,
             "owner": self._config.owner,
+            "public_key": self.public_key_base64,
             "capabilities": ["mcp"],
             "allowed_tools": ["read", "get_weather", "search_docs"],
         }
 
-        resp = await self._http.post("/v1/register", json=body)
+        resp = await self._http.post("/v1/agents/register", json=body)
 
-        if resp.status_code != 200 and resp.status_code != 201:
+        if resp.status_code not in (200, 201):
             raise AuthFailedError(f"Registration failed: {resp.status_code} {resp.text}")
 
         data = resp.json()
         self._trust_score = data.get("trust_score", 1.0)
         self._registered = True
         if "agent_id" in data:
+            self._agent_id = data["agent_id"]
             self._config.agent_id = data["agent_id"]
 
-        logger.info("Agent %s connected (status: %s)", self._config.agent_id, data.get("status", "unknown"))
+        logger.info("Agent %s registered (id: %s)", self._config.name, self._agent_id)
         return self
+
+    async def login(self) -> "AgentClient":
+        logger.info("Authenticating agent %s via challenge-response", self._agent_id)
+
+        challenge_resp = await self._http.post("/v1/auth/challenge", json={"agent_id": self._agent_id})
+        if challenge_resp.status_code != 200:
+            raise AuthFailedError(f"Challenge failed: {challenge_resp.status_code} {challenge_resp.text}")
+
+        challenge_data = challenge_resp.json()
+        nonce = challenge_data["nonce"]
+
+        signature_bytes = self._signing_key.sign(nonce.encode()).signature
+        signature_b64 = base64.b64encode(signature_bytes).decode()
+
+        login_resp = await self._http.post("/v1/auth/login", json={
+            "agent_id": self._agent_id,
+            "nonce": nonce,
+            "signature": signature_b64,
+        })
+
+        if login_resp.status_code != 200:
+            raise AuthFailedError(f"Login failed: {login_resp.status_code} {login_resp.text}")
+
+        login_data = login_resp.json()
+        self._jwt_token = login_data["token"]
+        self._http.headers["Authorization"] = f"Bearer {self._jwt_token}"
+
+        logger.info("Agent %s authenticated (token expires: %s)", self._agent_id, login_data.get("expires_at", "unknown"))
+        return self
+
+    async def connect(self) -> "AgentClient":
+        await self.register()
+        await self.login()
+        return self
+
+    @classmethod
+    def from_env(cls, signing_key: Optional[SigningKey] = None) -> "AgentClient":
+        import os
+
+        config = AgentConfig(
+            agent_id=os.getenv("AGENT_ID", str(uuid4())),
+            name=os.getenv("AGENT_NAME", "python-agent"),
+            owner=os.getenv("AGENT_OWNER", "default"),
+            gateway_endpoint=os.getenv("GATEWAY_ENDPOINT", "http://localhost:8080"),
+        )
+        api_key = os.getenv("AGENTID_API_KEY") or None
+        return cls(config, signing_key, api_key=api_key)
+
+    async def create_api_key(self, name: str, tenant_id: Optional[str] = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name}
+        if tenant_id:
+            body["tenant_id"] = tenant_id
+
+        resp = await self._http.post("/v1/api-keys", json=body)
+        if resp.status_code not in (200, 201):
+            raise AuthFailedError(f"Create API key failed: {resp.status_code} {resp.text}")
+
+        return resp.json()
 
     async def discover(self, capability: str = "mcp") -> list[ToolInfo]:
         logger.info("Discovering tools for capability: %s", capability)
@@ -170,7 +223,7 @@ class AgentClient:
         logger.info("Invoking tool %s on resource %s", tool, resource_id)
 
         auth_body = {
-            "agent_id": self._config.agent_id,
+            "agent_id": self._agent_id,
             "action": tool,
             "resource_id": resource_id,
         }
@@ -193,7 +246,7 @@ class AgentClient:
             "params": {
                 "name": tool,
                 "arguments": {
-                    "agent_id": self._config.agent_id,
+                    "agent_id": self._agent_id,
                     "resource_id": resource_id,
                     **(params or {}),
                 },
@@ -223,7 +276,7 @@ class AgentClient:
         logger.info("Delegating to agent %s with scope %s", delegatee_id, scope)
 
         body = {
-            "delegator_id": self._config.agent_id,
+            "delegator_id": self._agent_id,
             "delegatee_id": delegatee_id,
             "scope": scope,
             "reason": reason,
@@ -231,7 +284,7 @@ class AgentClient:
 
         resp = await self._http.post("/v1/delegate", json=body)
 
-        if resp.status_code != 200 and resp.status_code != 201:
+        if resp.status_code not in (200, 201):
             text = resp.text
             if "max depth" in text.lower() or "depth" in text.lower():
                 raise MaxDepthError(text)
@@ -247,7 +300,7 @@ class AgentClient:
         logger.info("Attesting identity for platform: %s", platform)
 
         body = {
-            "agent_id": self._config.agent_id,
+            "agent_id": self._agent_id,
             "platform": platform,
             "firmware_version": firmware_version,
         }
@@ -275,7 +328,7 @@ class AgentClient:
         firmware_version: str,
         agent_id: str = "",
     ) -> PtvBindResult:
-        aid = agent_id or self._config.agent_id
+        aid = agent_id or self._agent_id
         logger.info("Binding identity for agent: %s", aid)
 
         body = {
@@ -314,20 +367,20 @@ class AgentClient:
         logger.info("Requesting HITL approval for action: %s", action)
 
         body = {
-            "agent_id": self._config.agent_id,
+            "agent_id": self._agent_id,
             "action": action,
             "reason": reason,
             "risk_level": risk_level,
         }
 
         resp = await self._http.post("/v1/hitl/request", json=body)
-        if resp.status_code != 200 and resp.status_code != 201:
+        if resp.status_code not in (200, 201):
             raise HitlError(f"Approval request failed: {resp.status_code} {resp.text}")
 
         data = resp.json()
         return HitlApproval(
             approval_id=data.get("approval_id", ""),
-            agent_id=self._config.agent_id,
+            agent_id=self._agent_id,
             action=action,
             status=data.get("status", "pending"),
         )
@@ -357,7 +410,7 @@ class AgentClient:
         return resp.json().get("status", "unknown")
 
     async def list_pending_approvals(self) -> list[dict[str, Any]]:
-        resp = await self._http.get("/v1/hitl/pending", params={"agent_id": self._config.agent_id})
+        resp = await self._http.get("/v1/hitl/pending", params={"agent_id": self._agent_id})
         if resp.status_code != 200:
             raise HitlError(f"Pending query failed: {resp.status_code}")
         return resp.json().get("approvals", [])
@@ -471,7 +524,7 @@ class AgentClient:
             body["required_proficiency"] = required_proficiency
 
         resp = await self._http.post("/v1/skills", json=body)
-        if resp.status_code != 200 and resp.status_code != 201:
+        if resp.status_code not in (200, 201):
             raise SkillError(f"Create skill failed: {resp.status_code}")
 
         return Skill(**resp.json())
@@ -480,7 +533,7 @@ class AgentClient:
         body = {"skill_id": skill_id, "proficiency": proficiency}
 
         resp = await self._http.post(f"/v1/agents/{agent_id}/skills", json=body)
-        if resp.status_code != 200 and resp.status_code != 201:
+        if resp.status_code not in (200, 201):
             raise SkillError(f"Assign skill failed: {resp.status_code}")
 
         return AgentSkill(**resp.json())
@@ -500,7 +553,7 @@ class AgentClient:
         }
 
         resp = await self._http.post(f"/v1/agents/{agent_id}/skills/{skill_id}/endorse", json=body)
-        if resp.status_code != 200 and resp.status_code != 201:
+        if resp.status_code not in (200, 201):
             raise SkillError(f"Endorse skill failed: {resp.status_code}")
 
         return Endorsement(**resp.json())
@@ -546,7 +599,7 @@ class AgentClient:
             body["params"] = params
 
         resp = await self._http.post("/v1/tx/issue", json=body)
-        if resp.status_code != 200 and resp.status_code != 201:
+        if resp.status_code not in (200, 201):
             raise TxError(f"Issue token failed: {resp.status_code}")
 
         return CapabilityToken(**resp.json())
@@ -587,7 +640,7 @@ class AgentClient:
         }
 
         resp = await self._http.post("/v1/tx/receipt", json=body)
-        if resp.status_code != 200 and resp.status_code != 201:
+        if resp.status_code not in (200, 201):
             raise TxError(f"Issue receipt failed: {resp.status_code}")
 
         return TransactionReceipt(**resp.json())
@@ -605,7 +658,7 @@ class AgentClient:
         metadata: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
-            "agent_id": self.config.agent_id,
+            "agent_id": self._agent_id,
             "status": status,
         }
         if metadata is not None:
@@ -638,7 +691,7 @@ class AgentClient:
             body["listed"] = listed
 
         resp = await self._http.put(
-            f"/v1/airport/agents/{self.config.agent_id}", json=body
+            f"/v1/airport/agents/{self._agent_id}", json=body
         )
         if resp.status_code != 200:
             raise ConnectError(f"Profile update failed: {resp.status_code}")

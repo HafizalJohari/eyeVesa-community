@@ -1,6 +1,8 @@
 import * as crypto from 'crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { SecureContextOptions } from 'tls';
+import nacl from 'tweetnacl';
+import naclUtil from 'tweetnacl-util';
 
 import type {
   AgentConfig,
@@ -39,14 +41,16 @@ import {
 } from './exceptions';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type SigningKey = { publicKey: Uint8Array; secretKey: Uint8Array };
 
-function uuid(): string {
-  return crypto.randomUUID();
+export function generateSigningKey(): SigningKey {
+  const keyPair = nacl.sign.keyPair();
+  return { publicKey: keyPair.publicKey, secretKey: keyPair.secretKey };
 }
 
-function base64Encode(data: Uint8Array | string): string {
-  const buf = typeof data === 'string' ? Buffer.from(data, 'utf-8') : Buffer.from(data);
-  return buf.toString('base64');
+export function signingKeyFromSecretKey(secretKey: Uint8Array): SigningKey {
+  const keyPair = nacl.sign.keyPair.fromSecretKey(secretKey);
+  return { publicKey: keyPair.publicKey, secretKey: keyPair.secretKey };
 }
 
 function snakeToCamel(obj: unknown): unknown {
@@ -63,30 +67,41 @@ function snakeToCamel(obj: unknown): unknown {
   return obj;
 }
 
+function uuid(): string {
+  return crypto.randomUUID();
+}
+
+function base64Encode(data: Uint8Array | string): string {
+  const buf = typeof data === 'string' ? Buffer.from(data, 'utf-8') : Buffer.from(data);
+  return buf.toString('base64');
+}
+
 export class AgentClient {
   private _config: AgentConfig;
   private _trustScore: number;
   private _registered: boolean;
   private _apiKey?: string;
   private _jwtToken?: string;
+  private _signingKey: SigningKey;
 
   constructor(
     config: AgentConfig,
-    opts?: { apiKey?: string; jwtToken?: string }
+    opts?: { apiKey?: string; jwtToken?: string; signingKey?: SigningKey }
   ) {
     this._config = config;
     this._trustScore = 1.0;
     this._registered = false;
     this._apiKey = opts?.apiKey;
     this._jwtToken = opts?.jwtToken;
+    this._signingKey = opts?.signingKey || generateSigningKey();
   }
 
-  static fromEnv(opts?: { apiKey?: string; jwtToken?: string }): AgentClient {
+  static fromEnv(opts?: { apiKey?: string; jwtToken?: string; signingKey?: SigningKey }): AgentClient {
     const config: AgentConfig = {
       agentId: process.env.AGENT_ID || uuid(),
       name: process.env.AGENT_NAME || 'node-agent',
       owner: process.env.AGENT_OWNER || 'default',
-      gatewayEndpoint: process.env.GATEWAY_ENDPOINT || 'http://localhost:9443',
+      gatewayEndpoint: process.env.GATEWAY_ENDPOINT || 'http://localhost:8080',
     };
     return new AgentClient(config, opts);
   }
@@ -97,6 +112,11 @@ export class AgentClient {
   get trustScore(): number { return this._trustScore; }
   get isRegistered(): boolean { return this._registered; }
   get gatewayEndpoint(): string { return this._config.gatewayEndpoint; }
+  get signingKey(): SigningKey { return this._signingKey; }
+
+  get publicKeyBase64(): string {
+    return base64Encode(this._signingKey.publicKey);
+  }
 
   private buildHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -151,21 +171,52 @@ export class AgentClient {
     return resp.json();
   }
 
-  async connect(): Promise<AgentClient> {
+  async register(): Promise<AgentClient> {
     const body = {
       name: this._config.name,
       owner: this._config.owner,
+      public_key: this.publicKeyBase64,
       capabilities: ['mcp'],
       allowed_tools: ['read', 'get_weather', 'search_docs'],
     };
 
-    const data = await this.jsonRequest('POST', '/v1/register', body) as Record<string, unknown>;
+    const data = await this.jsonRequest('POST', '/v1/agents/register', body) as Record<string, unknown>;
     this._trustScore = (data.trust_score as number) ?? 1.0;
     this._registered = true;
     if (data.agent_id) {
       this._config.agentId = data.agent_id as string;
     }
     return this;
+  }
+
+  async login(): Promise<AgentClient> {
+    const challengeData = await this.jsonRequest('POST', '/v1/auth/challenge', { agent_id: this._config.agentId }) as Record<string, unknown>;
+    const nonce = challengeData.nonce as string;
+
+    const nonceBytes = naclUtil.decodeUTF8(nonce);
+    const signature = nacl.sign.detached(nonceBytes, this._signingKey.secretKey);
+    const signatureB64 = base64Encode(signature);
+
+    const loginData = await this.jsonRequest('POST', '/v1/auth/login', {
+      agent_id: this._config.agentId,
+      nonce,
+      signature: signatureB64,
+    }) as Record<string, unknown>;
+
+    this._jwtToken = loginData.token as string;
+    return this;
+  }
+
+  async connect(): Promise<AgentClient> {
+    await this.register();
+    await this.login();
+    return this;
+  }
+
+  async createApiKey(name: string, tenantId?: string): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { name };
+    if (tenantId) body.tenant_id = tenantId;
+    return await this.jsonRequest('POST', '/v1/api-keys', body) as Record<string, unknown>;
   }
 
   async discover(capability: string = 'mcp'): Promise<ToolInfo[]> {

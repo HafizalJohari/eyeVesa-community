@@ -47,7 +47,7 @@ impl AgentClient {
             "agent_id": self.agent_id().to_string(),
             "status": status,
         });
-        let resp = self.http_client().post(&url).json(&body).send().await?;
+        let resp = self.http_client().post(&url).headers(self.auth_headers()).json(&body).send().await?;
         if !resp.status().is_success() {
             return Err(AirportError::Gateway(format!("heartbeat failed: {}", resp.status())));
         }
@@ -56,7 +56,7 @@ impl AgentClient {
 
     pub async fn airport_update_profile(&self, update: serde_json::Value) -> Result<serde_json::Value, AirportError> {
         let url = format!("{}/v1/airport/agents/{}", self.gateway_endpoint().trim_end_matches('/'), self.agent_id());
-        let resp = self.http_client().put(&url).json(&update).send().await?;
+        let resp = self.http_client().put(&url).headers(self.auth_headers()).json(&update).send().await?;
         if !resp.status().is_success() {
             return Err(AirportError::Gateway(format!("profile update failed: {}", resp.status())));
         }
@@ -65,7 +65,7 @@ impl AgentClient {
 
     pub async fn airport_search(&self, params: &[(&str, &str)]) -> Result<Vec<AirportAgent>, AirportError> {
         let url = format!("{}/v1/airport/agents", self.gateway_endpoint().trim_end_matches('/'));
-        let resp = self.http_client().get(&url).query(params).send().await?;
+        let resp = self.http_client().get(&url).headers(self.auth_headers()).query(params).send().await?;
         if !resp.status().is_success() {
             return Err(AirportError::Gateway(format!("search failed: {}", resp.status())));
         }
@@ -82,17 +82,14 @@ impl AgentClient {
 
     pub async fn airport_get_profile(&self, agent_id: &str) -> Result<AirportAgent, AirportError> {
         let url = format!("{}/v1/airport/agents/{}", self.gateway_endpoint().trim_end_matches('/'), agent_id);
-        let resp = self.http_client().get(&url).send().await?;
-        if !resp.status().is_success() {
-            return Err(AirportError::Gateway(format!("agent not found: {}", resp.status())));
-        }
+        let resp = self.http_client().get(&url).headers(self.auth_headers()).send().await?;
         let agent: AirportAgent = resp.json().await?;
         Ok(agent)
     }
 
     pub async fn airport_list_online(&self) -> Result<Vec<AirportAgent>, AirportError> {
         let url = format!("{}/v1/airport/online", self.gateway_endpoint().trim_end_matches('/'));
-        let resp = self.http_client().get(&url).send().await?;
+        let resp = self.http_client().get(&url).headers(self.auth_headers()).send().await?;
         if !resp.status().is_success() {
             return Err(AirportError::Gateway(format!("online list failed: {}", resp.status())));
         }
@@ -110,6 +107,7 @@ impl AgentClient {
     pub async fn airport_connections(&self, agent_id: &str, limit: u32) -> Result<Vec<AirportConnection>, AirportError> {
         let url = format!("{}/v1/airport/connections", self.gateway_endpoint().trim_end_matches('/'));
         let resp = self.http_client().get(&url)
+            .headers(self.auth_headers())
             .query(&[("agent_id", agent_id), ("limit", &limit.to_string())])
             .send()
             .await?;

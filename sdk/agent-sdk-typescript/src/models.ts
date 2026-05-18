@@ -3,6 +3,7 @@ export interface AgentConfig {
   name: string;
   owner: string;
   gatewayEndpoint: string;
+  publicKey?: string;
 }
 
 export interface ToolInfo {

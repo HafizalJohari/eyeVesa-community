@@ -145,11 +145,57 @@ The Rust Proxy verifies that the entire delegation chain is cryptographically in
 
 Every authorized action produces an Ed25519-signed audit entry. To make audit trails accessible to non-technical auditors, eyeVesa uses the `audit_narratives` LLM integration to generate plain-english descriptions of each logged event.
 
-## 10. Multi-Tenancy
+## 10. Skills System
 
-eyeVesa natively supports multi-tenancy. Agents, resources, and policies are scoped to isolated `tenants`. Each tenant can specify its own dedicated `approvers` for HITL requests.
+eyeVesa includes a full skills management subsystem. Skills are declared capabilities that can be assigned to agents, endorsed by peers, and verified by trusted authorities.
 
-## 11. Gateway Modes
+- **Skill Registry**: CRUD for skills with name, description, category, risk level
+- **Assignment**: Assign skills to agents with proficiency (beginner/intermediate/expert)
+- **Endorsement Chain**: Agents endorse each other's skills, building verifiable reputation
+- **Trust Scoring**: Per-skill trust scores that feed into OPA policy evaluation
+- **Search**: Find agents by skill, and identify missing skills
+
+## 11. Transaction Protocol
+
+A complete capability token and receipt system for agent-to-agent and agent-to-merchant transactions:
+
+- **Capability Tokens**: Ed25519-signed tokens proving an agent has authority to perform specific actions within a scope and time window
+- **Transaction Receipts**: Verifiable, non-repudiable proof that a token was used for a specific action
+- **Revocation**: Centralized revocation store for compromised or expired tokens
+- **Use Cases**: Agent purchases from software marketplaces, cross-agent resource delegation
+
+## 12. Airport — Agent Discovery & Mesh
+
+Airport is eyeVesa's agent discovery and dispatch hub:
+
+- **Heartbeat**: Agents broadcast presence with capabilities, location, and uptime
+- **Search**: Query online agents by capability, trust level, or tags
+- **Profiles**: Each agent maintains a discoverable airport profile
+- **Connections**: Track active agent-to-agent connections in a mesh topology
+- **Dispatch**: Route tasks to capable agents based on proximity and trust
+
+## 13. Key Rotation
+
+Ed25519 signing keys can be rotated without downtime:
+- Rotate with configurable grace period (previous key remains valid)
+- Track rotation history with timestamps
+- Clear previous keys after grace expiry
+
+## 14. Push Notifications
+
+Device push notification management for HITL approvals and alerts:
+- Register iOS (APNs) and Android (FCM) device tokens
+- List and deactivate tokens
+- Used by the HITL escalation system for instant human notifications
+
+## 15. Multi-Tenancy & License-Gated Features
+
+eyeVesa natively supports multi-tenancy and license-gated pro features:
+- **Tenants**: Scoped isolation of agents, resources, policies, and audit logs
+- **Approvers**: Dedicated approver pools per tenant for HITL
+- **License Features**: Multi-layer HITL escalation, LLM integration (summaries, narratives, policy translation), behavioral anomaly detection, multi-tenancy, budget metering, push notifications
+
+## 16. Gateway Modes
 
 | Mode | Description | Use Case |
 |---|---|---|
@@ -157,54 +203,129 @@ eyeVesa natively supports multi-tenancy. Agents, resources, and policies are sco
 | `tls` | Server-side TLS | Internal networks, staging |
 | `mtls` | Mutual TLS (client certs) | Production |
 
-## 12. Terminal UI (TUI)
+## 23. Terminal UI (TUI)
 
 eyeVesa ships with an interactive, keyboard-driven Terminal Dashboard (`eyevesa tui`) to visually monitor gateway status, browse agents, inspect resources, manage pending HITL approvals, and view audit trails.
 
-## 13. CLI Reference
+## 24. CLI Reference
 
-The `eyevesa` CLI covers all operations:
+The `eyevesa` CLI covers all operations. **22 parent commands, 85+ subcommands:**
 
 ```bash
-./eyevesa agents register --name bot --owner org:devops --capabilities "read"
-./eyevesa agents list
-./eyevesa agents get <id>
+# Agent operations
+eyevesa agents register --name bot --owner org:devops --capabilities "read"
+eyevesa agents list
+eyevesa agents get <id>
+eyevesa agents trust <id>
 
-./eyevesa authorize --agent-id <id> --action read --resource-id <rid>
+# Authorization
+eyevesa authorize --agent-id <id> --action read --resource-id <rid>
 
-./eyevesa hitl list
-./eyevesa hitl approve <hitl-id>
-./eyevesa hitl reject <hitl-id>
+# HITL approvals
+eyevesa hitl list
+eyevesa hitl approve <hitl-id>
+eyevesa hitl deny <hitl-id>
+eyevesa hitl status <hitl-id>
+eyevesa hitl request --action deploy --reason "prod deploy" --risk-level high
+eyevesa hitl escalate <hitl-id>
 
-./eyevesa policy upsert --name prod --file policy.rego
-./eyevesa audit query --agent-id <id>
+# Delegation
+eyevesa delegate create --parent <id> --child <id> --scope "log_search" --max-depth 1
+eyevesa delegate list <agent-id>
+eyevesa delegate revoke <delegation-id>
+eyevesa delegate validate <delegation-id>
 
-./eyevesa resource register --name k8s --type kubernetes --endpoint ...
-./eyevesa trust score <id>
+# Audit
+eyevesa audit --agent-id <id> --limit 50
 
-# Budget & Metering
-./eyevesa budget set --agent-id <id> --limit 100.00
-./eyevesa budget view --agent-id <id>
+# Resources
+eyevesa resource register --name k8s --type kubernetes --endpoint ...
+eyevesa resource list
+eyevesa resource get <id>
 
-# Diagnostic & Ops
-./eyevesa tui
-./eyevesa doctor
-./eyevesa discover
-./eyevesa verify
+# MCP
+eyevesa mcp initialize
+eyevesa mcp tools-list
+eyevesa mcp call <tool> --params '{"key":"val"}'
+
+# Skills (11 subcommands)
+eyevesa skills list --category monitoring
+eyevesa skills search --query "kubernetes"
+eyevesa skills create --name k8s-deploy --description "Deploy to K8s" --category ops
+eyevesa skills assign --agent-id <id> --skill-id <sid> --proficiency expert
+eyevesa skills endorse --agent-id <id> --skill-id <sid>
+eyevesa skills trust <agent-id>
+
+# Transaction Protocol (6 subcommands)
+eyevesa tx issue --subject <agent-id> --scope '{"read":true}' --ttl 3600
+eyevesa tx verify <token-id>
+eyevesa tx revoke <token-id> --reason "compromised"
+eyevesa tx receipt --token-id <tid> --action purchase --value 50
+
+# SPIRE Federation (13 subcommands)
+eyevesa spire create-bundle --name prod-cluster --domain prod.example.org
+eyevesa spire list-bundles
+eyevesa spire register-workload --spiffe-id spiffe://prod/k8s/my-svc --selectors "k8s:..."
+eyevesa spire attest-workload <workload-id>
+eyevesa spire status
+
+# Airport Discovery (7 subcommands)
+eyevesa airport search --capability "database"
+eyevesa airport online
+eyevesa airport profile <agent-id>
+eyevesa airport heartbeat
+eyevesa airport connections
+
+# Budget & Rate Limits
+eyevesa budget check --agent-id <id>
+eyevesa budget record --agent-id <id> --amount 10 --resource "api-call"
+
+# Key Rotation
+eyevesa keys rotate
+eyevesa keys status
+eyevesa keys clear-previous
+
+# Tenants
+eyevesa tenants create --name acme-corp --domain acme.com
+eyevesa tenants list
+eyevesa tenants get <tenant-id>
+
+# Push Notifications
+eyevesa push register --token <device-token> --platform ios
+eyevesa push list
+eyevesa push deactivate <token-id>
+
+# PTV Attestation
+eyevesa ptv attest --platform tpm2.0 --firmware-version 2.1
+eyevesa ptv verify <binding-id>
+
+# Other
+eyevesa init                   # Interactive agent registration wizard
+eyevesa config show            # Show current config
+eyevesa doctor                 # Diagnostic checks
+eyevesa ready                  # Readiness check
+eyevesa discover               # Explore resources + MCP tools
+eyevesa verify-signature <agent-id> <message> <signature>
+eyevesa tui                    # Full terminal dashboard
+
+# Authentication
+eyevesa auth api-key create --label "ci-cd"
+eyevesa auth api-key list
+eyevesa auth api-key revoke <key-id>
 ```
 
-## 14. Hermes Agent SDK Integration
+## 25. Hermes Agent SDK Integration
 
 Hermes is a Python agent framework that integrates natively with eyeVesa. It automates keypair generation, handles mTLS, auto-signs MCP requests, transparently performs PTV attestations, and natively blocks/waits during HITL decisions.
 
-## 15. Integration with Major LLM Providers
+## 26. Integration with Major LLM Providers
 
 eyeVesa supports integration with Agentic AI systems from Claude, OpenAI, Anthropic, Grok, Gemini, Llama, LangGraph, CrewAI, and AutoGen. Integration is done via:
 - **Rust SDK** (`sdk/agent-sdk-rust/`) — For native Rust-based agents (e.g. Grok)
 - **MCP Protocol** (`/v1/mcp`) — For agents supporting the Model Context Protocol (e.g. Claude Computer Use)
 - **REST API + JWT/API Key** — For custom tool calling capabilities (e.g. OpenAI o1/GPT-4o, Gemini, Llama)
 
-## 16. Quick Services Reference
+## 27. Quick Services Reference
 
 | Service | Port | Start Command |
 |---|---|---|
@@ -220,7 +341,7 @@ eyeVesa supports integration with Agentic AI systems from Claude, OpenAI, Anthro
 - Keys: Ed25519 at `GATEWAY_KEY_PATH`, PTV ECDSA at `PTV_KEY_PATH`
 - Migrations: `psql -h localhost -U agentid -d agentid -f registry/migrations/NNN_*.sql`
 
-## 17. Agent SDK
+## 28. Agent SDK
 
 First-party SDKs for Python, Rust, and TypeScript. All three provide Ed25519 identity, MCP invocation, HITL approvals, PTV attestation, delegation, skills management, and a transaction protocol.
 

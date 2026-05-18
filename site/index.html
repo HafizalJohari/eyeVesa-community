@@ -192,7 +192,7 @@
 
     <center><table border="1" cellpadding="8" cellspacing="0" class="statbox">
         <tr>
-            <th>30+</th><th>Ed25519+PTV</th><th>3-Tier</th><th>100%</th>
+            <th>86+</th><th>Ed25519+PTV</th><th>3-Tier</th><th>100%</th>
         </tr><tr>
             <td>API Endpoints</td><td>Crypto Identity</td><td>Policy Engine</td><td>Audit Integrity</td>
         </tr>
@@ -313,6 +313,38 @@
         <tr>
             <td><b>Budget &amp; Rate Limits</b></td>
             <td>Per-agent spend tracking. OPA checks budget before authorization. Rate limiting per agent per resource.</td>
+        </tr>
+        <tr>
+            <td><b>Skills System</b></td>
+            <td>Declarative skill registry with CRUD, assignment, endorsement chains, and per-skill trust scoring. Search and discover agents by skill.</td>
+        </tr>
+        <tr>
+            <td><b>Airport</b></td>
+            <td>Agent discovery and dispatch hub. Agents broadcast presence via heartbeat, search for peers by capability, and establish direct connections. Decentralized agent mesh.</td>
+        </tr>
+        <tr>
+            <td><b>Transaction Protocol</b></td>
+            <td>Ed25519-signed capability tokens and transaction receipts. Issue, verify, and revoke tokens. Non-repudiable proof of authorization for financial-grade transactions.</td>
+        </tr>
+        <tr>
+            <td><b>SPIRE Federation</b></td>
+            <td>Cross-cluster SPIFFE trust bundles. Register workloads, fetch remote bundles, attest workload identities. Multi-cluster SVID-based authentication.</td>
+        </tr>
+        <tr>
+            <td><b>Key Rotation</b></td>
+            <td>Ed25519 signing key rotation with configurable grace period. Rotate keys without downtime. Previous keys remain valid until grace expiry, then cleared.</td>
+        </tr>
+        <tr>
+            <td><b>Multi-Tenancy</b></td>
+            <td>Tenant-scoped isolation of agents, resources, policies, and audit logs. Create and manage tenants with dedicated approver pools.</td>
+        </tr>
+        <tr>
+            <td><b>Terminal UI</b></td>
+            <td>Full bubbletea TUI dashboard with real-time views of agents, resources, HITL approvals, delegation chains, and audit trail. Keyboard-navigable.</td>
+        </tr>
+        <tr>
+            <td><b>License-Gated Pro Features</b></td>
+            <td>Multi-layer HITL escalation, LLM integration (summaries, narratives, policy translation), behavioral anomaly detection, multi-tenancy, budget metering, push notifications. Enabled via license key.</td>
         </tr>
     </table>
 
@@ -603,31 +635,116 @@
     <h3>Control Plane (HTTP :8080)</h3>
     <table border="1" cellpadding="4" cellspacing="0" width="100%">
         <tr bgcolor="#333"><th>Method</th><th>Path</th><th>Description</th></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>System</b></td></tr>
         <tr><td>GET</td><td><tt>/health</tt></td><td>Health check</td></tr>
+        <tr><td>GET</td><td><tt>/ready</tt></td><td>Readiness check</td></tr>
         <tr><td>GET</td><td><tt>/identity</tt></td><td>SPIFFE identity info</td></tr>
+        <tr><td>GET</td><td><tt>/metrics</tt></td><td>Prometheus metrics</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Agents</b></td></tr>
         <tr><td>POST</td><td><tt>/v1/agents/register</tt></td><td>Register a new AI agent</td></tr>
         <tr><td>GET</td><td><tt>/v1/agents</tt></td><td>List all agents</td></tr>
         <tr><td>GET</td><td><tt>/v1/agents/{id}</tt></td><td>Get agent by ID</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Resources</b></td></tr>
         <tr><td>POST</td><td><tt>/v1/resources/register</tt></td><td>Register an enterprise resource</td></tr>
         <tr><td>GET</td><td><tt>/v1/resources</tt></td><td>List all resources</td></tr>
+        <tr><td>GET</td><td><tt>/v1/resources/{id}</tt></td><td>Get resource by ID</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Authorization</b></td></tr>
         <tr><td>POST</td><td><tt>/v1/authorize</tt></td><td>Authorize an agent action (OPA)</td></tr>
         <tr><td>POST</td><td><tt>/v1/verify-signature</tt></td><td>Verify Ed25519 signature</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Authentication</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/auth/challenge</tt></td><td>Auth challenge request</td></tr>
+        <tr><td>POST</td><td><tt>/v1/auth/login</tt></td><td>Agent login with challenge response</td></tr>
+        <tr><td>POST</td><td><tt>/v1/auth/api-keys</tt></td><td>Create API key</td></tr>
+        <tr><td>GET</td><td><tt>/v1/auth/api-keys</tt></td><td>List API keys</td></tr>
+        <tr><td>DELETE</td><td><tt>/v1/auth/api-keys/{id}</tt></td><td>Revoke API key</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Delegation</b></td></tr>
         <tr><td>POST</td><td><tt>/v1/delegate</tt></td><td>Delegate scope to another agent</td></tr>
+        <tr><td>POST</td><td><tt>/v1/delegate/validate</tt></td><td>Validate delegation chain</td></tr>
         <tr><td>GET</td><td><tt>/v1/delegations/{id}</tt></td><td>Get delegation chain</td></tr>
         <tr><td>DELETE</td><td><tt>/v1/delegations/{id}</tt></td><td>Revoke a delegation</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>HITL</b></td></tr>
         <tr><td>POST</td><td><tt>/v1/hitl/request</tt></td><td>Request human approval</td></tr>
         <tr><td>GET</td><td><tt>/v1/hitl/pending</tt></td><td>List pending approvals</td></tr>
+        <tr><td>GET</td><td><tt>/v1/hitl/{id}</tt></td><td>Get approval status</td></tr>
         <tr><td>POST</td><td><tt>/v1/hitl/{id}/decide</tt></td><td>Approve/reject with FaceID/password</td></tr>
         <tr><td>POST</td><td><tt>/v1/hitl/escalate</tt></td><td>Escalated multi-approver HITL</td></tr>
-        <tr><td>POST</td><td><tt>/v1/ptv/attest</tt></td><td>PTV: Attest hardware identity</td></tr>
-        <tr><td>POST</td><td><tt>/v1/ptv/bind</tt></td><td>PTV: Transform attestation to binding</td></tr>
-        <tr><td>GET</td><td><tt>/v1/ptv/verify/{id}</tt></td><td>PTV: Verify identity binding</td></tr>
+        <tr><td>POST</td><td><tt>/v1/hitl/escalate/decision</tt></td><td>Process escalation chain decision</td></tr>
+        <tr><td>GET</td><td><tt>/v1/hitl/escalate/{id}</tt></td><td>Get escalation chain status</td></tr>
+        <tr><td>GET</td><td><tt>/v1/notifications</tt></td><td>Get notifications for approver</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>PTV (Prove-Transform-Verify)</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/ptv/attest</tt></td><td>Attest hardware identity</td></tr>
+        <tr><td>POST</td><td><tt>/v1/ptv/bind</tt></td><td>Transform attestation to binding</td></tr>
+        <tr><td>GET</td><td><tt>/v1/ptv/verify/{id}</tt></td><td>Verify identity binding</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Audit</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/audit</tt></td><td>Query audit trail</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Behavioral Anomaly Detection</b></td></tr>
         <tr><td>POST</td><td><tt>/v1/behavior/{id}/embedding</tt></td><td>Update behavioral embedding</td></tr>
         <tr><td>GET</td><td><tt>/v1/behavior/{id}/anomalies</tt></td><td>Detect behavioral anomalies</td></tr>
-        <tr><td>POST</td><td><tt>/v1/llm/hitl-summary/{id}</tt></td><td>Generate HITL summary (LLM)</td></tr>
+        <tr><td>GET</td><td><tt>/v1/behavior/{id}/similar</tt></td><td>Find similar agents by behavior</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>LLM Integration</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/llm/hitl-summary/{id}</tt></td><td>Generate HITL summary</td></tr>
+        <tr><td>POST</td><td><tt>/v1/llm/audit-narrative</tt></td><td>Generate audit narrative</td></tr>
+        <tr><td>POST</td><td><tt>/v1/llm/translate-policy</tt></td><td>Translate natural language to Rego</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Budget &amp; Rate Limits</b></td></tr>
         <tr><td>GET</td><td><tt>/v1/budget/check</tt></td><td>Check agent budget</td></tr>
         <tr><td>POST</td><td><tt>/v1/budget/spend</tt></td><td>Record agent spend</td></tr>
-        <tr><td>POST</td><td><tt>/v1/audit</tt></td><td>Query audit trail</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Push Notifications</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/push/register</tt></td><td>Register push token</td></tr>
+        <tr><td>GET</td><td><tt>/v1/push/tokens</tt></td><td>List push tokens</td></tr>
+        <tr><td>POST</td><td><tt>/v1/push/deactivate</tt></td><td>Deactivate push token</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Key Rotation</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/keys/rotate</tt></td><td>Rotate Ed25519 signing key</td></tr>
+        <tr><td>GET</td><td><tt>/v1/keys/status</tt></td><td>Get key rotation status</td></tr>
+        <tr><td>POST</td><td><tt>/v1/keys/clear-previous</tt></td><td>Clear previous key</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Multi-Tenancy</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/tenants</tt></td><td>Create tenant</td></tr>
+        <tr><td>GET</td><td><tt>/v1/tenants</tt></td><td>List tenants</td></tr>
+        <tr><td>GET</td><td><tt>/v1/tenants/{id}</tt></td><td>Get tenant detail</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Skills</b></td></tr>
+        <tr><td>GET</td><td><tt>/v1/skills</tt></td><td>List skills (optional category filter)</td></tr>
+        <tr><td>POST</td><td><tt>/v1/skills</tt></td><td>Create a skill</td></tr>
+        <tr><td>GET</td><td><tt>/v1/skills/{id}</tt></td><td>Get skill by ID</td></tr>
+        <tr><td>PUT</td><td><tt>/v1/skills/{id}</tt></td><td>Update skill</td></tr>
+        <tr><td>DELETE</td><td><tt>/v1/skills/{id}</tt></td><td>Delete skill</td></tr>
+        <tr><td>GET</td><td><tt>/v1/skills/search</tt></td><td>Search skills by name/description</td></tr>
+        <tr><td>POST</td><td><tt>/v1/agents/{id}/skills</tt></td><td>Assign skill to agent</td></tr>
+        <tr><td>GET</td><td><tt>/v1/agents/{id}/skills</tt></td><td>List agent skills</td></tr>
+        <tr><td>DELETE</td><td><tt>/v1/agents/{id}/skills/{skillId}</tt></td><td>Remove skill from agent</td></tr>
+        <tr><td>POST</td><td><tt>/v1/agents/{id}/skills/{skillId}/endorse</tt></td><td>Endorse agent skill</td></tr>
+        <tr><td>POST</td><td><tt>/v1/agents/{id}/skills/{skillId}/verify</tt></td><td>Verify agent skill</td></tr>
+        <tr><td>GET</td><td><tt>/v1/agents/{id}/skill-trust</tt></td><td>Get per-skill trust scores</td></tr>
+        <tr><td>POST</td><td><tt>/v1/agents/{id}/skill-trust/adjust</tt></td><td>Adjust skill trust score</td></tr>
+        <tr><td>POST</td><td><tt>/v1/skills/authz</tt></td><td>Check skill authorization</td></tr>
+        <tr><td>GET</td><td><tt>/v1/agents/{id}/skills/missing</tt></td><td>Find missing skills</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Transaction Protocol</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/tx/issue</tt></td><td>Issue capability token</td></tr>
+        <tr><td>POST</td><td><tt>/v1/tx/verify</tt></td><td>Verify capability token</td></tr>
+        <tr><td>POST</td><td><tt>/v1/tx/revoke/{id}</tt></td><td>Revoke capability token</td></tr>
+        <tr><td>GET</td><td><tt>/v1/tx/revoked</tt></td><td>List revoked tokens</td></tr>
+        <tr><td>POST</td><td><tt>/v1/tx/receipt</tt></td><td>Issue transaction receipt</td></tr>
+        <tr><td>POST</td><td><tt>/v1/tx/receipt/verify</tt></td><td>Verify transaction receipt</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>SPIRE Federation</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/spire/bundles</tt></td><td>Create trust bundle</td></tr>
+        <tr><td>GET</td><td><tt>/v1/spire/bundles</tt></td><td>List trust bundles</td></tr>
+        <tr><td>GET</td><td><tt>/v1/spire/bundles/{id}</tt></td><td>Get trust bundle</td></tr>
+        <tr><td>PUT</td><td><tt>/v1/spire/bundles/{id}</tt></td><td>Update trust bundle</td></tr>
+        <tr><td>DELETE</td><td><tt>/v1/spire/bundles/{id}</tt></td><td>Delete trust bundle</td></tr>
+        <tr><td>POST</td><td><tt>/v1/spire/bundles/verify</tt></td><td>Verify trust bundle</td></tr>
+        <tr><td>POST</td><td><tt>/v1/spire/bundles/fetch</tt></td><td>Fetch bundle from remote endpoint</td></tr>
+        <tr><td>POST</td><td><tt>/v1/spire/workloads</tt></td><td>Register workload</td></tr>
+        <tr><td>GET</td><td><tt>/v1/spire/workloads</tt></td><td>List workloads</td></tr>
+        <tr><td>GET</td><td><tt>/v1/spire/workloads/{id}</tt></td><td>Get workload</td></tr>
+        <tr><td>POST</td><td><tt>/v1/spire/workloads/{id}/attest</tt></td><td>Attest workload</td></tr>
+        <tr><td>DELETE</td><td><tt>/v1/spire/workloads/{id}</tt></td><td>Delete workload</td></tr>
+        <tr><td>GET</td><td><tt>/v1/spire/status</tt></td><td>SPIRE status</td></tr>
+        <tr bgcolor="#444"><td colspan="3"><b>Airport (Agent Discovery)</b></td></tr>
+        <tr><td>POST</td><td><tt>/v1/airport/heartbeat</tt></td><td>Agent heartbeat</td></tr>
+        <tr><td>GET</td><td><tt>/v1/airport/search</tt></td><td>Search agents by capability</td></tr>
+        <tr><td>GET</td><td><tt>/v1/airport/online</tt></td><td>List online agents</td></tr>
+        <tr><td>GET</td><td><tt>/v1/airport/profile/{id}</tt></td><td>Get agent airport profile</td></tr>
+        <tr><td>PUT</td><td><tt>/v1/airport/profile/{id}</tt></td><td>Update agent profile</td></tr>
+        <tr><td>GET</td><td><tt>/v1/airport/connections</tt></td><td>List active connections</td></tr>
+        <tr><td>GET</td><td><tt>/v1/airport/health</tt></td><td>Airport health</td></tr>
     </table>
 
     <h3>Core Proxy (HTTP/TLS/mTLS :9443)</h3>
@@ -635,14 +752,12 @@
         <tr bgcolor="#333"><th>Method</th><th>Path</th><th>Description</th></tr>
         <tr><td>GET</td><td><tt>/health</tt></td><td>Health check</td></tr>
         <tr><td>POST</td><td><tt>/v1/mcp</tt></td><td>MCP JSON-RPC proxy</td></tr>
-        <tr><td>POST</td><td><tt>/v1/register</tt></td><td>Agent registration (proxied)</td></tr>
+        <tr><td>POST</td><td><tt>/v1/register</tt></td><td>Agent registration (proxied via gRPC)</td></tr>
         <tr><td>POST</td><td><tt>/v1/auth</tt></td><td>Authorization (proxied via gRPC)</td></tr>
-        <tr><td>*</td><td><tt>/v1/ptv/*</tt></td><td>PTV endpoints (proxied)</td></tr>
-        <tr><td>*</td><td><tt>/v1/hitl/*</tt></td><td>HITL endpoints (proxied)</td></tr>
-        <tr><td>*</td><td><tt>/v1/agents/*</tt></td><td>Agent management (proxied)</td></tr>
-        <tr><td>*</td><td><tt>/v1/delegate*</tt></td><td>Delegation (proxied)</td></tr>
-        <tr><td>*</td><td><tt>/v1/audit*</tt></td><td>Audit trail (proxied)</td></tr>
+        <tr><td>*</td><td><tt>/v1/*</tt></td><td>All other /v1/ paths forwarded to Go control plane</td></tr>
     </table>
+
+    <p><b>Total: 86+ API endpoints</b> across all services.</p>
 
     <h3>Gateway Modes</h3>
     <table border="1" cellpadding="8" cellspacing="0" width="100%">
@@ -738,7 +853,7 @@ EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
 
     <a name="cli"></a>
     <h2>CLI</h2>
-    <p>The <tt>eyevesa</tt> CLI covers agent management, authorization, HITL, and audit from the terminal.</p>
+    <p>The <tt>eyevesa</tt> CLI covers agent management, authorization, HITL, audit, skills, SPIRE federation, airport discovery, budget, keys, tenants, push notifications, and more. <b>22 parent commands, 85+ subcommands, all working.</b></p>
 
     <pre>
     # Agent operations
@@ -754,11 +869,15 @@ EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
     eyevesa hitl list
     eyevesa hitl approve &lt;approval-id&gt;
     eyevesa hitl deny &lt;approval-id&gt;
+    eyevesa hitl status &lt;approval-id&gt;
+    eyevesa hitl request --action deploy --reason "prod deploy" --risk-level high
+    eyevesa hitl escalate &lt;approval-id&gt;
 
     # Delegation
     eyevesa delegate create --parent &lt;id&gt; --child &lt;id&gt; --scope "log_search" --max-depth 1
     eyevesa delegate list &lt;agent-id&gt;
     eyevesa delegate revoke &lt;delegation-id&gt;
+    eyevesa delegate validate &lt;delegation-id&gt;
 
     # Audit
     eyevesa audit --agent-id &lt;id&gt; --limit 50
@@ -771,6 +890,73 @@ EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
     # MCP
     eyevesa mcp initialize
     eyevesa mcp tools-list
+    eyevesa mcp call &lt;tool&gt; --params '{"key":"val"}'
+
+    # Skills (11 subcommands)
+    eyevesa skills list --category monitoring
+    eyevesa skills search --query "kubernetes"
+    eyevesa skills create --name k8s-deploy --description "Deploy to K8s" --category ops --risk-level medium
+    eyevesa skills assign --agent-id &lt;id&gt; --skill-id &lt;sid&gt; --proficiency expert
+    eyevesa skills endorse --agent-id &lt;id&gt; --skill-id &lt;sid&gt;
+    eyevesa skills trust &lt;agent-id&gt;
+
+    # Transaction Protocol
+    eyevesa tx issue --subject &lt;agent-id&gt; --scope '{"read":true}' --ttl 3600
+    eyevesa tx verify &lt;token-id&gt;
+    eyevesa tx revoke &lt;token-id&gt; --reason "compromised"
+    eyevesa tx receipt --token-id &lt;tid&gt; --action purchase --value 50
+
+    # SPIRE Federation (13 subcommands)
+    eyevesa spire create-bundle --name prod-cluster --domain prod.example.org
+    eyevesa spire list-bundles
+    eyevesa spire fetch-bundle --endpoint https://spire.other-cluster:8081
+    eyevesa spire register-workload --spiffe-id spiffe://prod/k8s/my-svc --selectors "k8s:pod-label:app=myapp"
+    eyevesa spire attest-workload &lt;workload-id&gt;
+    eyevesa spire status
+
+    # Airport (Agent Discovery)
+    eyevesa airport search --capability "database"
+    eyevesa airport online
+    eyevesa airport profile &lt;agent-id&gt;
+    eyevesa airport heartbeat
+    eyevesa airport connections
+
+    # Budget & Rate Limits
+    eyevesa budget check --agent-id &lt;id&gt;
+    eyevesa budget record --agent-id &lt;id&gt; --amount 10 --resource "api-call"
+
+    # Key Rotation
+    eyevesa keys rotate
+    eyevesa keys status
+    eyevesa keys clear-previous
+
+    # Tenants
+    eyevesa tenants create --name acme-corp --domain acme.com
+    eyevesa tenants list
+    eyevesa tenants get &lt;tenant-id&gt;
+
+    # Push Notifications
+    eyevesa push register --token &lt;device-token&gt; --platform ios
+    eyevesa push list
+    eyevesa push deactivate &lt;token-id&gt;
+
+    # PTV Attestation
+    eyevesa ptv attest --platform tpm2.0 --firmware-version 2.1
+    eyevesa ptv verify &lt;binding-id&gt;
+
+    # Other CLI Commands
+    eyevesa init                       # Interactive agent registration wizard
+    eyevesa config show                # Show current config
+    eyevesa doctor                     # Diagnostic checks
+    eyevesa ready                      # Readiness check
+    eyevesa discover                   # Explore resources + MCP tools
+    eyevesa verify-signature &lt;agent-id&gt; &lt;message&gt; &lt;signature&gt;
+    eyevesa tui                        # Full terminal dashboard
+
+    # Authentication
+    eyevesa auth api-key create --label "ci-cd"
+    eyevesa auth api-key list
+    eyevesa auth api-key revoke &lt;key-id&gt;
     </pre>
 
     <hr>

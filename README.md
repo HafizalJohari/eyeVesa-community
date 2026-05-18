@@ -14,13 +14,14 @@ Connects AI agents to enterprise resources with cryptographic identity, policy-b
 
 ```
 Agent (SDK) ──mTLS──▶ Gateway Core ──gRPC──▶ Control Plane ──mTLS──▶ Resource (Adapter)
-                           │                     │
-                      MCP Proxy              Registry  Policy
-                     (Rust/Hyper)           (PostgreSQL) (OPA)
-                                           SPIRE    Audit    HITL     PTV
+                            │                     │
+                       MCP Proxy              Registry  Policy
+                      (Rust/Hyper)           (PostgreSQL) (OPA)
+                                            SPIRE    Audit    HITL     PTV
+                                                            Airport
 ```
 
-**Dual-protocol gateway**: The Rust core (port 9443) proxies HTTP/JSON-RPC requests to the Go control plane (port 9090 gRPC, 8080 HTTP) for authorization, registration, and crypto operations. PTV (Prove-Transform-Verify) provides hardware-rooted identity.
+**Dual-protocol gateway**: The Rust core (port 9443, configurable via `PORT`) proxies HTTP/JSON-RPC requests to the Go control plane (port 9090 gRPC, 8080 HTTP) for authorization, registration, and crypto operations. PTV (Prove-Transform-Verify) provides hardware-rooted identity. **Airport** provides agent discovery, heartbeat tracking, profile management, and connection logging.
 
 ## Key Features
 
@@ -34,21 +35,23 @@ Agent (SDK) ──mTLS──▶ Gateway Core ──gRPC──▶ Control Plane �
 - **Agent Delegation**: Scoped agent-to-agent delegation with depth limits (max 3), chain-of-custody, and revocation
 - **SPIRE/SPIFFE**: Workload identity with mTLS for service communication (local dev fallback available)
 - **mTLS/TLS**: Rust proxy supports plaintext, TLS, and mTLS modes via `GATEWAY_MODE` env var
+- **Airport**: Agent discovery layer with heartbeat tracking, searchable profiles, online presence, and connection logging
 
 ## Packages
 
 | Package | Language | Purpose |
 |---|---|---|
 | `gateway/core` | Rust | MCP proxy, crypto, mTLS termination, PTV identity |
-| `gateway/control-plane` | Go | HTTP + gRPC APIs, OPA policy, audit, DB, HITL, PTV |
-| `sdk/agent-sdk-rust` | Rust | Client library for AI agents (connect, invoke, discover, delegate) |
-| `sdk/agent-sdk-python` | Python | Client library with LangGraph/CrewAI/AutoGen/Claude/OpenAI integrations |
-| `sdk/agent-sdk-typescript` | TypeScript | Client library for Node.js agents with Claude/OpenAI framework integrations |
+| `gateway/control-plane` | Go | HTTP + gRPC APIs, OPA policy, audit, DB, HITL, PTV, Airport |
+| `sdk/agent-sdk-rust` | Rust | Client library for AI agents (connect, invoke, discover, delegate, airport) |
+| `sdk/agent-sdk-python` | Python | Client library with LangGraph/CrewAI/AutoGen/Claude/OpenAI/Hermes/OpenClaw integrations |
+| `sdk/agent-sdk-typescript` | TypeScript | Client library for Node.js agents with Claude/OpenAI/Hermes/NanoClaw integrations |
 | `adapter/resource-adapter-go` | Go | MCP server wrapper for enterprise resources |
 | `proto/agentid.proto` | Protobuf | gRPC service definition (7 RPCs) |
-| `registry/migrations/` | SQL | PostgreSQL schema (16 migrations, pgvector) |
+| `registry/migrations/` | SQL | PostgreSQL schema (17 migrations, pgvector) |
 | `policies/authz.rego` | Rego | OPA authorization policies |
 | `deploy/` | YAML | Docker, K8s, cloud configs |
+| `cli/` | Go | `eyevesa` CLI tool with airport subcommands |
 
 ## Agent Integrations
 
@@ -90,6 +93,145 @@ result = await openai_int.handle_function_call("eyevesa_read", {"resource_id": "
 
 See [docs/integrations/](docs/integrations/) for detailed guides.
 
+## Airport
+
+The **Airport** is eyeVesa's agent discovery layer — the place where agents meet, announce their presence, find each other by capability, and track their interactions.
+
+### Core Concepts
+
+- **Heartbeat**: Agents send periodic heartbeats to signal they are online. Stale heartbeats (>5 min) are automatically marked offline.
+- **Profile**: Each agent has a searchable profile (description, tags, services, endpoints). Profiles can be listed or unlisted.
+- **Search**: Find agents by capability, skill, trust score, status, tag, or owner.
+- **Connections**: Every authorization interaction between two agents is logged as a connection record, creating a social graph.
+- **Health**: A public endpoint returns airport status (online agent count, total profiles).
+- **Auto-Registration**: When an agent registers via `POST /v1/agents/register`, it automatically receives an airport heartbeat (status: online) and a profile (listed: true). Connections are logged automatically during the authorize flow.
+
+### Airport API Endpoints
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| POST | `/v1/airport/heartbeat` | Send agent heartbeat (online/offline/busy/idle) | Required |
+| GET | `/v1/airport/agents` | Search agents with filters (capability, skill, min_trust, status, tag, owner) | Public |
+| GET | `/v1/airport/online` | List agents currently online (heartbeat < 2 min) | Public |
+| GET | `/v1/airport/agents/{id}` | Get a single agent's airport profile | Public |
+| PUT | `/v1/airport/agents/{id}` | Update agent profile (description, tags, services, endpoints, listed) | Required |
+| GET | `/v1/airport/connections` | List connections for an agent (`?agent_id=...&limit=...`) | Required |
+| GET | `/v1/airport/health` | Airport health (online agent count, total profiles) | Public |
+
+### Airport Auth Policy
+
+| Endpoint | Auth Required | Notes |
+|----------|--------------|-------|
+| `GET /v1/airport/agents` | No (public) | Browse/search agents |
+| `GET /v1/airport/online` | No (public) | See who's online |
+| `GET /v1/airport/health` | No (public) | Health/stats |
+| `GET /v1/airport/agents/{id}` | No (public) | View individual profile |
+| `POST /v1/airport/heartbeat` | Yes | Must authenticate to announce presence |
+| `PUT /v1/airport/agents/{id}` | Yes | Must authenticate to update own profile |
+| `GET /v1/airport/connections` | Yes | Must authenticate to view connections |
+
+### MCP Airport Methods
+
+The Airport is also accessible via the MCP JSON-RPC endpoint (`POST /v1/mcp`):
+
+| Method | Maps to | Description |
+|--------|---------|-------------|
+| `airport/search` | `GET /v1/airport/agents` | Search agents by capability, skill, min_trust, status, limit |
+| `airport/heartbeat` | `POST /v1/airport/heartbeat` | Send heartbeat with agent_id, status, metadata |
+| `airport/profile` | `GET /v1/airport/agents/{id}` or `PUT` | Get or update profile (update if `update` param present) |
+| `airport/online` | `GET /v1/airport/online` | List online agents |
+| `airport/connections` | `GET /v1/airport/connections` | Query connections by agent_id, limit |
+
+### Auto-Registration Behavior
+
+When an agent registers via `POST /v1/agents/register`:
+1. An airport heartbeat is automatically created with status `online`
+2. An airport profile is automatically created with `listed: true`
+3. The agent is immediately discoverable via search and online endpoints
+
+During the authorize flow (`POST /v1/authorize`), every authorization creates an `airport_connections` record with:
+- `requester_id` — the agent requesting the action
+- `responder_id` — the resource (or agent) responding
+- `action` — the action being authorized
+- `outcome` — success, denied, hitl_required, timeout, or error
+- `trust_score_at_time` — the agent's trust score at the moment of authorization
+
+### Connection Tracking
+
+Every `POST /v1/authorize` call logs an `airport_connections` record, building a social graph of agent interactions:
+
+```sql
+SELECT connection_id, requester_id, responder_id, action, outcome, trust_score_at_time, created_at
+FROM airport_connections
+WHERE requester_id = $1 OR responder_id = $1
+ORDER BY created_at DESC
+LIMIT 50
+```
+
+## Auth Middleware
+
+The auth middleware (controlled by `AUTH_ENABLED` env var) distinguishes between public and authenticated routes.
+
+**Public routes** (no authentication required):
+- `/health`, `/ready`, `/identity`
+- `/v1/agents/register`
+- `/v1/resources/register`
+- `/v1/mcp`
+- `/v1/api-keys`
+- `/v1/auth/challenge`, `/v1/auth/login`
+- Airport browse endpoints: `GET /v1/airport/agents`, `GET /v1/airport/online`, `GET /v1/airport/health`, `GET /v1/airport/agents/{id}`
+
+**Authenticated routes** (require `X-API-Key` header or `Bearer` JWT token):
+- Everything else, including `POST /v1/airport/heartbeat`, `PUT /v1/airport/agents/{id}`, `GET /v1/airport/connections`
+
+When `AUTH_ENABLED=false` (default), all routes are accessible without authentication.
+
+## CLI
+
+The `eyevesa` CLI provides commands for agent management, authorization, and airport operations:
+
+### Agent & Resource Commands
+
+```bash
+eyevesa register --name my-agent --owner "org:acme" --allowed-tools read,write
+eyevesa register-resource --name my-resource --type api ...
+eyevesa list-agents
+eyevesa get-agent <agent-id>
+eyevesa authorize --agent-id <id> --action read --resource-id <res-id>
+eyevesa verify-signature --agent-id <id> --data "hello" --signature <sig>
+eyevesa delegate --agent-id <id> --scope "read:doc-001" --max-depth 2
+eyevesa list-delegations --agent-id <id>
+eyevesa validate-delegation --delegation-id <id>
+eyevesa hitl-request --agent-id <id> --action transfer --risk-level high
+eyevesa hitl-pending
+eyevesa audit --agent-id <id>
+```
+
+### Airport Commands
+
+```bash
+# Search for agents at the airport
+eyevesa airport search [--capability read] [--skill research] [--status online] [--tag data] [--owner org:acme] [--min-trust 0.8] [--limit 50]
+
+# List agents currently online
+eyevesa airport online
+
+# Get an agent's airport profile
+eyevesa airport profile <agent-id>
+
+# Send a heartbeat for an agent
+eyevesa airport heartbeat <agent-id> [--status online]
+
+# Update an agent's airport profile
+eyevesa airport update-profile <agent-id> [--description "Research agent"] [--tags ai,ml] [--listed true]
+
+# List an agent's connections
+eyevesa airport connections <agent-id> [--limit 50]
+
+# Check airport health and stats
+eyevesa airport health
+```
+
 ## API Endpoints
 
 ### Control Plane (HTTP :8080)
@@ -97,6 +239,7 @@ See [docs/integrations/](docs/integrations/) for detailed guides.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Health check |
+| GET | `/ready` | Readiness check |
 | GET | `/identity` | SPIFFE identity info |
 | POST | `/v1/agents/register` | Register a new AI agent |
 | GET | `/v1/agents` | List all agents |
@@ -137,6 +280,19 @@ See [docs/integrations/](docs/integrations/) for detailed guides.
 | GET | `/v1/push/tokens` | List push tokens for approver |
 | DELETE | `/v1/push/tokens/{tokenID}` | Deactivate push token |
 | POST | `/v1/audit` | Query audit trail |
+| **Airport endpoints** | | |
+| POST | `/v1/airport/heartbeat` | Send agent heartbeat |
+| GET | `/v1/airport/agents` | Search agents (browse) |
+| GET | `/v1/airport/online` | List online agents |
+| GET | `/v1/airport/agents/{agentID}` | Get agent airport profile |
+| PUT | `/v1/airport/agents/{agentID}` | Update agent airport profile |
+| GET | `/v1/airport/connections` | List agent connections |
+| GET | `/v1/airport/health` | Airport health/stats |
+| **Auth endpoints** | | |
+| POST | `/v1/auth/challenge` | Get auth challenge |
+| POST | `/v1/auth/login` | Login with API key or credentials |
+| GET | `/v1/auth/challenge` | Get SSO challenge |
+| POST | `/v1/api-keys` | Create API key |
 
 ### Core Proxy (HTTP/TLS/mTLS :9443)
 
@@ -151,6 +307,7 @@ See [docs/integrations/](docs/integrations/) for detailed guides.
 | * | `/v1/agents/*` | Agent management (proxied) |
 | * | `/v1/delegate*` | Delegation (proxied) |
 | * | `/v1/audit*` | Audit trail (proxied) |
+| * | `/v1/airport/*` | Airport endpoints (proxied) |
 
 ### gRPC (Control Plane :9090)
 
@@ -159,6 +316,133 @@ See [docs/integrations/](docs/integrations/) for detailed guides.
 ### MCP Methods (Resource Adapter :8443)
 
 `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get` (protocol version `2024-11-05`)
+
+## SDK Airport Methods
+
+### Python SDK
+
+```python
+from agentid_sdk import AgentClient
+
+client = AgentClient(gateway_endpoint="http://localhost:9443", agent_id=agent_id)
+
+# Send heartbeat
+result = await client.airport_heartbeat(status="online")
+
+# Update profile
+result = await client.airport_update_profile(
+    description="Research agent",
+    services_offered=["search", "analyze"],
+    endpoints={"api": "https://..."},
+    tags=["research", "ml"],
+    listed=True,
+)
+
+# Search agents
+agents = await client.airport_search(capability="read", min_trust=0.8, status="online", limit=10)
+
+# Get agent profile
+profile = await client.airport_get_profile(agent_id)
+
+# List online agents
+online = await client.airport_list_online()
+
+# List connections
+connections = await client.airport_connections(agent_id=agent_id, limit=50)
+```
+
+### TypeScript SDK
+
+```typescript
+import { AgentClient } from 'agentid-sdk';
+
+const client = new AgentClient({ gatewayEndpoint: 'http://localhost:9443', agentId });
+
+// Send heartbeat
+const heartbeat = await client.airportHeartbeat('online');
+
+// Update profile
+const profile = await client.airportUpdateProfile({
+  description: 'Research agent',
+  servicesOffered: ['search', 'analyze'],
+  endpoints: { api: 'https://...' },
+  tags: ['research', 'ml'],
+  listed: true,
+});
+
+// Search agents
+const agents = await client.airportSearch({ capability: 'read', minTrust: 0.8, status: 'online', limit: 10 });
+
+// Get agent profile
+const agent = await client.airportGetProfile(agentId);
+
+// List online agents
+const online = await client.airportListOnline();
+
+// List connections
+const connections = await client.airportConnections(agentId, 50);
+```
+
+### Rust SDK
+
+```rust
+use agentid_sdk::airport::{AirportAgent, AirportConnection, AirportError};
+
+// Send heartbeat
+let result = client.airport_heartbeat("online").await?;
+
+// Update profile
+let profile = client.airport_update_profile(serde_json::json!({
+    "description": "Research agent",
+    "tags": vec!["research", "ml"],
+    "listed": true,
+})).await?;
+
+// Search agents
+let agents: Vec<AirportAgent> = client.airport_search(&[
+    ("capability", "read"),
+    ("min_trust", "0.8"),
+    ("status", "online"),
+]).await?;
+
+// Get agent profile
+let agent: AirportAgent = client.airport_get_profile("agent-uuid").await?;
+
+// List online agents
+let online: Vec<AirportAgent> = client.airport_list_online().await?;
+
+// List connections
+let connections: Vec<AirportConnection> = client.airport_connections("agent-uuid", 50).await?;
+```
+
+**Rust structs** returned by airport methods:
+
+```rust
+pub struct AirportAgent {
+    pub agent_id: String,
+    pub name: String,
+    pub owner: String,
+    pub trust_score: f64,
+    pub status: String,
+    pub description: String,
+    pub services_offered: serde_json::Value,
+    pub endpoints: serde_json::Value,
+    pub tags: Vec<String>,
+    pub total_actions: i64,
+    pub approval_rate: f64,
+    pub last_seen: String,
+}
+
+pub struct AirportConnection {
+    pub connection_id: String,
+    pub requester_id: String,
+    pub responder_id: String,
+    pub action: String,
+    pub outcome: String,
+    pub trust_score_at_time: f64,
+    pub created_at: String,
+}
+```
 
 ## Quick Start
 
@@ -177,15 +461,26 @@ cd gateway/core && cargo run
 # Run resource adapter
 cd adapter/resource-adapter-go && go run ./cmd/ -RESOURCE_NAME=demo-resource
 
-# Register an agent
+# Register an agent (auto-creates airport heartbeat + profile)
 curl -X POST http://localhost:9443/v1/register \
   -H "Content-Type: application/json" \
   -d '{"name":"test-agent","owner":"org:test","allowed_tools":["read","write"]}'
 
-# Authorize an action
+# Authorize an action (auto-logs airport connection)
 curl -X POST http://localhost:9443/v1/auth \
   -H "Content-Type: application/json" \
   -d '{"agent_id":"<AGENT_ID>","action":"read","resource_id":"doc-001"}'
+
+# Send airport heartbeat
+curl -X POST http://localhost:8080/v1/airport/heartbeat \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id":"<AGENT_ID>","status":"online"}'
+
+# Search agents at the airport
+curl http://localhost:8080/v1/airport/agents?status=online&min_trust=0.5
+
+# List online agents
+curl http://localhost:8080/v1/airport/online
 
 # Request HITL approval
 curl -X POST http://localhost:9443/v1/hitl/request \
@@ -238,6 +533,7 @@ GATEWAY_MODE=mtls TLS_CERT_PATH=/tmp/agentid-gateway.crt TLS_KEY_PATH=/tmp/agent
 | `DATABASE_URL` | control | `postgres://agentid:agentid_dev@localhost:5432/agentid` | PostgreSQL connection |
 | `CONTROL_PLANE_ADDR` | core | `http://localhost:9090` | gRPC control plane address |
 | `CONTROL_PLANE_HTTP_ADDR` | core | `localhost:8080` | HTTP control plane address (for proxy forwarding) |
+| `PORT` | core | `9443` | Gateway Core listen port (supports Cloud Run `$PORT`) |
 | `GATEWAY_MODE` | core | `plaintext` | Gateway mode: plaintext, tls, mtls |
 | `TLS_CERT_PATH` | core | `/tmp/agentid-gateway.crt` | TLS certificate path |
 | `TLS_KEY_PATH` | core | `/tmp/agentid-gateway.key` | TLS private key path |
@@ -252,6 +548,7 @@ GATEWAY_MODE=mtls TLS_CERT_PATH=/tmp/agentid-gateway.crt TLS_KEY_PATH=/tmp/agent
 | `PTV_KEY_PATH` | control | `/tmp/agentid-ptv-ecdsa.key` | PTV ECDSA key (persisted across restarts) |
 | `AUTH_ENABLED` | control | `false` | Enable auth middleware (API key/JWT/SSO) |
 | `JWT_SECRET` | control | (auto-generated) | JWT signing secret |
+| `HEARTBEAT_CLEANUP_INTERVAL` | control | `2m` | Interval for marking stale heartbeats as offline |
 | `SPIFFE_ENDPOINT_SOCKET` | control | `unix:///tmp/spire-agent/public/api.sock` | SPIRE Workload API socket |
 | `APNS_KEY_PATH` | control | (empty) | APNs push notification key (PEM) |
 | `APNS_KEY_ID` | control | (empty) | APNs key ID |
@@ -288,7 +585,50 @@ Policy decisions:
 | Gateway Control | Built in-tree | 8080, 9090 |
 | Resource Adapter | Built in-tree | 8443 |
 
-## Deploying to Google Cloud Platform
+## Database Schema
+
+17 PostgreSQL migrations in `registry/migrations/`:
+
+1. **agents** - Identity registry with public_key, capabilities, allowed_tools, trust_score, delegation_policy, behavioral_tags
+2. **resources** - Resource catalog with type, endpoint, auth_method, capabilities (JSONB), risk_level, data_sensitivity
+3. **delegations** - Agent-to-agent delegation chains with scope, max_depth, expires_at, revocation support
+4. **audit_logs** - Non-repudiable trail with Ed25519 signature, params (JSONB), trust_score_before/after, session_id
+5. **trust_events + hitl_approvals** - Trust score changes + human-in-the-loop approval queue with 5-minute expiry
+6. **identity_bindings** - PTV identity bindings with hardware attestation, platform, runtime_hash
+7. **hitl_escalation** - Multi-layer HITL escalation, approval chains, notification log, escalation config
+8. **tenants + approvers** - Multi-tenant isolation with SSO config and approver management
+9. **behavioral_embeddings** - pgvector-based behavior vectors, events, and anomaly detection
+10. **llm_integration** - HITL summaries, audit narratives, policy translations, LLM config
+11. **budget_metering** - Agent spend tracking, rate limit counters
+12. **push_tokens** - APNs/FCM device tokens for HITL push notifications
+13. **api_keys** - API key authentication for gateway access
+14. **spire_federation** - SPIRE federation endpoints and relationships
+15. **skills** - Skill catalog with categories, risk levels, and proficiency thresholds
+16. **transaction_tokens** - Transaction tokens for idempotent operations
+17. **airport** - Agent heartbeats, profiles, and airport connections:
+    - **agent_heartbeats** — agent_id (PK), last_heartbeat, status (online/offline/busy/idle), metadata (JSONB), updated_at
+    - **agent_profiles** — agent_id (PK), description, services_offered (JSONB), endpoints (JSONB), tags (text[]), total_actions, approval_rate, listed (bool), updated_at
+    - **airport_connections** — connection_id (PK UUID), requester_id, responder_id, action, outcome (success/denied/hitl_required/timeout/error), trust_score_at_time, created_at
+    - **airport_mark_stale_offline()** — marks agents offline if heartbeat > 2 minutes stale
+
+## Deploying
+
+### Docker Compose (Local)
+
+```bash
+docker-compose up -d
+```
+
+### VPS (Manual)
+
+```bash
+# Build and deploy to a VPS
+cd gateway/control-plane && go build -o eyevesa-control cmd/api/main.go
+cd gateway/core && cargo build --release
+cd adapter/resource-adapter-go && go build -o eyevesa-adapter ./cmd/
+```
+
+### Google Cloud Platform (Cloud Run)
 
 eyeVesa can be deployed to GCP using **Cloud Run** + **Cloud SQL** with VPC-internal networking:
 
@@ -298,11 +638,21 @@ eyeVesa can be deployed to GCP using **Cloud Run** + **Cloud SQL** with VPC-inte
 | Cloud Run | gateway-control | Go API server, auto-scaling |
 | Cloud Run | resource-adapter | Go MCP adapter |
 | Cloud SQL | PostgreSQL 16 + pgvector | Private IP, VPC-peered |
-| Artifact Registry | Docker images | Built from in-tree Dockerfiles |
+| Artifact Registry | Docker images | Built via `cloudbuild.yaml` |
 | Secret Manager | DB password, JWT secret, Ed25519 key | Auto-populated by deploy script |
 | VPC + Connector | Private networking | Cloud Run ↔ Cloud SQL |
 
-### Quick Deploy
+#### Cloud Build
+
+```bash
+gcloud builds submit --config cloudbuild.yaml \
+  --substitutions=_REGION=asia-southeast1,_REPO=eyevesa,_TAG=latest \
+  --project=YOUR_PROJECT_ID
+```
+
+See `cloudbuild.yaml` at the repository root for the multi-step build configuration.
+
+#### Quick Deploy
 
 ```bash
 # 1. Prerequisites
@@ -337,28 +687,6 @@ Terraform config: `deploy/terraform/gcp.tf`
 Deploy script: `deploy/scripts/deploy-gcp.sh`
 Env template: `deploy/terraform/env.gcp.example`
 
-## Database Schema
-
-13 PostgreSQL migrations in `registry/migrations/`:
-
-1. **agents** - Identity registry with public_key, capabilities, allowed_tools, trust_score, delegation_policy, behavioral_tags
-2. **resources** - Resource catalog with type, endpoint, auth_method, capabilities (JSONB), risk_level, data_sensitivity
-3. **delegations** - Agent-to-agent delegation chains with scope, max_depth, expires_at, revocation support
-4. **audit_logs** - Non-repudiable trail with Ed25519 signature, params (JSONB), trust_score_before/after, session_id
-5. **trust_events + hitl_approvals** - Trust score changes + human-in-the-loop approval queue with 5-minute expiry
-6. **identity_bindings** - PTV identity bindings with hardware attestation, platform, runtime_hash
-7. **hitl_escalation** - Multi-layer HITL escalation, approval chains, notification log, escalation config
-8. **tenants + approvers** - Multi-tenant isolation with SSO config and approver management
-9. **behavioral_embeddings** - pgvector-based behavior vectors, events, and anomaly detection
-10. **llm_integration** - HITL summaires, audit narratives, policy translations, LLM config
-11. **budget_metering** - Agent spend tracking, rate limit counters
-12. **push_tokens** - APNs/FCM device tokens for HITL push notifications
-13. **api_keys** - API key authentication for gateway access
-14. **skills** - Skill catalog with categories, risk levels, and proficiency thresholds
-15. **agent_skills** - Agent-skill assignments with proficiency scores, endorsements, verification
-16. **licenses** - License management for agents and tenants
-17. **airport** - Agent heartbeats, profiles, and airport_connections (where agents meet)
-
 ## Development Status
 
 **Phase 2 — Core Complete, Integration In Progress**
@@ -385,24 +713,29 @@ Env template: `deploy/terraform/env.gcp.example`
 | MCP protocol handling (initialize, tools/call, resources) | Working |
 | SDK connect, discover, invoke, delegate | Working |
 | Adapter MCP server + gateway registration | Working |
-| All 13 database migrations | Working |
+| Auth middleware (API key, JWT, SSO stubs) | Working |
+| Airport: heartbeat, profile, search, online, connections, health | Working |
+| Airport: auto-registration on agent create | Working |
+| Airport: connection logging on authorize | Working |
+| Airport: heartbeat cleanup (stale → offline) | Working |
+| CLI airport subcommands | Working |
+| All 17 database migrations | Working |
 
 ### Partial
 
 | Component | Status | Gap |
 |-----------|--------|-----|
-| Auth middleware | Partial | API keys work; JWT/SAML are stubs; middleware not wired to router |
 | SDK signature on invoke | Partial | Signs payload but doesn't send signature in HTTP headers |
 | MCP tools/list via gRPC | Partial | Returns empty array, never queries control plane |
 | MCP tools/call on control plane | Partial | Only list methods work; tools/call falls through |
 | Adapter tool handlers | Stub | Return hardcoded demo data |
 | OPA policy files | Partial | `policies/authz.rego` used in production; `agentid.rego` needs external data |
+| SSO/SAML | Partial | SSO challenge/login endpoints exist; SAML assertion parsing is a stub |
 
 ### Not Yet Built
 
 - JWT token verification (uses "signature-placeholder")
-- SAML assertion parsing (returns hardcoded claims)
-- CLI tool (`eyevesa init`, `eyevesa trust`, `eyevesa audit`)
+- CLI tool (partial — airport subcommands exist, other commands not yet built)
 - SDK HITL approval query methods
 - SDK PTV attestation/bind methods
 
