@@ -31,10 +31,12 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/database"
 	grpcserver "github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/grpcserver"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/delegation"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/health"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/hitl"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/identity"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/llm"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/metrics"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/migrate"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ptv"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ratelimit"
@@ -55,6 +57,19 @@ func main() {
 	defer db.Close()
 
 	slog.Info("connected to database")
+
+	migrationsDir := os.Getenv("MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		exePath, _ := os.Executable()
+		migrationsDir = filepath.Join(filepath.Dir(exePath), "..", "registry", "migrations")
+		if _, err := os.Stat(migrationsDir); err != nil {
+			migrationsDir = "registry/migrations"
+		}
+	}
+	if err := migrate.RunMigrations(ctx, db.Pool, migrationsDir); err != nil {
+		slog.Error("failed to run migrations", "dir", migrationsDir, "error", err)
+		os.Exit(1)
+	}
 
 	var pubKey ed25519.PublicKey
 	var privKey ed25519.PrivateKey
@@ -111,10 +126,25 @@ func main() {
 		escalationService.RegisterNotifier(hitl.ChannelPagerduty, pdNotifier)
 	}
 
+	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
+	if telegramBotToken != "" {
+		telegramNotifier := hitl.NewTelegramNotifier(telegramBotToken, telegramChatID)
+		escalationService.RegisterNotifier(hitl.ChannelTelegram, telegramNotifier)
+		slog.Info("Telegram notifier enabled")
+	}
+
+	discordWebhook := os.Getenv("DISCORD_WEBHOOK_URL")
+	if discordWebhook != "" {
+		discordNotifier := hitl.NewDiscordNotifier(discordWebhook)
+		escalationService.RegisterNotifier(hitl.ChannelDiscord, discordNotifier)
+		slog.Info("Discord notifier enabled")
+	}
+
 	pushNotifier := hitl.NewPushNotifier()
 	escalationService.RegisterNotifier("push", pushNotifier)
 
-	authEnabled := os.Getenv("AUTH_ENABLED") == "true"
+	authEnabled := os.Getenv("AUTH_ENABLED") != "false"
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
 		jwtSecret = string(auth.GenerateJWTSecret())
@@ -204,9 +234,19 @@ func main() {
 	rateLimiter := ratelimit.NewRateLimiter(globalRPS*10, globalRPS)
 	r.Use(rateLimiter.Middleware)
 
+	healthChecker := health.NewChecker(db, policyEngine, &draining)
+
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		report := healthChecker.Check(r.Context())
+		statusCode := http.StatusOK
+		if report.Status == health.StatusUnhealthy {
+			statusCode = http.StatusServiceUnavailable
+		} else if report.Status == health.StatusDegraded {
+			statusCode = http.StatusServiceUnavailable
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(report)
 	})
 
 	r.Handle("/metrics", metrics.Handler())
@@ -379,12 +419,23 @@ func main() {
 
 	r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
 		if draining.Load() {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("draining"))
+			json.NewEncoder(w).Encode(map[string]string{"status": "draining"})
 			return
 		}
+
+		report := healthChecker.Check(r.Context())
+		if report.Status != health.StatusHealthy {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(report)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ready"))
+		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
 	})
 
 	quit := make(chan os.Signal, 1)

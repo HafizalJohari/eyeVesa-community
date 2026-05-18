@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -162,10 +163,28 @@ func (c *Client) Health() (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("health check returned status %d", resp.StatusCode)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
+
+	// Support both old plain text "ok" and new JSON format
+	if strings.TrimSpace(string(body)) == "ok" {
+		return "ok", nil
+	}
+
+	var report map[string]interface{}
+	if err := json.Unmarshal(body, &report); err == nil {
+		if status, ok := report["status"].(string); ok && status == "healthy" {
+			return "healthy", nil
+		}
+	}
+
 	return string(body), nil
 }
 

@@ -90,7 +90,7 @@
                 "name": "What notification backends does HITL support?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "eyeVesa supports Slack, PagerDuty, webhooks, Apple Push Notification Service (APNs), and Firebase Cloud Messaging (FCM) for human-in-the-loop approval workflows."
+                    "text": "eyeVesa supports Slack, PagerDuty, webhooks, Apple Push Notification Service (APNs), Firebase Cloud Messaging (FCM), Telegram Bot API, and Discord webhooks for human-in-the-loop approval workflows."
                 }
             },
             {
@@ -147,6 +147,7 @@
             <a href="#architecture">[Architecture]</a>
             <a href="#delegation">[Delegation]</a>
             <a href="#api">[API]</a>
+            <a href="#integrations">[Integrations]</a>
             <a href="#hermes">[Hermes]</a>
             <a href="#cli">[CLI]</a>
             <a href="#quickstart">[Quick Start]</a>
@@ -198,7 +199,38 @@
 
     <hr>
 
-    <a name="problem"></a>
+    <h2 align="center">What is eyeVesa? &middot; Apa itu eyeVesa?</h2>
+
+    <table border="1" cellpadding="12" cellspacing="0" width="100%">
+        <tr bgcolor="#333">
+            <th width="50%">English</th>
+            <th width="50%">Bahasa Melayu</th>
+        </tr>
+        <tr valign="top">
+            <td>
+                <b>What is eyeVesa?</b>
+                <p>eyeVesa is the identity and trust layer for the AI agent economy. It answers three questions every enterprise needs: <i>Who is this agent? Should this be allowed? Can we prove what happened?</i></p>
+                <p>Like KYC for banks, but for AI agents.</p>
+
+                <b>For Agents</b>
+                <p>Your AI agent gets a cryptographic passport (Ed25519 keypair). Every action is signed, verified against policy, and logged. No more hardcoded API keys or overly broad permissions.</p>
+
+                <b>For Merchants</b>
+                <p>When an AI agent calls your marketplace, eyeVesa verifies its identity and authorization before the request reaches your servers. Signed tokens, no shared secrets, non-repudiable audit.</p>
+            </td>
+            <td>
+                <b>Apa itu eyeVesa?</b>
+                <p>eyeVesa merupakan lapisan identiti dan kepercayaan bagi ekonomi ejen AI. Ia menjawab tiga persoalan utama setiap perusahaan: <i>Siapakah ejen ini? Patutkah ia dibenarkan? Bolehkah kita membuktikan apa yang telah berlaku?</i></p>
+                <p>Ibarat KYC untuk pihak bank, tetapi dicipta khusus untuk ejen AI.</p>
+
+                <b>Untuk Ejen</b>
+                <p>Ejen AI anda akan menerima pasport kriptografi (pasangan kunci Ed25519). Setiap tindakan akan ditandatangani secara digital, disahkan mengikut polisi, dan direkodkan. Tiada lagi kunci API statik (hardcoded) atau kelulusan kebenaran akses yang terlalu meluas.</p>
+
+                <b>Untuk Pedagang</b>
+                <p>Apabila ejen AI membuat capaian ke sistem anda, eyeVesa terlebih dahulu akan mengesahkan identiti dan kelayakannya sebelum permintaan tersebut diproses oleh pelayan anda. Ia disokong oleh penggunaan token bertandatangan, tiada perkongsian maklumat rahsia, berserta jejak audit yang tidak boleh disangkal.</p>
+            </td>
+        </tr>
+    </table>
     <h2>The Problem</h2>
     <p>When AI agents access production systems, three questions have no good answer:</p>
 
@@ -282,7 +314,7 @@
         </tr>
         <tr>
             <td><b>HITL + Escalation</b></td>
-            <td>Human-in-the-loop approvals with multi-layer escalation. Slack buttons, PagerDuty alerts, webhooks, APNs/FCM push. 5-min auto-escalation.</td>
+            <td>Human-in-the-loop approvals with multi-layer escalation. Slack buttons, PagerDuty alerts, webhooks, APNs/FCM push, Telegram Bot API, Discord webhooks. 5-min auto-escalation.</td>
         </tr>
         <tr>
             <td><b>Trust Scoring</b></td>
@@ -415,6 +447,8 @@
         <tr><td><b>Webhook</b></td><td>Generic JSON POST with X-EyeVesa-Event header</td><td>Custom</td></tr>
         <tr><td><b>APNs</b></td><td>Push notification to iOS devices (JWT auth)</td><td>Tap to approve</td></tr>
         <tr><td><b>FCM</b></td><td>Push notification to Android devices</td><td>Tap to approve</td></tr>
+        <tr><td><b>Telegram</b></td><td>Bot API sendMessage with HTML parse mode. TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID</td><td>Links</td></tr>
+        <tr><td><b>Discord</b></td><td>Webhook with rich embeds (title, description, color, footer). DISCORD_WEBHOOK_URL</td><td>Custom</td></tr>
     </table>
 
     <hr>
@@ -650,6 +684,19 @@
 
     <hr>
 
+    <a name="integrations"></a>
+    <h2>Integrates with Any Major Agentic AI</h2>
+    <p>eyeVesa supports seamless integration with top LLM providers and agent frameworks to ensure any autonomous agent can operate securely:</p>
+    <ul>
+        <li><b>Claude (Anthropic)</b> &mdash; Support via Claude Computer Use + custom MCP tool calling</li>
+        <li><b>OpenAI </b> &mdash; Support via OpenAI Agents + function calling to eyeVesa MCP endpoint</li>
+        <li><b>Grok (xAI)</b> &mdash; Native support via our Rust SDK</li>
+        <li><b>Gemini, Llama, LangGraph, CrewAI, AutoGen</b> &mdash; Supported via standard HTTP/MCP tool calling</li>
+    </ul>
+    <p>Agents interact via our <b>Rust SDK</b> (for native performance), standard <b>MCP Protocol</b> (<tt>/v1/mcp</tt>), or <b>REST APIs</b>, providing every agent with verified identity, policy enforcement, behavioral monitoring, and auditability.</p>
+
+    <hr>
+
     <a name="hermes"></a>
     <h2>Connect with Hermes Agent</h2>
     <p>Hermes is a self-improving autonomous AI agent by <a href="https://nousresearch.com" target="_blank" rel="noopener">Nous Research</a>.
@@ -800,7 +847,7 @@ curl http://localhost:8181/v1/data/agentid/authz/allow  # OPA</pre>
         <dd><b>Process Trait Verification</b> detects whether an agent process has been tampered with &mdash; code injection, binary replacement, or memory manipulation. Runtime measurements are compared against a registered baseline hash at every request.</dd>
 
         <dt>What happens when HITL is triggered?</dt>
-        <dd>The action is paused. A notification is sent to the configured channel (Slack, PagerDuty, webhook, APNs, or FCM). A human reviews and approves or rejects via button, API, or callback. If approved, the action proceeds; if rejected, it is denied and logged.</dd>
+        <dd>The action is paused. A notification is sent to the configured channel (Slack, PagerDuty, webhook, APNs, FCM, Telegram, or Discord). A human reviews and approves or rejects via button, API, or callback. If approved, the action proceeds; if rejected, it is denied and logged.</dd>
 
         <dt>How does agent delegation work?</dt>
         <dd>An agent can delegate authority to a sub-agent via a signed delegation token specifying scope (actions, resources, max depth). The sub-agent presents the chain when making requests. eyeVesa verifies all signatures, scope coverage, and chain integrity before allowing the action.</dd>

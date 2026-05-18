@@ -12,7 +12,6 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./registry/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U agentid"]
       interval: 5s
@@ -42,7 +41,7 @@ services:
       - spire-server
 
   opa:
-    image: openpolicyagent/opa:latest
+    image: openpolicyagent/opa:0.68.0
     container_name: agentid-opa
     ports:
       - "8181:8181"
@@ -52,14 +51,15 @@ services:
 
   gateway-control:
     build:
-      context: ./gateway/control-plane
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: gateway/control-plane/Dockerfile
     container_name: agentid-control
     ports:
       - "8080:8080"
       - "9090:9090"
     environment:
       DATABASE_URL: postgres://agentid:agentid_dev@postgres:5432/agentid?sslmode=disable
+      AUTH_ENABLED: "false"
       OPA_ENDPOINT: http://opa:8181
       SPIRE_ENDPOINT: spire-agent:8090
       POLICY_DIR: /policies
@@ -73,8 +73,8 @@ services:
 
   gateway-core:
     build:
-      context: ./gateway/core
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: gateway/core/Dockerfile
     container_name: agentid-core
     ports:
       - "9443:9443"

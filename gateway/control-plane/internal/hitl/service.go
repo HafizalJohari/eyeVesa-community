@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -118,12 +119,21 @@ func (s *HITLService) GetStatus(ctx context.Context, approvalID string) (string,
 }
 
 func (s *HITLService) ListPending(ctx context.Context, agentID string) ([]map[string]interface{}, error) {
-	rows, err := s.db.Query(ctx,
-		`SELECT approval_id, agent_id, action, status, expires_at
-		 FROM hitl_approvals WHERE status = 'pending' AND ($1 = '' OR agent_id = $1)
-		 ORDER BY created_at DESC`,
-		agentID,
-	)
+	var rows pgx.Rows
+	var err error
+	if agentID == "" {
+		rows, err = s.db.Query(ctx,
+			`SELECT approval_id, agent_id, action, status, expires_at
+			 FROM hitl_approvals WHERE status = 'pending'
+			 ORDER BY created_at DESC`)
+	} else {
+		rows, err = s.db.Query(ctx,
+			`SELECT approval_id, agent_id, action, status, expires_at
+			 FROM hitl_approvals WHERE status = 'pending' AND agent_id = $1
+			 ORDER BY created_at DESC`,
+			agentID,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}

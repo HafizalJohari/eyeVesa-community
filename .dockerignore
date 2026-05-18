@@ -1,0 +1,57 @@
+# Build artifacts
+**/target/
+**/debug/
+**/release/
+
+# Dependencies
+**/node_modules/
+**/vendor/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Tests
+**/*_test.go
+**/*test*
+tests/
+**/*.test
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*
+*.env
+
+# Docker files
+Dockerfile
+docker-compose*.yml
+
+# Binary artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+*.tmp
+
+# Data directories
+**/data/
+**/.tmp/
+
+# Platform specific
+**/*.bak
+**/*.orig

@@ -57,8 +57,9 @@ cd gateway/core && cargo clippy -- -D warnings
 
 - Database: `agentid` on `localhost:5432`, user `agentid`, password `agentid_dev`
 - `GATEWAY_MODE=plaintext` (default), `tls`, or `mtls`
-- `AUTH_ENABLED=true` enables JWT/API key auth middleware
-- Run migrations: `psql -h localhost -U agentid -d agentid -f registry/migrations/NNN_*.sql`
+- `AUTH_ENABLED=true` (default); set `AUTH_ENABLED=false` to disable JWT/API key auth for dev
+- Migrations run automatically on startup (configurable via `MIGRATIONS_DIR`)
+- Run migrations manually: `psql -h localhost -U agentid -d agentid -f registry/migrations/NNN_*.sql`
 
 ## Key Architecture
 

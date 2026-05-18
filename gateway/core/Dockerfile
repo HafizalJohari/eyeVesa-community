@@ -1,12 +1,12 @@
-FROM rust:1.82-bookworm AS builder
+FROM rust:1.85-bookworm AS builder
 WORKDIR /app
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY proto ../../proto
-COPY src ./src
-RUN cargo build --release
+COPY gateway/core/Cargo.toml gateway/core/Cargo.lock gateway/core/build.rs ./gateway/core/
+COPY proto ./proto
+COPY gateway/core/src ./gateway/core/src
+RUN cd gateway/core && cargo build --release
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/agentid-core /usr/local/bin/agentid-core
+COPY --from=builder /app/gateway/core/target/release/agentid-core /usr/local/bin/agentid-core
 EXPOSE 9443
 CMD ["agentid-core"]

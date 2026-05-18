@@ -110,10 +110,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 	printSuccess(fmt.Sprintf("Config saved to %s", cfgPath))
 
 	health, err := client.Health()
-	if err == nil && health == "ok" {
+	if err == nil && (health == "ok" || health == "healthy") {
 		printSuccess("Gateway connection verified")
 	} else {
-		fmt.Fprintf(os.Stderr, "  ⚠ Could not verify gateway connection: %v\n", err)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠ Could not verify gateway connection: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "  ⚠ Could not verify gateway connection: got %s\n", health)
+		}
 	}
 
 	return nil

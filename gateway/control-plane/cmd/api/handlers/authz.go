@@ -175,9 +175,11 @@ func GetAuditLog(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rows, err := querier.Query(r.Context(),
-		`SELECT log_id, agent_id, COALESCE(resource_id::text, ''), action, method, params, result, result_status, trust_score_before, trust_score_after, session_id, signature, created_at FROM audit_logs WHERE agent_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-		agentID, limit, offset,
+	pool := db.Pool
+	rows, err := pool.Query(r.Context(),
+		`SELECT log_id, agent_id, COALESCE(resource_id, '00000000-0000-0000-0000-000000000000'::uuid), action, method, params, result, result_status, trust_score_before, trust_score_after, session_id, signature, created_at
+		 FROM audit_logs WHERE agent_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+		agentID, int32(limit), int32(offset),
 	)
 	if err != nil {
 		http.Error(w, "failed to query audit logs", http.StatusInternalServerError)
@@ -187,46 +189,53 @@ func GetAuditLog(w http.ResponseWriter, r *http.Request) {
 
 	var entries []map[string]interface{}
 	for rows.Next() {
-		var logID, agentID, resourceID, action, method, status, sessionID string
+		var logID, agID, resID, action, method, status string
+		var sessionID *string
 		var trustBefore, trustAfter float64
-		var paramsJSON, resultJSON []byte
-		var signature []byte
+		var paramsJSON, resultJSON, signature []byte
 		var createdAt time.Time
-		if err := rows.Scan(&logID, &agentID, &resourceID, &action, &method, &paramsJSON, &resultJSON, &status, &trustBefore, &trustAfter, &sessionID, &signature, &createdAt); err != nil {
+		if err := rows.Scan(&logID, &agID, &resID, &action, &method, &paramsJSON, &resultJSON, &status, &trustBefore, &trustAfter, &sessionID, &signature, &createdAt); err != nil {
 			continue
 		}
 
 		var params, result map[string]interface{}
 		if len(paramsJSON) > 0 {
 			json.Unmarshal(paramsJSON, &params)
-		} else {
+		}
+		if params == nil {
 			params = make(map[string]interface{})
 		}
 		if len(resultJSON) > 0 {
 			json.Unmarshal(resultJSON, &result)
-		} else {
+		}
+		if result == nil {
 			result = make(map[string]interface{})
 		}
 
-		var sig string
+		sid := ""
+		if sessionID != nil {
+			sid = *sessionID
+		}
+
+		sig := ""
 		if len(signature) > 0 {
 			sig = fmt.Sprintf("%x", signature)
 		}
 
 		entries = append(entries, map[string]interface{}{
-			"log_id":         logID,
-			"agent_id":       agentID,
-			"resource_id":    resourceID,
-			"action":         action,
-			"method":         method,
-			"params":         params,
-			"result":         result,
-			"result_status":  status,
+			"log_id":            logID,
+			"agent_id":          agID,
+			"resource_id":       resID,
+			"action":            action,
+			"method":            method,
+			"params":            params,
+			"result":            result,
+			"result_status":     status,
 			"trust_score_before": trustBefore,
 			"trust_score_after":  trustAfter,
-			"session_id":     sessionID,
-			"signature":      sig,
-			"created_at":     createdAt.Format(time.RFC3339),
+			"session_id":        sid,
+			"signature":         sig,
+			"created_at":        createdAt.Format(time.RFC3339),
 		})
 	}
 

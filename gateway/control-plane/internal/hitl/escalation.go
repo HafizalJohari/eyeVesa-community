@@ -33,6 +33,8 @@ type NotificationChannel string
 const (
 	ChannelWebhook   NotificationChannel = "webhook"
 	ChannelSlack     NotificationChannel = "slack"
+	ChannelTelegram  NotificationChannel = "telegram"
+	ChannelDiscord   NotificationChannel = "discord"
 	ChannelEmail     NotificationChannel = "email"
 	ChannelPagerduty NotificationChannel = "pagerduty"
 	ChannelPush      NotificationChannel = "push"

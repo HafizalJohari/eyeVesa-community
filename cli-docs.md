@@ -12,6 +12,32 @@
 
 ## Commands
 
+### `eyevesa tui`
+
+Launch an interactive terminal dashboard for managing eyeVesa.
+
+```
+eyevesa tui
+```
+
+| Key | Action |
+|-----|--------|
+| Tab / Shift+Tab | Switch between views |
+| ↑ / ↓ | Navigate list items |
+| r | Refresh current view |
+| a | Approve HITL request (in HITL view) |
+| d | Deny HITL request (in HITL view) |
+| q / Ctrl+C | Quit |
+
+**Views:**
+- **Dashboard**: Overview of gateway status, statistics, and recent agents
+- **Agents**: List and inspect registered agents
+- **Resources**: List and inspect registered resources
+- **HITL**: Manage pending human-in-the-loop approvals
+- **Audit**: View audit trail for selected agent
+
+---
+
 ### `eyevesa init`
 
 Register a new agent with eyeVesa, generate an Ed25519 keypair, and save configuration to `~/.eyevesa/`.
