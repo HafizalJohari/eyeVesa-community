@@ -1,6 +1,5 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    dir: '.'
     args:
       - 'build'
       - '-t'
@@ -10,7 +9,7 @@ steps:
       - '-f'
       - 'gateway/core/Dockerfile'
       - '.'
-    timeout: '600s'
+    timeout: '1200s'
 
 images:
   - 'gcr.io/$PROJECT_ID/eyevesa:$COMMIT_SHA'
