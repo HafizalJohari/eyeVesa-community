@@ -288,7 +288,7 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 		COALESCE(ap.description, '') as description,
 		COALESCE(ap.services_offered, '[]'::jsonb) as services_offered,
 		COALESCE(ap.endpoints, '{}'::jsonb) as endpoints,
-		COALESCE(ap.tags, '{}') as tags,
+		COALESCE(array_to_json(ap.tags)::text, '[]') as tags,
 		COALESCE(ap.total_actions, 0) as total_actions,
 		COALESCE(ap.approval_rate, 1.0) as approval_rate,
 		COALESCE(ah.last_heartbeat::text, '') as last_seen,
@@ -344,9 +344,13 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 			a.Status = *status
 		}
 		if tagsArr != nil {
-			a.Tags = strings.Split(*tagsArr, ",")
-			if len(a.Tags) == 1 && a.Tags[0] == "" {
-				a.Tags = []string{}
+			if err := json.Unmarshal([]byte(*tagsArr), &a.Tags); err != nil {
+				tagsStr := strings.Trim(*tagsArr, "{}\"")
+				if tagsStr != "" {
+					a.Tags = strings.Split(tagsStr, ",")
+				} else {
+					a.Tags = []string{}
+				}
 			}
 		}
 
@@ -368,7 +372,7 @@ func AirportListOnlineHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(ap.description, '') as description,
 			COALESCE(ap.services_offered, '[]'::jsonb) as services_offered,
 			COALESCE(ap.endpoints, '{}'::jsonb) as endpoints,
-			COALESCE(ap.tags, '{}') as tags,
+			COALESCE(array_to_json(ap.tags)::text, '[]') as tags,
 			COALESCE(ap.total_actions, 0) as total_actions,
 			COALESCE(ap.approval_rate, 1.0) as approval_rate,
 			ah.last_heartbeat::text as last_seen,
@@ -421,9 +425,13 @@ func AirportListOnlineHandler(w http.ResponseWriter, r *http.Request) {
 			a.Status = *status
 		}
 		if tagsArr != nil {
-			a.Tags = strings.Split(*tagsArr, ",")
-			if len(a.Tags) == 1 && a.Tags[0] == "" {
-				a.Tags = []string{}
+			if err := json.Unmarshal([]byte(*tagsArr), &a.Tags); err != nil {
+				tagsStr := strings.Trim(*tagsArr, "{}\"")
+				if tagsStr != "" {
+					a.Tags = strings.Split(tagsStr, ",")
+				} else {
+					a.Tags = []string{}
+				}
 			}
 		}
 
@@ -493,7 +501,7 @@ func airportGetAgent(ctx context.Context, agentID uuid.UUID) (*AirportAgent, err
 			COALESCE(ap.description, '') as description,
 			COALESCE(ap.services_offered, '[]'::jsonb) as services_offered,
 			COALESCE(ap.endpoints, '{}'::jsonb) as endpoints,
-			COALESCE(ap.tags, '{}') as tags,
+			COALESCE(array_to_json(ap.tags)::text, '[]') as tags,
 			COALESCE(ap.total_actions, 0) as total_actions,
 			COALESCE(ap.approval_rate, 1.0) as approval_rate,
 			COALESCE(ah.last_heartbeat::text, '') as last_seen,
@@ -529,9 +537,13 @@ func airportGetAgent(ctx context.Context, agentID uuid.UUID) (*AirportAgent, err
 		a.Status = *status
 	}
 	if tagsArr != nil {
-		a.Tags = strings.Split(*tagsArr, ",")
-		if len(a.Tags) == 1 && a.Tags[0] == "" {
-			a.Tags = []string{}
+		if err := json.Unmarshal([]byte(*tagsArr), &a.Tags); err != nil {
+			tagsStr := strings.Trim(*tagsArr, "{}\"")
+			if tagsStr != "" {
+				a.Tags = strings.Split(tagsStr, ",")
+			} else {
+				a.Tags = []string{}
+			}
 		}
 	}
 

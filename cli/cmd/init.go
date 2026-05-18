@@ -77,9 +77,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	status, _ := result["status"].(string)
 	trustScore := result["trust_score"]
 
-	keyPair, err := crypto.GenerateKeyPair()
-	if err != nil {
-		return fmt.Errorf("generate keypair: %w", err)
+	keyPair := client.GetGeneratedKeyPair()
+	if keyPair == nil {
+		keyPair, err = crypto.GenerateKeyPair()
+		if err != nil {
+			return fmt.Errorf("generate keypair: %w", err)
+		}
 	}
 
 	keysDir := config.DefaultKeysDir()

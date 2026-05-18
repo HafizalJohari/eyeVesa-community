@@ -140,6 +140,20 @@ var airportUpdateProfileCmd = &cobra.Command{
 	},
 }
 
+var airportHealthCmd = &cobra.Command{
+	Use:   "health",
+	Short: "Check Airport health and stats",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := getClient()
+		result, err := client.Get("/v1/airport/health")
+		if err != nil {
+			return err
+		}
+		printResult(result)
+		return nil
+	},
+}
+
 func init() {
 	airportSearchCmd.Flags().String("capability", "", "Filter by capability")
 	airportSearchCmd.Flags().String("skill", "", "Filter by skill")
@@ -160,5 +174,6 @@ func init() {
 	airportCmd.AddCommand(airportHeartbeatCmd)
 	airportCmd.AddCommand(airportConnectionsCmd)
 	airportCmd.AddCommand(airportUpdateProfileCmd)
+	airportCmd.AddCommand(airportHealthCmd)
 	rootCmd.AddCommand(airportCmd)
 }

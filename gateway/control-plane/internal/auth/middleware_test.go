@@ -99,26 +99,34 @@ func TestParseJWTInvalidFormat(t *testing.T) {
 
 func TestIsPublicPath(t *testing.T) {
 	tests := []struct {
+		method   string
 		path     string
 		expected bool
 	}{
-		{"/health", true},
-		{"/identity", true},
-		{"/ready", true},
-		{"/metrics", true},
-		{"/v1/agents/register", true},
-		{"/v1/resources/register", true},
-		{"/v1/mcp", true},
-		{"/v1/api-keys", true},
-		{"/v1/auth/challenge", true},
-		{"/v1/auth/login", true},
-		{"/v1/authorize", false},
-		{"/v1/hitl/request", false},
-		{"/v1/delegate", false},
+		{"GET", "/health", true},
+		{"GET", "/identity", true},
+		{"GET", "/ready", true},
+		{"GET", "/metrics", true},
+		{"POST", "/v1/agents/register", true},
+		{"POST", "/v1/resources/register", true},
+		{"POST", "/v1/mcp", true},
+		{"GET", "/v1/api-keys", true},
+		{"POST", "/v1/auth/challenge", true},
+		{"POST", "/v1/auth/login", true},
+		{"POST", "/v1/authorize", false},
+		{"POST", "/v1/hitl/request", false},
+		{"POST", "/v1/delegate", false},
+		{"GET", "/v1/airport/health", true},
+		{"GET", "/v1/airport/online", true},
+		{"GET", "/v1/airport/agents", true},
+		{"GET", "/v1/airport/agents/uuid-123", true},
+		{"POST", "/v1/airport/heartbeat", false},
+		{"PUT", "/v1/airport/agents/uuid-123", false},
+		{"GET", "/v1/airport/connections", false},
 	}
 	for _, tt := range tests {
-		if got := isPublicPath(tt.path); got != tt.expected {
-			t.Errorf("isPublicPath(%q) = %v, want %v", tt.path, got, tt.expected)
+		if got := isPublicPath(tt.method, tt.path); got != tt.expected {
+			t.Errorf("isPublicPath(%q, %q) = %v, want %v", tt.method, tt.path, got, tt.expected)
 		}
 	}
 }

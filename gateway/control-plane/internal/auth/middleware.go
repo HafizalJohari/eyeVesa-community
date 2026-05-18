@@ -31,10 +31,10 @@ func NewAuthMiddleware(db *pgxpool.Pool, jwtSecret string) *AuthMiddleware {
 
 func (a *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isPublicPath(r.URL.Path) {
-			next.ServeHTTP(w, r)
-			return
-		}
+	if isPublicPath(r.Method, r.URL.Path) {
+		next.ServeHTTP(w, r)
+		return
+	}
 
 		if tenantID, ok := a.checkAPIKey(r); ok {
 			ctx := context.WithValue(r.Context(), tenantCtxKey{}, tenantID)
@@ -62,7 +62,7 @@ func (a *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-func isPublicPath(path string) bool {
+func isPublicPath(method, path string) bool {
 	public := []string{"/health", "/identity", "/ready", "/metrics"}
 	for _, p := range public {
 		if path == p {
@@ -76,6 +76,15 @@ func isPublicPath(path string) bool {
 		strings.HasPrefix(path, "/v1/auth/challenge") ||
 		strings.HasPrefix(path, "/v1/auth/login") {
 		return true
+	}
+
+	if strings.HasPrefix(path, "/v1/airport/") {
+		if (path == "/v1/airport/health" && method == "GET") ||
+			(path == "/v1/airport/online" && method == "GET") ||
+			(path == "/v1/airport/agents" && method == "GET") ||
+			(strings.HasPrefix(path, "/v1/airport/agents/") && method == "GET") {
+			return true
+		}
 	}
 	return false
 }

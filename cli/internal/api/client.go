@@ -8,13 +8,16 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	clientcrypto "github.com/hafizaljohari/eyeVesa/cli/internal/crypto"
 )
 
 type Client struct {
-	BaseURL    string
-	HTTPClient *http.Client
-	APIKey     string
-	JWTToken   string
+	BaseURL          string
+	HTTPClient       *http.Client
+	APIKey           string
+	JWTToken         string
+	generatedKeyPair *clientcrypto.KeyPair
 }
 
 func NewClient(baseURL string) *Client {
@@ -93,6 +96,12 @@ func (c *Client) Delete(path string) (map[string]interface{}, error) {
 }
 
 func (c *Client) RegisterAgent(name, owner string, capabilities, allowedTools []string, maxBudgetUSD float64, delegationPolicy string, behavioralTags []string) (map[string]interface{}, error) {
+	keyPair, err := clientcrypto.GenerateKeyPair()
+	if err != nil {
+		return nil, fmt.Errorf("generate keypair: %w", err)
+	}
+	publicKeyB64 := clientcrypto.PublicKeyToBase64(keyPair.PublicKey)
+
 	body := map[string]interface{}{
 		"name":              name,
 		"owner":             owner,
@@ -101,8 +110,19 @@ func (c *Client) RegisterAgent(name, owner string, capabilities, allowedTools []
 		"max_budget_usd":    maxBudgetUSD,
 		"delegation_policy": delegationPolicy,
 		"behavioral_tags":   behavioralTags,
+		"public_key":        publicKeyB64,
 	}
-	return c.Post("/v1/agents/register", body)
+	result, err := c.Post("/v1/agents/register", body)
+	if err != nil {
+		return nil, err
+	}
+
+	c.generatedKeyPair = keyPair
+	return result, nil
+}
+
+func (c *Client) GetGeneratedKeyPair() *clientcrypto.KeyPair {
+	return c.generatedKeyPair
 }
 
 func (c *Client) GetAgent(agentID string) (map[string]interface{}, error) {
