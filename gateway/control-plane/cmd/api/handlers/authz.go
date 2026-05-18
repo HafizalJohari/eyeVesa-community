@@ -20,10 +20,11 @@ type AuthorizeRequest struct {
 }
 
 type AuthorizeResponse struct {
-	Allowed      bool    `json:"allowed"`
-	RequiresHITL bool   `json:"requires_hitl"`
-	Reason       string  `json:"reason"`
-	TrustDelta   float64 `json:"trust_delta"`
+	Allowed       bool     `json:"allowed"`
+	RequiresHITL bool     `json:"requires_hitl"`
+	Reason       string   `json:"reason"`
+	TrustDelta   float64  `json:"trust_delta"`
+	MissingSkills []string `json:"missing_skills,omitempty"`
 }
 
 func Authorize(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +68,59 @@ func Authorize(w http.ResponseWriter, r *http.Request) {
 		policyInput.Action.EstimatedCost = cost
 	}
 
+	// Load skill requirements from resource
+	if req.ResourceID != "" {
+		var reqSkills []string
+		querier.QueryRow(r.Context(),
+			`SELECT COALESCE(required_skills, '{}') FROM resources WHERE resource_id = $1`,
+			req.ResourceID,
+		).Scan(&reqSkills)
+		if len(reqSkills) > 0 {
+			skillRows, skillErr := querier.Query(r.Context(),
+				`SELECT skill_id, name, COALESCE(required_proficiency, 1), COALESCE(required_trust_min, 0.5) FROM skills WHERE name = ANY($1)`,
+				reqSkills,
+			)
+			if skillErr == nil {
+				defer skillRows.Close()
+				for skillRows.Next() {
+					var sr policy.SkillRequirement
+					if err := skillRows.Scan(&sr.SkillID, &sr.SkillName, &sr.MinProficiency, &sr.MinTrust); err == nil {
+						policyInput.RequiredSkills = append(policyInput.RequiredSkills, sr)
+					}
+				}
+			}
+		}
+	}
+
+	// Load agent skills and trust scores
+	agentSkillRows, agentSkillErr := querier.Query(r.Context(),
+		`SELECT als.skill_id, s.name, als.proficiency, als.verified FROM agent_skills als JOIN skills s ON s.skill_id = als.skill_id WHERE als.agent_id = $1`,
+		req.AgentID,
+	)
+	if agentSkillErr == nil {
+		defer agentSkillRows.Close()
+		for agentSkillRows.Next() {
+			var ase policy.AgentSkillEntry
+			if err := agentSkillRows.Scan(&ase.SkillID, &ase.SkillName, &ase.Proficiency, &ase.Verified); err == nil {
+				policyInput.AgentSkills = append(policyInput.AgentSkills, ase)
+			}
+		}
+	}
+
+	trustRows, trustErr := querier.Query(r.Context(),
+		`SELECT sts.skill_id, sts.trust_score FROM skill_trust_scores sts WHERE sts.agent_id = $1`,
+		req.AgentID,
+	)
+	if trustErr == nil {
+		defer trustRows.Close()
+		for trustRows.Next() {
+			var ste policy.SkillTrustEntry
+			if err := trustRows.Scan(&ste.SkillID, &ste.TrustScore); err == nil {
+				policyInput.SkillTrustScores = append(policyInput.SkillTrustScores, ste)
+			}
+		}
+	}
+
 	decision := globalPolicyEngine.Evaluate(r.Context(), policyInput)
 
 	newTrustScore := trustScore + decision.TrustDelta
@@ -99,10 +153,11 @@ func Authorize(w http.ResponseWriter, r *http.Request) {
 	auditLogger.Log(r.Context(), auditEntry, gatewayPrivateKey)
 
 	resp := AuthorizeResponse{
-		Allowed:      decision.Allowed,
+		Allowed:       decision.Allowed,
 		RequiresHITL: decision.RequiresHITL,
 		Reason:       decision.Reason,
 		TrustDelta:   decision.TrustDelta,
+		MissingSkills: decision.MissingSkills,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

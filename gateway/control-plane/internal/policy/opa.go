@@ -7,18 +7,39 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
 type Decision struct {
-	Allowed             bool    `json:"allowed"`
-	RequiresHITL        bool    `json:"requires_hitl"`
-	RequiresEscalation  bool    `json:"requires_escalation"`
-	Reason              string  `json:"reason"`
-	TrustDelta          float64 `json:"trust_delta"`
-	EscalationLevel     int     `json:"escalation_level"`
-	RequiredApprovals   int     `json:"required_approvals"`
-	RiskLevel           string  `json:"risk_level"`
+	Allowed             bool     `json:"allowed"`
+	RequiresHITL        bool     `json:"requires_hitl"`
+	RequiresEscalation  bool     `json:"requires_escalation"`
+	Reason              string   `json:"reason"`
+	TrustDelta          float64  `json:"trust_delta"`
+	EscalationLevel     int      `json:"escalation_level"`
+	RequiredApprovals   int      `json:"required_approvals"`
+	RiskLevel           string   `json:"risk_level"`
+	MissingSkills       []string `json:"missing_skills,omitempty"`
+}
+
+type SkillRequirement struct {
+	SkillID       string  `json:"skill_id"`
+	SkillName     string  `json:"skill_name,omitempty"`
+	MinProficiency int    `json:"min_proficiency"`
+	MinTrust       float64 `json:"min_trust"`
+}
+
+type AgentSkillEntry struct {
+	SkillID     string `json:"skill_id"`
+	SkillName   string `json:"skill_name,omitempty"`
+	Proficiency int    `json:"proficiency"`
+	Verified    bool   `json:"verified"`
+}
+
+type SkillTrustEntry struct {
+	SkillID   string  `json:"skill_id"`
+	TrustScore float64 `json:"trust_score"`
 }
 
 type PolicyInput struct {
@@ -34,6 +55,9 @@ type PolicyInput struct {
 		Params        map[string]interface{} `json:"params"`
 		EstimatedCost float64                `json:"estimated_cost"`
 	} `json:"action"`
+	RequiredSkills    []SkillRequirement `json:"required_skills,omitempty"`
+	AgentSkills       []AgentSkillEntry  `json:"agent_skills,omitempty"`
+	SkillTrustScores  []SkillTrustEntry  `json:"skill_trust_scores,omitempty"`
 }
 
 type PolicyEngine struct {
@@ -187,6 +211,50 @@ func LocalEvaluate(input PolicyInput) *Decision {
 		}
 	}
 
+	// Skill-based authorization check
+	if len(input.RequiredSkills) > 0 {
+		skillDenials := []string{}
+		for _, req := range input.RequiredSkills {
+			found := false
+			for _, as := range input.AgentSkills {
+				if as.SkillID == req.SkillID || as.SkillName == req.SkillName || as.SkillName == req.SkillID {
+					found = true
+					if as.Proficiency < req.MinProficiency {
+						skillDenials = append(skillDenials, "proficiency "+itoa(as.Proficiency)+" < required "+itoa(req.MinProficiency)+" for skill "+req.SkillName)
+					}
+					// Check skill trust
+					trust := input.Agent.TrustScore // default to global
+					for _, st := range input.SkillTrustScores {
+						if st.SkillID == req.SkillID || st.SkillID == as.SkillID {
+							trust = st.TrustScore
+							break
+						}
+					}
+					if trust < req.MinTrust {
+						skillDenials = append(skillDenials, "trust "+ftoa(trust)+" < required "+ftoa(req.MinTrust)+" for skill "+req.SkillName)
+					}
+					break
+				}
+			}
+			if !found {
+				skillDenials = append(skillDenials, "missing skill: "+req.SkillName)
+			}
+		}
+		if len(skillDenials) > 0 {
+			return &Decision{
+				Allowed:            false,
+				RequiresHITL:      true,
+				RequiresEscalation: false,
+				Reason:             "skill authorization failed",
+				TrustDelta:        -0.05,
+				EscalationLevel:    1,
+				RequiredApprovals:  1,
+				RiskLevel:          "high",
+				MissingSkills:      skillDenials,
+			}
+		}
+	}
+
 	// Check tool is in allowed list
 	found := false
 	for _, tool := range input.Agent.AllowedTools {
@@ -302,4 +370,12 @@ func LocalEvaluate(input PolicyInput) *Decision {
 		RequiredApprovals:  0,
 		RiskLevel:          "medium",
 	}
+}
+
+func itoa(i int) string {
+	return strconv.FormatInt(int64(i), 10)
+}
+
+func ftoa(f float64) string {
+	return strconv.FormatFloat(f, 'f', 4, 64)
 }

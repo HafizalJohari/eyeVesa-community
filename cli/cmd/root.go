@@ -22,8 +22,10 @@ var rootCmd = &cobra.Command{
 	Long: `eyevesa is the CLI for the AgentID Gateway.
 
 It provides commands to register agents, manage resources, authorize
-actions, inspect trust scores, approve HITL requests, and audit
-activity — all with cryptographic identity and non-repudiable logs.`,
+actions, inspect trust scores, manage skills and endorsements, handle
+multi-tenant isolation, approve HITL requests, enforce budget limits,
+manage SPIRE identities, and audit activity — all with cryptographic
+identity and non-repudiable logs.`,
 	SilenceUsage: true,
 }
 

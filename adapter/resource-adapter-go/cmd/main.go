@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/hafizaljohari/eyeVesa/adapter/resource-adapter-go/cmd/server"
 )
@@ -96,6 +97,16 @@ func main() {
 			}
 			return fmt.Sprintf("Analyze the risk level of this proposed action:\n%s\n\nConsider: data sensitivity, financial impact, reversibility, and regulatory compliance.", action), nil
 		})
+
+	requiredSkills := os.Getenv("REQUIRED_SKILLS")
+	if requiredSkills != "" {
+		skills := strings.Split(requiredSkills, ",")
+		for i, s := range skills {
+			skills[i] = strings.TrimSpace(s)
+		}
+		srv.SetRequiredSkills(skills)
+		log.Printf("Required skills set: %v", skills)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

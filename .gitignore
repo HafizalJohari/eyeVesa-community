@@ -13,3 +13,5 @@ dist/
 *.dylib
 Cargo.lock
 !**/Cargo.lock
+docs/
+docs-all/

@@ -1,4 +1,5 @@
-FROM rust:1.85-bookworm AS builder
+FROM rust:1.86-bookworm AS builder
+RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY gateway/core/Cargo.toml gateway/core/Cargo.lock gateway/core/build.rs ./gateway/core/
 COPY proto ./proto

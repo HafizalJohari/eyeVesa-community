@@ -1,0 +1,141 @@
+//go:build pro
+
+package license
+
+import (
+	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"sync"
+	"time"
+)
+
+type LicenseClaims struct {
+	Tier         Tier     `json:"tier"`
+	MaxAgents    int      `json:"max_agents"`
+	MaxResources int      `json:"max_resources"`
+	Customer     string   `json:"customer"`
+	IssuedAt     string   `json:"issued_at"`
+	ExpiresAt    string   `json:"expires_at"`
+	Features     []string `json:"features"`
+	Signature    string   `json:"signature"`
+}
+
+var (
+	publicKey []byte
+	loadKeyOnce sync.Once
+)
+
+var proFeatures = []string{
+	FeatureMultiTenant,
+	FeatureMultiLayerHITL,
+	FeatureSlackNotify,
+	FeaturePagerDuty,
+	FeatureSSO,
+	FeatureLLM,
+	FeatureAnomalyDetect,
+	FeatureBudget,
+	FeatureRateLimit,
+	FeatureKubernetes,
+	FeatureDelegation,
+	FeaturePushNotify,
+}
+
+func getPublicKey() []byte {
+	loadKeyOnce.Do(func() {
+		keyHex := os.Getenv("EYEVESA_PUBLIC_KEY")
+		if keyHex == "" {
+			keyHex = "042363af45a1ea0de43df17d79d161b3a47d671b3eaa395866886bfa05f5dd48"
+		}
+		var err error
+		publicKey, err = hex.DecodeString(keyHex)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: invalid EYEVESA_PUBLIC_KEY, using default\n")
+			publicKey, _ = hex.DecodeString("32a08486c94ebe89055c12f25cdd179d695cf12eef3de4774d7ed83a5e355908")
+		}
+	})
+	return publicKey
+}
+
+func Load() Info {
+	key := os.Getenv("EYEVESA_LICENSE_KEY")
+	if key == "" {
+		return Info{
+			Tier:         TierCommunity,
+			MaxAgents:    5,
+			MaxResources: 10,
+			Features: []string{
+				FeatureDelegation,
+			},
+		}
+	}
+
+	claims, err := decodeAndVerify(key)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: invalid license key: %v (falling back to Community)\n", err)
+		return Info{
+			Tier:         TierCommunity,
+			MaxAgents:    5,
+			MaxResources: 10,
+			Features: []string{
+				FeatureDelegation,
+			},
+		}
+	}
+
+	expires, err := time.Parse(time.RFC3339, claims.ExpiresAt)
+	if err == nil && time.Now().After(expires) {
+		fmt.Fprintf(os.Stderr, "WARNING: license expired at %s (falling back to Community)\n", claims.ExpiresAt)
+		return Info{
+			Tier:         TierCommunity,
+			MaxAgents:    5,
+			MaxResources: 10,
+			Features: []string{
+				FeatureDelegation,
+			},
+		}
+	}
+
+	return Info{
+		Tier:         claims.Tier,
+		MaxAgents:    claims.MaxAgents,
+		MaxResources: claims.MaxResources,
+		Features:     claims.Features,
+	}
+}
+
+func Validate(key string) error {
+	_, err := decodeAndVerify(key)
+	return err
+}
+
+func decodeAndVerify(key string) (*LicenseClaims, error) {
+	data, err := os.ReadFile(key)
+	if err != nil {
+		return nil, fmt.Errorf("read license file: %w", err)
+	}
+
+	var claims LicenseClaims
+	if err := json.Unmarshal(data, &claims); err != nil {
+		return nil, fmt.Errorf("parse license: %w", err)
+	}
+
+	sig, err := hex.DecodeString(claims.Signature)
+	if err != nil {
+		return nil, fmt.Errorf("decode signature: %w", err)
+	}
+	claims.Signature = ""
+
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return nil, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	if !ed25519.Verify(getPublicKey(), payload, sig) {
+		return nil, fmt.Errorf("invalid signature")
+	}
+
+	return &claims, nil
+}

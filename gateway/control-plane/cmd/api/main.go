@@ -34,6 +34,7 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/health"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/hitl"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/identity"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/license"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/llm"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/metrics"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/migrate"
@@ -57,6 +58,9 @@ func main() {
 	defer db.Close()
 
 	slog.Info("connected to database")
+
+	licInfo := license.Load()
+	slog.Info("license", "tier", licInfo.Tier, "max_agents", licInfo.MaxAgents, "max_resources", licInfo.MaxResources)
 
 	migrationsDir := os.Getenv("MIGRATIONS_DIR")
 	if migrationsDir == "" {
@@ -220,6 +224,7 @@ func main() {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(metrics.Middleware)
+	r.Use(license.Middleware)
 
 	if authEnabled && authMiddleware != nil {
 		r.Use(authMiddleware.Middleware)
@@ -285,34 +290,34 @@ func main() {
 		r.Post("/hitl/{approvalID}/decide", handlers.DecideApproval)
 
 		// Phase 3: Multi-layer HITL escalation
-		r.Post("/hitl/escalate", handlers.RequestEscalatedApproval)
-		r.Post("/hitl/{approvalID}/chain", handlers.ProcessChainDecision)
-		r.Get("/hitl/{approvalID}/chain", handlers.GetApprovalChain)
-		r.Get("/hitl/{approvalID}/notifications", handlers.GetNotifications)
+		r.Post("/hitl/escalate", license.Require(license.FeatureMultiLayerHITL, handlers.RequestEscalatedApproval))
+		r.Post("/hitl/{approvalID}/chain", license.Require(license.FeatureMultiLayerHITL, handlers.ProcessChainDecision))
+		r.Get("/hitl/{approvalID}/chain", license.Require(license.FeatureMultiLayerHITL, handlers.GetApprovalChain))
+		r.Get("/hitl/{approvalID}/notifications", license.Require(license.FeatureMultiLayerHITL, handlers.GetNotifications))
 
 		// Phase 3: LLM integration
-		r.Post("/llm/hitl-summary/{approvalID}", handlers.GenerateHITLSummary)
-		r.Post("/llm/audit-narrative", handlers.GenerateAuditNarrative)
-		r.Post("/llm/policy-translate", handlers.TranslatePolicy)
+		r.Post("/llm/hitl-summary/{approvalID}", license.Require(license.FeatureLLM, handlers.GenerateHITLSummary))
+		r.Post("/llm/audit-narrative", license.Require(license.FeatureLLM, handlers.GenerateAuditNarrative))
+		r.Post("/llm/policy-translate", license.Require(license.FeatureLLM, handlers.TranslatePolicy))
 
 		// Phase 3: Behavioral embeddings
-		r.Post("/behavior/{agentID}/embedding", handlers.UpdateBehaviorEmbedding)
-		r.Get("/behavior/{agentID}/anomalies", handlers.DetectBehavioralAnomalies)
-		r.Get("/behavior/{agentID}/similar", handlers.GetSimilarAgents)
+		r.Post("/behavior/{agentID}/embedding", license.Require(license.FeatureAnomalyDetect, handlers.UpdateBehaviorEmbedding))
+		r.Get("/behavior/{agentID}/anomalies", license.Require(license.FeatureAnomalyDetect, handlers.DetectBehavioralAnomalies))
+		r.Get("/behavior/{agentID}/similar", license.Require(license.FeatureAnomalyDetect, handlers.GetSimilarAgents))
 
 		// Phase 3: Multi-tenant
-		r.Post("/tenants", handlers.CreateTenant)
-		r.Get("/tenants", handlers.ListTenants)
-		r.Get("/tenants/{tenantID}", handlers.GetTenant)
+		r.Post("/tenants", license.Require(license.FeatureMultiTenant, handlers.CreateTenant))
+		r.Get("/tenants", license.Require(license.FeatureMultiTenant, handlers.ListTenants))
+		r.Get("/tenants/{tenantID}", license.Require(license.FeatureMultiTenant, handlers.GetTenant))
 
 		// Phase 3: Budget metering
-		r.Get("/budget/check", handlers.CheckBudget)
-		r.Post("/budget/spend", handlers.RecordSpend)
+		r.Get("/budget/check", license.Require(license.FeatureBudget, handlers.CheckBudget))
+		r.Post("/budget/spend", license.Require(license.FeatureBudget, handlers.RecordSpend))
 
 		// Phase 3: Push notification tokens
-		r.Post("/push/register", handlers.RegisterPushToken)
-		r.Get("/push/tokens", handlers.GetPushTokens)
-		r.Delete("/push/tokens/{tokenID}", handlers.DeactivatePushToken)
+		r.Post("/push/register", license.Require(license.FeaturePushNotify, handlers.RegisterPushToken))
+		r.Get("/push/tokens", license.Require(license.FeaturePushNotify, handlers.GetPushTokens))
+		r.Delete("/push/tokens/{tokenID}", license.Require(license.FeaturePushNotify, handlers.DeactivatePushToken))
 		
 		// Phase 3: Audit log retrieval
 		r.Get("/audit", handlers.GetAuditLog)
@@ -339,6 +344,27 @@ func main() {
 
 		// Phase 5: SPIRE status
 		r.Get("/spire/status", handlers.GetSpireStatus)
+
+		// Phase 6: Skills
+		r.Post("/skills", handlers.CreateSkill)
+		r.Get("/skills", handlers.ListSkills)
+		r.Get("/skills/search", handlers.SearchSkills)
+		r.Get("/skills/{skillID}", handlers.GetSkill)
+		r.Put("/skills/{skillID}", handlers.UpdateSkill)
+		r.Delete("/skills/{skillID}", handlers.DeleteSkill)
+
+		r.Post("/agents/{agentID}/skills", handlers.AssignSkill)
+		r.Get("/agents/{agentID}/skills", handlers.ListAgentSkills)
+		r.Delete("/agents/{agentID}/skills/{skillID}", handlers.RemoveSkill)
+		r.Post("/agents/{agentID}/skills/{skillID}/verify", handlers.VerifySkill)
+		r.Post("/agents/{agentID}/skills/{skillID}/endorse", handlers.EndorseSkill)
+		r.Get("/agents/{agentID}/skills/{skillID}/endorsements", handlers.ListEndorsements)
+
+		r.Get("/agents/{agentID}/skill-trust", handlers.GetSkillTrust)
+		r.Post("/agents/{agentID}/skill-trust/{skillID}", handlers.AdjustSkillTrust)
+
+		r.Post("/agents/{agentID}/skill-authz", handlers.CheckSkillAuthz)
+		r.Post("/agents/{agentID}/missing-skills", handlers.FindMissingSkills)
 	})
 
 	var httpSrv *http.Server

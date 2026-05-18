@@ -467,3 +467,115 @@ func (c *Client) DeleteWorkload(spiffeID string) (map[string]interface{}, error)
 func (c *Client) SpireStatus() (map[string]interface{}, error) {
 	return c.Get("/v1/spire/status")
 }
+
+func (c *Client) Put(path string, body interface{}) (map[string]interface{}, error) {
+	return c.doRequest(http.MethodPut, path, body)
+}
+
+func (c *Client) CreateSkill(name, description, category, riskLevel string, requiredTrustMin float64, requiredProficiency int) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"name":                  name,
+		"description":          description,
+		"category":             category,
+		"risk_level":           riskLevel,
+		"required_trust_min":   requiredTrustMin,
+		"required_proficiency": requiredProficiency,
+	}
+	return c.Post("/v1/skills", body)
+}
+
+func (c *Client) GetSkill(skillID string) (map[string]interface{}, error) {
+	return c.Get("/v1/skills/" + skillID)
+}
+
+func (c *Client) ListSkills(category string) (map[string]interface{}, error) {
+	path := "/v1/skills"
+	if category != "" {
+		path += "?category=" + category
+	}
+	return c.Get(path)
+}
+
+func (c *Client) SearchSkills(query, category string) (map[string]interface{}, error) {
+	path := "/v1/skills/search?q=" + query + "&category=" + category
+	return c.Get(path)
+}
+
+func (c *Client) UpdateSkill(skillID, description, category, riskLevel string, requiredTrustMin float64, requiredProficiency int) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"description":          description,
+		"category":             category,
+		"risk_level":           riskLevel,
+		"required_trust_min":   requiredTrustMin,
+		"required_proficiency": requiredProficiency,
+	}
+	return c.Put("/v1/skills/"+skillID, body)
+}
+
+func (c *Client) DeleteSkill(skillID string) (map[string]interface{}, error) {
+	return c.Delete("/v1/skills/" + skillID)
+}
+
+func (c *Client) AssignSkill(agentID, skillID string, proficiency int) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"skill_id":    skillID,
+		"proficiency": proficiency,
+	}
+	return c.Post("/v1/agents/"+agentID+"/skills", body)
+}
+
+func (c *Client) RemoveSkill(agentID, skillID string) (map[string]interface{}, error) {
+	return c.Delete("/v1/agents/" + agentID + "/skills/" + skillID)
+}
+
+func (c *Client) ListAgentSkills(agentID string) (map[string]interface{}, error) {
+	return c.Get("/v1/agents/" + agentID + "/skills")
+}
+
+func (c *Client) VerifySkill(agentID, skillID, verifiedBy string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"verified_by": verifiedBy,
+	}
+	return c.Post("/v1/agents/"+agentID+"/skills/"+skillID+"/verify", body)
+}
+
+func (c *Client) EndorseSkill(agentID, skillID, endorserType, endorserID, comment string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"endorser_type": endorserType,
+		"endorser_id":   endorserID,
+		"comment":       comment,
+	}
+	return c.Post("/v1/agents/"+agentID+"/skills/"+skillID+"/endorse", body)
+}
+
+func (c *Client) ListEndorsements(agentID, skillID string) (map[string]interface{}, error) {
+	path := "/v1/agents/" + agentID + "/skills/" + skillID + "/endorsements"
+	return c.Get(path)
+}
+
+func (c *Client) GetSkillTrust(agentID, skillID string) (map[string]interface{}, error) {
+	path := "/v1/agents/" + agentID + "/skill-trust"
+	if skillID != "" {
+		path += "?skill_id=" + skillID
+	}
+	return c.Get(path)
+}
+
+func (c *Client) AdjustSkillTrust(agentID, skillID string, delta float64, reason string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"delta":  delta,
+		"reason": reason,
+	}
+	return c.Post("/v1/agents/"+agentID+"/skill-trust/"+skillID, body)
+}
+
+func (c *Client) CheckSkillAuthz(agentID, action string) (map[string]interface{}, error) {
+	return c.Get("/v1/agents/" + agentID + "/skill-authz?action=" + action)
+}
+
+func (c *Client) FindMissingSkills(agentID string, requiredSkills []string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"required_skills": requiredSkills,
+	}
+	return c.Post("/v1/agents/"+agentID+"/missing-skills", body)
+}

@@ -37,18 +37,19 @@ type PromptDefinition struct {
 }
 
 type ResourceAdapter struct {
-	name        string
-	endpoint    string
-	resourceID  uuid.UUID
-	tools       map[string]ToolHandler
-	toolDefs    map[string]ToolDefinition
-	resources   map[string]ResourceHandler
-	resDefs     map[string]ResourceDefinition
-	prompts     map[string]PromptHandler
-	promptDefs  map[string]PromptDefinition
-	mu          sync.RWMutex
-	registered  bool
-	httpClient   *http.Client
+	name            string
+	endpoint        string
+	resourceID      uuid.UUID
+	requiredSkills  []string
+	tools           map[string]ToolHandler
+	toolDefs        map[string]ToolDefinition
+	resources       map[string]ResourceHandler
+	resDefs         map[string]ResourceDefinition
+	prompts         map[string]PromptHandler
+	promptDefs      map[string]PromptDefinition
+	mu              sync.RWMutex
+	registered      bool
+	httpClient      *http.Client
 }
 
 func New(name, endpoint string) *ResourceAdapter {
@@ -99,6 +100,10 @@ func (a *ResourceAdapter) RegisterPrompt(name, description string, handler Promp
 	}
 }
 
+func (a *ResourceAdapter) SetRequiredSkills(skills []string) {
+	a.requiredSkills = skills
+}
+
 func (a *ResourceAdapter) RegisterWithGateway(ctx context.Context) error {
 	gatewayURL := fmt.Sprintf("http://%s/v1/resources/register", a.endpoint)
 
@@ -109,6 +114,9 @@ func (a *ResourceAdapter) RegisterWithGateway(ctx context.Context) error {
 		"auth_method":      "agentid",
 		"risk_level":       "medium",
 		"data_sensitivity": "internal",
+	}
+	if len(a.requiredSkills) > 0 {
+		payload["required_skills"] = a.requiredSkills
 	}
 
 	body, err := json.Marshal(payload)

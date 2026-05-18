@@ -63,7 +63,8 @@ pub async fn handle_mcp_request(
             "capabilities": {
                 "tools": { "listChanged": true },
                 "resources": { "subscribe": true },
-                "prompts": { "listChanged": true }
+                "prompts": { "listChanged": true },
+                "skills": { "listChanged": true }
             },
             "serverInfo": {
                 "name": "agentid-gateway",
@@ -121,6 +122,54 @@ pub async fn handle_mcp_request(
         }
         "resources/list" => serde_json::json!({ "resources": [] }),
         "prompts/list" => serde_json::json!({ "prompts": [] }),
+        "skills/list" => {
+            let url = format!("{}/v1/skills", state.control_plane_http_addr.read().await.clone());
+            match state.http_client.get(&url).send().await {
+                Ok(resp) => {
+                    let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({"skills": []}));
+                    body
+                }
+                Err(_) => serde_json::json!({"skills": []}),
+            }
+        }
+        "skills/search" => {
+            let query = rpc_req.params.as_ref()
+                .and_then(|p| p.get("query"))
+                .and_then(|q| q.as_str())
+                .unwrap_or("");
+            let category = rpc_req.params.as_ref()
+                .and_then(|p| p.get("category"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+            let url = format!("{}/v1/skills/search?q={}&category={}",
+                state.control_plane_http_addr.read().await.clone(),
+                query, category);
+            match state.http_client.get(&url).send().await {
+                Ok(resp) => {
+                    let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({"skills": []}));
+                    body
+                }
+                Err(_) => serde_json::json!({"skills": []}),
+            }
+        }
+        "skills/endorse" => {
+            let url = format!("{}/v1/agents/{}/skills/{}/endorse",
+                state.control_plane_http_addr.read().await.clone(),
+                rpc_req.params.as_ref().and_then(|p| p.get("agent_id")).and_then(|v| v.as_str()).unwrap_or(""),
+                rpc_req.params.as_ref().and_then(|p| p.get("skill_id")).and_then(|v| v.as_str()).unwrap_or(""));
+            let body = serde_json::json!({
+                "endorser_type": rpc_req.params.as_ref().and_then(|p| p.get("endorser_type")).and_then(|v| v.as_str()).unwrap_or("agent"),
+                "endorser_id": rpc_req.params.as_ref().and_then(|p| p.get("endorser_id")).and_then(|v| v.as_str()).unwrap_or(""),
+                "comment": rpc_req.params.as_ref().and_then(|p| p.get("comment")).and_then(|v| v.as_str()).unwrap_or(""),
+            });
+            match state.http_client.post(&url).json(&body).send().await {
+                Ok(resp) => {
+                    let resp_body: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
+                    resp_body
+                }
+                Err(_) => serde_json::json!({"error": "failed to endorse skill"}),
+            }
+        },
         _ => {
             let resp = JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),

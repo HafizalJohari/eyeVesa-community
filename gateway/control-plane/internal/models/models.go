@@ -31,6 +31,7 @@ type Resource struct {
 	RateLimitPerAgent int       `json:"rate_limit_per_agent"`
 	Status            string    `json:"status"`
 	TenantID          string    `json:"tenant_id,omitempty"`
+	RequiredSkills    []string  `json:"required_skills,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/hafizaljohari/eyeVesa/cli/internal/api"
@@ -21,6 +22,7 @@ Navigate using:
   - Tab/Shift+Tab: Switch between views
   - ↑/↓: Navigate list items
   - Enter: View details
+  - n: Register new agent (in Agents view)
   - r: Refresh current view
   - a: Approve HITL request (in HITL view)
   - d: Deny HITL request (in HITL view)
@@ -45,7 +47,21 @@ const (
 	viewResources
 	viewHITL
 	viewAudit
+	viewRegisterAgent
 )
+
+type registerStep int
+
+const (
+	stepName registerStep = iota
+	stepOwner
+	stepCapabilities
+	stepAllowedTools
+	stepBudget
+	stepSubmit
+)
+
+type focusInputMsg struct{}
 
 type model struct {
 	client       *api.Client
@@ -63,6 +79,12 @@ type model struct {
 	statusMsg    string
 	width        int
 	height       int
+
+	formStep     registerStep
+	formInputs   []textinput.Model
+	formIdx      int
+	registerOk   bool
+	inputFocused bool
 }
 
 type tickMsg struct{}
@@ -82,6 +104,13 @@ type hitlLoadedMsg struct {
 type auditLoadedMsg struct {
 	logs []map[string]interface{}
 	err  error
+}
+type agentRegisteredMsg struct {
+	id    string
+	name  string
+}
+type registerErrMsg struct {
+	err error
 }
 
 var (
@@ -116,7 +145,48 @@ var (
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6B7280")).
 			Padding(1, 0)
+
+	formLabelStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#A78BFA")).
+			Bold(true)
 )
+
+func newFormInputs() []textinput.Model {
+	inputs := make([]textinput.Model, 5)
+	var t textinput.Model
+
+	t = textinput.New()
+	t.Placeholder = "e.g. hermes-ops"
+	t.CharLimit = 64
+	t.Width = 40
+	inputs[0] = t
+
+	t = textinput.New()
+	t.Placeholder = "e.g. org:devops"
+	t.CharLimit = 64
+	t.Width = 40
+	inputs[1] = t
+
+	t = textinput.New()
+	t.Placeholder = "e.g. read,write,deploy"
+	t.CharLimit = 128
+	t.Width = 40
+	inputs[2] = t
+
+	t = textinput.New()
+	t.Placeholder = "e.g. k8s_deploy,log_search"
+	t.CharLimit = 128
+	t.Width = 40
+	inputs[3] = t
+
+	t = textinput.New()
+	t.Placeholder = "e.g. 500"
+	t.CharLimit = 10
+	t.Width = 40
+	inputs[4] = t
+
+	return inputs
+}
 
 func initialModel(client *api.Client) model {
 	s := spinner.New()
@@ -132,12 +202,15 @@ func initialModel(client *api.Client) model {
 		{Title: "Trust", Width: 8},
 	})
 
+	inputs := newFormInputs()
+
 	return model{
 		client:      client,
 		currentView: viewDashboard,
 		spinner:     s,
 		loading:     true,
 		table:       t,
+		formInputs:  inputs,
 	}
 }
 
@@ -155,47 +228,11 @@ func (m model) loadAllData() tea.Msg {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "tab":
-			m.currentView = (m.currentView + 1) % 5
-			m.selectedIdx = 0
-			m.statusMsg = ""
-			return m, nil
-		case "shift+tab":
-			if m.currentView == 0 {
-				m.currentView = 4
-			} else {
-				m.currentView--
-			}
-			m.selectedIdx = 0
-			m.statusMsg = ""
-			return m, nil
-		case "up", "k":
-			if m.selectedIdx > 0 {
-				m.selectedIdx--
-			}
-			return m, nil
-		case "down", "j":
-			m.selectedIdx++
-			return m, nil
-		case "r":
-			m.loading = true
-			return m, m.refreshCurrentView
-		case "a":
-			if m.currentView == viewHITL && len(m.hitlPending) > 0 && m.selectedIdx < len(m.hitlPending) {
-				if id, ok := m.hitlPending[m.selectedIdx]["approval_id"].(string); ok {
-					return m, m.approveHITL(id)
-				}
-			}
-		case "d":
-			if m.currentView == viewHITL && len(m.hitlPending) > 0 && m.selectedIdx < len(m.hitlPending) {
-				if id, ok := m.hitlPending[m.selectedIdx]["approval_id"].(string); ok {
-					return m, m.denyHITL(id)
-				}
-			}
+		if m.currentView == viewRegisterAgent {
+			return m.handleRegisterKey(msg)
 		}
+		newM, cmd := m.handleMainKey(msg)
+		return newM, cmd
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -208,6 +245,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+
+	case focusInputMsg:
+		if m.currentView == viewRegisterAgent && !m.inputFocused {
+			m.inputFocused = true
+			return m, m.formInputs[m.formIdx].Focus()
+		}
+		return m, nil
 
 	case refreshMsg:
 		return m, tea.Batch(
@@ -245,9 +289,176 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.auditLogs = msg.logs
 		}
+
+	case agentRegisteredMsg:
+		m.statusMsg = fmt.Sprintf("Agent registered: %s", msg.name)
+		m.currentView = viewAgents
+		m.loading = true
+		return m, m.refreshCurrentView
+
+	case registerErrMsg:
+		m.err = msg.err
+		m.currentView = viewAgents
 	}
 
 	return m, nil
+}
+
+func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		m.loading = true
+		return m, nil
+
+	case "tab":
+		m.currentView = (m.currentView + 1) % 5
+		m.formIdx = 0
+		m.formStep = stepName
+		m.formInputs = newFormInputs()
+		m.selectedIdx = 0
+		m.statusMsg = ""
+		m.err = nil
+		m.registerOk = false
+		m.inputFocused = false
+		return m, nil
+
+	case "shift+tab":
+		if m.currentView == 0 {
+			m.currentView = 4
+		} else {
+			m.currentView--
+		}
+		m.formIdx = 0
+		m.formStep = stepName
+		m.formInputs = newFormInputs()
+		m.selectedIdx = 0
+		m.statusMsg = ""
+		m.err = nil
+		m.registerOk = false
+		m.inputFocused = false
+		return m, nil
+
+	case "up", "k":
+		if m.selectedIdx > 0 {
+			m.selectedIdx--
+		}
+
+	case "down", "j":
+		m.selectedIdx++
+
+	case "r":
+		m.loading = true
+		m.statusMsg = ""
+		m.err = nil
+
+	case "n":
+		if m.currentView == viewAgents {
+			m.currentView = viewRegisterAgent
+			m.formStep = stepName
+			m.formIdx = 0
+			m.formInputs = newFormInputs()
+			m.err = nil
+			m.registerOk = false
+			m.inputFocused = false
+			return m, focusInputCmd
+		}
+
+	case "a":
+		if m.currentView == viewHITL && len(m.hitlPending) > 0 && m.selectedIdx < len(m.hitlPending) {
+			m.statusMsg = ""
+			m.err = nil
+		}
+
+	case "d":
+		if m.currentView == viewHITL && len(m.hitlPending) > 0 && m.selectedIdx < len(m.hitlPending) {
+			m.statusMsg = ""
+			m.err = nil
+		}
+	}
+	return m, nil
+}
+
+func focusInputCmd() tea.Msg {
+	return focusInputMsg{}
+}
+
+func (m model) handleRegisterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.currentView = viewAgents
+		m.formStep = stepName
+		m.formIdx = 0
+		for i := range m.formInputs {
+			m.formInputs[i].Blur()
+		}
+		m.formInputs = newFormInputs()
+		m.err = nil
+		m.inputFocused = false
+		return m, nil
+
+	case "tab", "enter":
+		if m.formStep == stepSubmit {
+			return m, m.submitAgent()
+		}
+
+		m.formInputs[m.formIdx].Blur()
+		if m.formStep < stepSubmit {
+			m.formStep++
+			m.formIdx++
+		}
+		if m.formStep == stepSubmit {
+			m.inputFocused = false
+			return m, nil
+		}
+		m.inputFocused = true
+		return m, m.formInputs[m.formIdx].Focus()
+	}
+
+	var cmd tea.Cmd
+	m.formInputs[m.formIdx], cmd = m.formInputs[m.formIdx].Update(msg)
+	return m, cmd
+}
+
+func (m model) submitAgent() tea.Cmd {
+	name := strings.TrimSpace(m.formInputs[0].Value())
+	owner := strings.TrimSpace(m.formInputs[1].Value())
+	caps := parseList(m.formInputs[2].Value())
+	tools := parseList(m.formInputs[3].Value())
+	budget := 0.0
+	if bv := strings.TrimSpace(m.formInputs[4].Value()); bv != "" {
+		fmt.Sscanf(bv, "%f", &budget)
+	}
+
+	if name == "" || owner == "" {
+		return func() tea.Msg {
+			return registerErrMsg{err: fmt.Errorf("name and owner are required")}
+		}
+	}
+
+	return func() tea.Msg {
+		result, err := m.client.RegisterAgent(name, owner, caps, tools, budget, "no_chain", []string{})
+		if err != nil {
+			return registerErrMsg{err: err}
+		}
+		id, _ := result["agent_id"].(string)
+		return agentRegisteredMsg{id: id, name: name}
+	}
+}
+
+func parseList(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 func toMapSlice(raw interface{}) []map[string]interface{} {
@@ -314,30 +525,6 @@ func (m model) refreshCurrentView() tea.Msg {
 	return refreshMsg{}
 }
 
-func (m model) approveHITL(approvalID string) tea.Cmd {
-	return func() tea.Msg {
-		_, err := m.client.ApproveHILT(approvalID, "cli")
-		if err != nil {
-			m.err = err
-			return nil
-		}
-		m.statusMsg = "Approved: " + approvalID[:8]
-		return refreshMsg{}
-	}
-}
-
-func (m model) denyHITL(approvalID string) tea.Cmd {
-	return func() tea.Msg {
-		_, err := m.client.DenyHILT(approvalID, "cli")
-		if err != nil {
-			m.err = err
-			return nil
-		}
-		m.statusMsg = "Denied: " + approvalID[:8]
-		return refreshMsg{}
-	}
-}
-
 func (m model) View() string {
 	if !m.ready {
 		return "\n  Loading..."
@@ -345,14 +532,16 @@ func (m model) View() string {
 
 	var b strings.Builder
 
-	// Title
 	b.WriteString(titleStyle.String())
 	b.WriteString("\n\n")
 
-	// View tabs
 	views := []string{"Dashboard", "Agents", "Resources", "HITL", "Audit"}
+	displayView := m.currentView
+	if m.currentView == viewRegisterAgent {
+		displayView = viewAgents
+	}
 	for i, v := range views {
-		if i == int(m.currentView) {
+		if i == int(displayView) {
 			b.WriteString(selectedStyle.Render("▶ " + v))
 		} else {
 			b.WriteString(viewStyle.Render("  " + v))
@@ -361,13 +550,11 @@ func (m model) View() string {
 	}
 	b.WriteString("\n\n")
 
-	// Handle errors
 	if m.err != nil {
 		b.WriteString(errorStyle.Render("❌ Error: " + m.err.Error()))
 		b.WriteString("\n")
 	}
 
-	// Main content based on current view
 	switch m.currentView {
 	case viewDashboard:
 		b.WriteString(m.renderDashboard())
@@ -379,17 +566,17 @@ func (m model) View() string {
 		b.WriteString(m.renderHITL())
 	case viewAudit:
 		b.WriteString(m.renderAudit())
+	case viewRegisterAgent:
+		b.WriteString(m.renderRegisterForm())
 	}
 
-	// Status message
 	if m.statusMsg != "" {
 		b.WriteString("\n")
 		b.WriteString(successStyle.Render("✓ " + m.statusMsg))
 	}
 
-	// Help
 	b.WriteString("\n\n")
-	b.WriteString(helpStyle.Render("Tab: switch view | ↑↓: navigate | r: refresh | q: quit"))
+	b.WriteString(helpStyle.Render("Tab: switch view | ↑↓: navigate | n: register agent | r: refresh | q: quit"))
 
 	return b.String()
 }
@@ -397,7 +584,6 @@ func (m model) View() string {
 func (m model) renderDashboard() string {
 	var b strings.Builder
 
-	// Gateway status
 	b.WriteString(boxStyle.Render("Gateway Status"))
 	b.WriteString("\n")
 	health, err := m.client.Health()
@@ -407,7 +593,6 @@ func (m model) renderDashboard() string {
 		b.WriteString(successStyle.Render("  ✓ Gateway: " + health))
 	}
 
-	// Stats
 	b.WriteString("\n\n")
 	b.WriteString(boxStyle.Render("Statistics"))
 	b.WriteString("\n")
@@ -415,7 +600,6 @@ func (m model) renderDashboard() string {
 	b.WriteString(fmt.Sprintf("  Resources: %d\n", len(m.resources)))
 	b.WriteString(fmt.Sprintf("  HITL Pending: %d\n", len(m.hitlPending)))
 
-	// Recent agents
 	if len(m.agents) > 0 {
 		b.WriteString("\n")
 		b.WriteString(boxStyle.Render("Recent Agents"))
@@ -446,7 +630,7 @@ func (m model) renderAgents() string {
 	b.WriteString("\n\n")
 
 	if len(m.agents) == 0 {
-		return "No agents registered"
+		return "No agents registered\n\n  Press n to register a new agent"
 	}
 
 	for i, agent := range m.agents {
@@ -469,7 +653,6 @@ func (m model) renderAgents() string {
 		}
 		b.WriteString("\n")
 
-		// Show full ID for selected
 		if i == m.selectedIdx {
 			b.WriteString(viewStyle.Render("  ID: " + id))
 			b.WriteString("\n")
@@ -590,6 +773,37 @@ func (m model) renderAudit() string {
 		}
 		b.WriteString("\n")
 	}
+
+	return b.String()
+}
+
+func (m model) renderRegisterForm() string {
+	labels := []string{"Name", "Owner", "Capabilities", "Allowed Tools", "Max Budget (USD)"}
+
+	var b strings.Builder
+	b.WriteString(boxStyle.Render("Register New Agent"))
+	b.WriteString("\n\n")
+
+	for i := 0; i < len(labels); i++ {
+		indicator := "  "
+		if i == m.formIdx {
+			indicator = "▶ "
+		}
+
+		b.WriteString(formLabelStyle.Render(fmt.Sprintf("%s%s:", indicator, labels[i])))
+		b.WriteString("\n  ")
+		b.WriteString(m.formInputs[i].View())
+		b.WriteString("\n\n")
+	}
+
+	if m.formStep == stepSubmit {
+		b.WriteString(formLabelStyle.Render("▶ Submit") + "\n")
+	} else {
+		b.WriteString(viewStyle.Render("  Submit") + "\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("enter/tab: next field | esc: cancel | enter on Submit: register"))
 
 	return b.String()
 }
