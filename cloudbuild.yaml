@@ -1,62 +1,16 @@
-# eyeVesa Cloud Build — Build and push all Docker images to Artifact Registry
-#
-# Usage:
-#   gcloud builds submit --config cloudbuild.yaml \
-#     --substitutions=_REGION=europe-west1,_REPO=eyevesa,_TAG=latest \
-#     --project=YOUR_PROJECT_ID
-#
-# Prerequisites:
-#   1. Artifact Registry repo created:
-#      gcloud artifacts repositories create eyevesa --repository-format=Docker \
-#        --location=europe-west1 --project=YOUR_PROJECT_ID
-#   2. Enable Cloud Build API:
-#      gcloud services enable cloudbuild.googleapis.com
-
+crete # Wrote cloudbuild.yaml
 steps:
-  # Build gateway-control (Go)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/gateway-control:${_TAG}'
-      - '-f'
-      - 'gateway/control-plane/Dockerfile'
-      - '.'
-
-  # Build gateway-core (Rust)
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
+      - 'gcr.io/$PROJECT_ID/eyevesa:$COMMIT_SHA'
       - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/gateway-core:${_TAG}'
+      - 'gcr.io/$PROJECT_ID/eyevesa:latest'
       - '-f'
       - 'gateway/core/Dockerfile'
       - '.'
-
-  # Build resource-adapter (Go)
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/resource-adapter:${_TAG}'
-      - '-f'
-      - 'adapter/resource-adapter-go/Dockerfile'
-      - '.'
-
-  # Push all images
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}']
-
-substitutions:
-  _REGION: europe-west1
-  _REPO: eyevesa
-  _TAG: latest
-
+    timeout: '600s'
 images:
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/gateway-control:${_TAG}'
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/gateway-core:${_TAG}'
-  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/resource-adapter:${_TAG}'
-
-timeout: '1200s'
-options:
-  logging: CLOUD_LOGGING_ONLY
+  - 'gcr.io/$PROJECT_ID/eyevesa:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/eyevesa:latest' 
