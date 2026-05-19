@@ -14,7 +14,16 @@ var (
 	cfgFile     string
 	gatewayAddr string
 	outputFmt   string
+	version     = "dev"
 )
+
+func init() {
+	rootCmd.Version = version
+	rootCmd.SetVersionTemplate("eyevesa {{.Version}}\n")
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default ~/.eyevesa/config.toml)")
+	rootCmd.PersistentFlags().StringVarP(&gatewayAddr, "gateway", "g", "", "gateway endpoint (default http://localhost:8080)")
+	rootCmd.PersistentFlags().StringVarP(&outputFmt, "output", "o", "text", "output format: text, json")
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "eyevesa",
@@ -33,11 +42,6 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
-func init() {
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default ~/.eyevesa/config.toml)")
-	rootCmd.PersistentFlags().StringVarP(&gatewayAddr, "gateway", "g", "", "gateway endpoint (default http://localhost:8080)")
-	rootCmd.PersistentFlags().StringVarP(&outputFmt, "output", "o", "text", "output format: text, json")
-}
 
 func getClient() *api.Client {
 	cfgPath := cfgFile
