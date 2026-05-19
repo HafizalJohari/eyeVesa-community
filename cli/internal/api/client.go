@@ -697,3 +697,15 @@ func (c *Client) AirportConnections(agentID string, limit int) (map[string]inter
 	path := fmt.Sprintf("/v1/airport/connections?agent_id=%s&limit=%d", agentID, limit)
 	return c.Get(path)
 }
+
+func (c *Client) FederationHealth() (map[string]interface{}, error) {
+	return c.Get("/v1/federation/health")
+}
+
+func (c *Client) FederationListPeers() (map[string]interface{}, error) {
+	return c.Get("/v1/federation/peers")
+}
+
+func (c *Client) FederationListOnline() (map[string]interface{}, error) {
+	return c.Get("/v1/federation/online")
+}

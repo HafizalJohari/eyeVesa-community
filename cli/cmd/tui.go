@@ -47,6 +47,7 @@ const (
 	viewResources
 	viewHITL
 	viewAudit
+	viewFederation
 	viewRegisterAgent
 )
 
@@ -64,21 +65,24 @@ const (
 type focusInputMsg struct{}
 
 type model struct {
-	client       *api.Client
-	currentView  view
-	agents       []map[string]interface{}
-	resources    []map[string]interface{}
-	hitlPending  []map[string]interface{}
-	auditLogs    []map[string]interface{}
-	err          error
-	loading      bool
-	spinner      spinner.Model
-	table        table.Model
-	ready        bool
-	selectedIdx  int
-	statusMsg    string
-	width        int
-	height       int
+	client           *api.Client
+	currentView      view
+	agents           []map[string]interface{}
+	resources        []map[string]interface{}
+	hitlPending      []map[string]interface{}
+	auditLogs        []map[string]interface{}
+	federationHealth map[string]interface{}
+	federationPeers  []map[string]interface{}
+	federationOnline []map[string]interface{}
+	err              error
+	loading          bool
+	spinner          spinner.Model
+	table            table.Model
+	ready            bool
+	selectedIdx      int
+	statusMsg        string
+	width            int
+	height           int
 
 	formStep     registerStep
 	formInputs   []textinput.Model
@@ -105,6 +109,13 @@ type auditLoadedMsg struct {
 	logs []map[string]interface{}
 	err  error
 }
+type federationLoadedMsg struct {
+	health map[string]interface{}
+	peers  []map[string]interface{}
+	online []map[string]interface{}
+	err    error
+}
+
 type agentRegisteredMsg struct {
 	id    string
 	name  string
@@ -259,6 +270,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadResources,
 			m.loadHITL,
 			m.loadAudit,
+			m.loadFederation,
 		)
 
 	case agentsLoadedMsg:
@@ -290,6 +302,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.auditLogs = msg.logs
 		}
 
+	case federationLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.federationHealth = msg.health
+			m.federationPeers = msg.peers
+			m.federationOnline = msg.online
+		}
+
 	case agentRegisteredMsg:
 		m.statusMsg = fmt.Sprintf("Agent registered: %s", msg.name)
 		m.currentView = viewAgents
@@ -311,7 +332,7 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "tab":
-		m.currentView = (m.currentView + 1) % 5
+		m.currentView = (m.currentView + 1) % 6
 		m.formIdx = 0
 		m.formStep = stepName
 		m.formInputs = newFormInputs()
@@ -324,7 +345,7 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "shift+tab":
 		if m.currentView == 0 {
-			m.currentView = 4
+			m.currentView = 5
 		} else {
 			m.currentView--
 		}
@@ -535,7 +556,7 @@ func (m model) View() string {
 	b.WriteString(titleStyle.String())
 	b.WriteString("\n\n")
 
-	views := []string{"Dashboard", "Agents", "Resources", "HITL", "Audit"}
+	views := []string{"Dashboard", "Agents", "Resources", "HITL", "Audit", "Federation"}
 	displayView := m.currentView
 	if m.currentView == viewRegisterAgent {
 		displayView = viewAgents
@@ -566,6 +587,8 @@ func (m model) View() string {
 		b.WriteString(m.renderHITL())
 	case viewAudit:
 		b.WriteString(m.renderAudit())
+	case viewFederation:
+		b.WriteString(m.renderFederation())
 	case viewRegisterAgent:
 		b.WriteString(m.renderRegisterForm())
 	}
@@ -577,6 +600,121 @@ func (m model) View() string {
 
 	b.WriteString("\n\n")
 	b.WriteString(helpStyle.Render("Tab: switch view | ↑↓: navigate | n: register agent | r: refresh | q: quit"))
+
+	return b.String()
+}
+
+func (m model) loadFederation() tea.Msg {
+	health, err := m.client.FederationHealth()
+	if err != nil {
+		return federationLoadedMsg{err: err}
+	}
+
+	peersResult, err := m.client.FederationListPeers()
+	if err != nil {
+		return federationLoadedMsg{err: err}
+	}
+
+	onlineResult, err := m.client.FederationListOnline()
+	if err != nil {
+		return federationLoadedMsg{err: err}
+	}
+
+	return federationLoadedMsg{
+		health: health,
+		peers:  toMapSlice(peersResult["peers"]),
+		online: toMapSlice(onlineResult["agents"]),
+	}
+}
+
+func (m model) renderFederation() string {
+	var b strings.Builder
+
+	if m.loading && m.federationHealth == nil {
+		return m.spinner.View() + " Loading federation data..."
+	}
+
+	b.WriteString(boxStyle.Render("Federation Health"))
+	b.WriteString("\n")
+
+	if m.federationHealth != nil {
+		status, _ := m.federationHealth["status"].(string)
+		activeGateways, _ := m.federationHealth["active_gateways"].(float64)
+		onlineAgents, _ := m.federationHealth["online_federated_agents"].(float64)
+
+		if status == "healthy" {
+			b.WriteString(successStyle.Render("  ✓ Status: " + status))
+		} else {
+			b.WriteString(errorStyle.Render("  ✗ Status: " + status))
+		}
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  Active Gateways: %.0f\n", activeGateways))
+		b.WriteString(fmt.Sprintf("  Online Federated Agents: %.0f\n", onlineAgents))
+	} else {
+		b.WriteString(errorStyle.Render("  ✗ Federation: DISCONNECTED"))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(boxStyle.Render(fmt.Sprintf("Federation Peers (%d)", len(m.federationPeers))))
+	b.WriteString("\n\n")
+
+	if len(m.federationPeers) == 0 {
+		b.WriteString("No federation peers registered\n")
+	} else {
+		for i, peer := range m.federationPeers {
+			cursor := "  "
+			if i == m.selectedIdx {
+				cursor = "▶ "
+			}
+
+			name, _ := peer["name"].(string)
+			peerStatus, _ := peer["status"].(string)
+			peerType, _ := peer["peer_type"].(string)
+			trustScore, _ := peer["trust_score"].(float64)
+			agentCount, _ := peer["agent_count"].(float64)
+
+			statusIndicator := successStyle.Render("●")
+			if peerStatus != "active" {
+				statusIndicator = errorStyle.Render("●")
+			}
+
+			line := fmt.Sprintf("%s%s %-20s %-10s %-8s trust: %.2f agents: %.0f",
+				cursor, statusIndicator, name, peerType, peerStatus, trustScore, agentCount)
+			if i == m.selectedIdx {
+				b.WriteString(selectedStyle.Render(line))
+			} else {
+				b.WriteString(line)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(boxStyle.Render(fmt.Sprintf("Online Federated Agents (%d)", len(m.federationOnline))))
+	b.WriteString("\n\n")
+
+	if len(m.federationOnline) == 0 {
+		b.WriteString("No online federated agents\n")
+	} else {
+		for i, agent := range m.federationOnline {
+			cursor := "  "
+			if len(m.federationPeers)+i == m.selectedIdx {
+				cursor = "▶ "
+			}
+
+			name, _ := agent["name"].(string)
+			owner, _ := agent["owner"].(string)
+			agentStatus, _ := agent["heartbeat_status"].(string)
+			trust, _ := agent["trust_score"].(float64)
+			scope, _ := agent["scope"].(string)
+
+			line := fmt.Sprintf("%s%-25s %-15s %-8s trust: %.2f scope: %s",
+				cursor, name, owner, agentStatus, trust, scope)
+			b.WriteString(selectedStyle.Render(line))
+			b.WriteString("\n")
+		}
+	}
 
 	return b.String()
 }
