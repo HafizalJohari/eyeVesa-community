@@ -17,3 +17,4 @@ docs/
 docs-all/
 eyevesa-pro
 *_license.json
+deploy/terraform/.terraform/

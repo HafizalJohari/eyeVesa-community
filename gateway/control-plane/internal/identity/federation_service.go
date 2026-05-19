@@ -83,7 +83,7 @@ func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB6
 	err = fs.querier.QueryRow(ctx,
 		`INSERT INTO federation_peers (name, public_key, endpoint, trust_domain, status, trust_score, registered_at, updated_at)
 		 VALUES ($1, $2, $3, $4, 'active', 1.0, NOW(), NOW())
-		 ON CONFLICT (endpoint) DO UPDATE SET name = $1, public_key = $2, trust_domain = $4, status = 'active', updated_at = NOW()
+		 ON CONFLICT (endpoint) DO UPDATE SET name = EXCLUDED.name, public_key = EXCLUDED.public_key, trust_domain = EXCLUDED.trust_domain, status = 'active', updated_at = NOW()
 		 RETURNING gateway_id, registered_at`,
 		name, pubKeyBytes, endpoint, trustDomain,
 	).Scan(&gatewayID, &registeredAt)
