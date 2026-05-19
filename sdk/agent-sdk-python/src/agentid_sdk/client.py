@@ -767,14 +767,16 @@ class AgentClient:
         public_key: str,
         endpoint: str,
         trust_domain: str = "",
+        peer_type: str = "remote",
     ) -> FederationPeer:
-        logger.info("Registering federation peer: %s at %s", name, endpoint)
+        logger.info("Registering federation peer: %s at %s (type: %s)", name, endpoint, peer_type)
 
         body: dict[str, Any] = {
             "name": name,
             "public_key": public_key,
             "endpoint": endpoint,
             "trust_domain": trust_domain or name,
+            "peer_type": peer_type,
         }
 
         resp = await self._http.post("/v1/federation/register", json=body)
@@ -783,10 +785,12 @@ class AgentClient:
 
         return FederationPeer(**resp.json())
 
-    async def federation_list_peers(self, status: str = "") -> list[FederationPeer]:
+    async def federation_list_peers(self, status: str = "", peer_type: str = "") -> list[FederationPeer]:
         params: dict[str, Any] = {}
         if status:
             params["status"] = status
+        if peer_type:
+            params["peer_type"] = peer_type
 
         resp = await self._http.get("/v1/federation/peers", params=params)
         if resp.status_code != 200:

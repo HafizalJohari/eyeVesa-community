@@ -159,6 +159,7 @@ class FederationPeer(BaseModel):
     public_key: str
     endpoint: str
     trust_domain: str = ""
+    peer_type: str = "remote"
     status: str = "active"
     trust_score: float = 1.0
     agent_count: int = 0
@@ -176,6 +177,7 @@ class FederatedAgent(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
     allowed_tools: list[str] = Field(default_factory=list)
     passport_issued_at: str = ""
+    scope: str = "international"
     status: str = "active"
     description: str = ""
     tags: list[str] = Field(default_factory=list)

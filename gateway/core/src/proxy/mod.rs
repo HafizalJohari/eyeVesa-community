@@ -13,6 +13,7 @@ pub struct ProxyState {
     pub control_plane: Arc<Mutex<Option<ControlPlaneClient>>>,
     pub control_plane_addr: String,
     pub control_plane_http_addr: Arc<RwLock<String>>,
+    pub central_airport_url: Option<String>,
     pub http_client: reqwest::Client,
     pub backend_tls: BackendTlsConfig,
 }

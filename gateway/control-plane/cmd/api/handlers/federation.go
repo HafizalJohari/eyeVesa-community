@@ -23,6 +23,7 @@ func RegisterFederationPeer(w http.ResponseWriter, r *http.Request) {
 		PublicKey   string `json:"public_key"`
 		Endpoint    string `json:"endpoint"`
 		TrustDomain string `json:"trust_domain"`
+		PeerType    string `json:"peer_type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -37,8 +38,11 @@ func RegisterFederationPeer(w http.ResponseWriter, r *http.Request) {
 	if req.TrustDomain == "" {
 		req.TrustDomain = req.Name
 	}
+	if req.PeerType == "" {
+		req.PeerType = "remote"
+	}
 
-	peer, err := federationService.RegisterPeer(r.Context(), req.Name, req.PublicKey, req.Endpoint, req.TrustDomain)
+	peer, err := federationService.RegisterPeer(r.Context(), req.Name, req.PublicKey, req.Endpoint, req.TrustDomain, req.PeerType)
 	if err != nil {
 		slog.Error("register federation peer failed", "error", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -72,8 +76,9 @@ func GetFederationPeer(w http.ResponseWriter, r *http.Request) {
 
 func ListFederationPeers(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
+	peerType := r.URL.Query().Get("peer_type")
 
-	peers, err := federationService.ListPeers(r.Context(), status)
+	peers, err := federationService.ListPeers(r.Context(), status, peerType)
 	if err != nil {
 		slog.Error("list federation peers failed", "error", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -99,6 +104,7 @@ func SyncFederatedAgent(w http.ResponseWriter, r *http.Request) {
 		AllowedTools []string               `json:"allowed_tools"`
 		Description  string                 `json:"description"`
 		Tags         []string               `json:"tags"`
+		Scope        string                 `json:"scope"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -118,10 +124,13 @@ func SyncFederatedAgent(w http.ResponseWriter, r *http.Request) {
 	if req.TrustScore <= 0 {
 		req.TrustScore = 1.0
 	}
+	if req.Scope == "" {
+		req.Scope = "international"
+	}
 
 	agent, err := federationService.SyncAgent(
 		r.Context(), req.Passport, req.Name, req.Owner, req.TrustScore,
-		req.Capabilities, req.AllowedTools, req.Description, req.Tags,
+		req.Capabilities, req.AllowedTools, req.Description, req.Tags, req.Scope,
 	)
 	if err != nil {
 		slog.Error("sync federated agent failed", "error", err)
@@ -178,6 +187,7 @@ func SearchFederatedAgentsHandler(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	tag := r.URL.Query().Get("tag")
 	owner := r.URL.Query().Get("owner")
+	scope := r.URL.Query().Get("scope")
 	minTrust := 0.0
 	if v := r.URL.Query().Get("min_trust"); v != "" {
 		if f, err := parseFloat(v); err == nil {
@@ -197,7 +207,7 @@ func SearchFederatedAgentsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	agents, err := federationService.SearchFederatedAgents(r.Context(), status, tag, owner, minTrust, limit, offset)
+	agents, err := federationService.SearchFederatedAgents(r.Context(), status, tag, owner, minTrust, scope, limit, offset)
 	if err != nil {
 		slog.Error("federated agent search failed", "error", err)
 		http.Error(w, "search failed", http.StatusInternalServerError)
@@ -214,7 +224,9 @@ func SearchFederatedAgentsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListFederatedOnlineHandler(w http.ResponseWriter, r *http.Request) {
-	agents, err := federationService.ListFederatedOnline(r.Context())
+	scope := r.URL.Query().Get("scope")
+
+	agents, err := federationService.ListFederatedOnline(r.Context(), scope)
 	if err != nil {
 		slog.Error("list federated online failed", "error", err)
 		http.Error(w, "query failed", http.StatusInternalServerError)
@@ -271,8 +283,8 @@ func SuspendFederationPeerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func FederationHealthHandler(w http.ResponseWriter, r *http.Request) {
-	peers, _ := federationService.ListPeers(r.Context(), "active")
-	online, _ := federationService.ListFederatedOnline(r.Context())
+	peers, _ := federationService.ListPeers(r.Context(), "active", "")
+	online, _ := federationService.ListFederatedOnline(r.Context(), "")
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

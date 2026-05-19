@@ -135,13 +135,28 @@ pub async fn handle_request(
         ("PUT", p) if p.starts_with("/v1/airport/") => {
             crate::proxy::forward::forward_to_control_plane(req, state).await
         }
-        ("POST", p) if p.starts_with("/v1/federation/") => {
+        ("POST", p) if p.starts_with("/v1/federation/international/") => {
+            crate::proxy::forward::forward_to_central_airport(req, state).await
+        }
+        ("GET", p) if p.starts_with("/v1/federation/international/") => {
+            crate::proxy::forward::forward_to_central_airport(req, state).await
+        }
+        ("PUT", p) if p.starts_with("/v1/federation/international/") => {
+            crate::proxy::forward::forward_to_central_airport(req, state).await
+        }
+        ("DELETE", p) if p.starts_with("/v1/federation/international/") => {
+            crate::proxy::forward::forward_to_central_airport(req, state).await
+        }
+        ("POST", p) if p.starts_with("/v1/federation/domestic/") || p.starts_with("/v1/federation/") => {
             crate::proxy::forward::forward_to_control_plane(req, state).await
         }
-        ("GET", p) if p.starts_with("/v1/federation/") => {
+        ("GET", p) if p.starts_with("/v1/federation/domestic/") || p.starts_with("/v1/federation/") => {
             crate::proxy::forward::forward_to_control_plane(req, state).await
         }
-        ("PUT", p) if p.starts_with("/v1/federation/") => {
+        ("PUT", p) if p.starts_with("/v1/federation/domestic/") || p.starts_with("/v1/federation/") => {
+            crate::proxy::forward::forward_to_control_plane(req, state).await
+        }
+        ("DELETE", p) if p.starts_with("/v1/federation/domestic/") => {
             crate::proxy::forward::forward_to_control_plane(req, state).await
         }
         ("POST", p) if p.starts_with("/v1/hitl/") => {

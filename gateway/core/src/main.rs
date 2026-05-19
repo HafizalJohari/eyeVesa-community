@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .unwrap_or_else(|_| "http://localhost:9090".to_string());
     let control_plane_http_addr = std::env::var("CONTROL_PLANE_HTTP_ADDR")
         .unwrap_or_else(|_| "localhost:8080".to_string());
+    let central_airport_url = std::env::var("CENTRAL_AIRPORT_URL").ok();
     let mode = std::env::var("GATEWAY_MODE")
         .unwrap_or_else(|_| "plaintext".to_string());
     let listen_port: u16 = std::env::var("PORT")
@@ -35,6 +36,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!("Control plane HTTP address: {}", control_plane_http_addr);
     tracing::info!("Gateway mode: {}", mode);
     tracing::info!("Backend TLS enabled: {}", backend_tls.enabled);
+    if let Some(ref url) = central_airport_url {
+        tracing::info!("Central Airport URL: {}", url);
+    } else {
+        tracing::info!("Central Airport URL: not configured (international federation disabled)");
+    }
 
     match identity::svid::fetch_identity(&control_plane_http_addr, backend_tls.enabled).await {
         Ok(id) => tracing::info!(
@@ -61,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         control_plane: Arc::new(Mutex::new(None)),
         control_plane_addr: grpc_addr.clone(),
         control_plane_http_addr: Arc::new(tokio::sync::RwLock::new(control_plane_http_addr.clone())),
+        central_airport_url,
         http_client,
         backend_tls,
     });

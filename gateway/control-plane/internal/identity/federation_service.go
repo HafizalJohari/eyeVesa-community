@@ -20,6 +20,7 @@ type FederationPeer struct {
 	PublicKey    string  `json:"public_key"`
 	Endpoint     string  `json:"endpoint"`
 	TrustDomain  string  `json:"trust_domain"`
+	PeerType     string  `json:"peer_type"`
 	Status       string  `json:"status"`
 	TrustScore   float64 `json:"trust_score"`
 	AgentCount   int     `json:"agent_count"`
@@ -38,6 +39,7 @@ type FederatedAgent struct {
 	AllowedTools       []string `json:"allowed_tools"`
 	PassportSignature  string   `json:"passport_signature"`
 	PassportIssuedAt   string   `json:"passport_issued_at"`
+	Scope              string   `json:"scope"`
 	Status             string   `json:"status"`
 	Description        string   `json:"description,omitempty"`
 	Tags               []string `json:"tags,omitempty"`
@@ -69,7 +71,7 @@ func (fs *FederationService) SetQuerierForTest(q database.Querier) {
 	fs.querier = q
 }
 
-func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB64, endpoint, trustDomain string) (*FederationPeer, error) {
+func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB64, endpoint, trustDomain, peerType string) (*FederationPeer, error) {
 	pubKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyB64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid public_key base64: %w", err)
@@ -78,21 +80,26 @@ func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB6
 		return nil, fmt.Errorf("invalid public_key: must be %d bytes, got %d", ed25519.PublicKeySize, len(pubKeyBytes))
 	}
 
+	validPeerTypes := map[string]bool{"self": true, "domestic": true, "remote": true}
+	if !validPeerTypes[peerType] {
+		peerType = "remote"
+	}
+
 	var gatewayID string
 	var registeredAt time.Time
 	err = fs.querier.QueryRow(ctx,
-		`INSERT INTO federation_peers (name, public_key, endpoint, trust_domain, status, trust_score, registered_at, updated_at)
-		 VALUES ($1, $2, $3, $4, 'active', 1.0, NOW(), NOW())
-		 ON CONFLICT (endpoint) DO UPDATE SET name = EXCLUDED.name, public_key = EXCLUDED.public_key, trust_domain = EXCLUDED.trust_domain, status = 'active', updated_at = NOW()
+		`INSERT INTO federation_peers (name, public_key, endpoint, trust_domain, peer_type, status, trust_score, registered_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, 'active', 1.0, NOW(), NOW())
+		 ON CONFLICT (endpoint) DO UPDATE SET name = EXCLUDED.name, public_key = EXCLUDED.public_key, trust_domain = EXCLUDED.trust_domain, peer_type = EXCLUDED.peer_type, status = 'active', updated_at = NOW()
 		 RETURNING gateway_id, registered_at`,
-		name, pubKeyBytes, endpoint, trustDomain,
+		name, pubKeyBytes, endpoint, trustDomain, peerType,
 	).Scan(&gatewayID, &registeredAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to register peer: %w", err)
 	}
 
-	slog.Info("federation peer registered", "gateway_id", gatewayID, "name", name, "endpoint", endpoint)
+	slog.Info("federation peer registered", "gateway_id", gatewayID, "name", name, "endpoint", endpoint, "peer_type", peerType)
 
 	return &FederationPeer{
 		GatewayID:    gatewayID,
@@ -100,6 +107,7 @@ func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB6
 		PublicKey:    publicKeyB64,
 		Endpoint:     endpoint,
 		TrustDomain:  trustDomain,
+		PeerType:     peerType,
 		Status:       "active",
 		TrustScore:   1.0,
 		RegisteredAt: registeredAt.Format(time.RFC3339),
@@ -113,11 +121,11 @@ func (fs *FederationService) GetPeer(ctx context.Context, gatewayID string) (*Fe
 	var registeredAt time.Time
 
 	err := fs.querier.QueryRow(ctx,
-		`SELECT gateway_id, name, public_key, endpoint, trust_domain, status, trust_score, agent_count, last_sync_at, registered_at
+		`SELECT gateway_id, name, public_key, endpoint, trust_domain, peer_type, status, trust_score, agent_count, last_sync_at, registered_at
 		 FROM federation_peers WHERE gateway_id = $1`,
 		gatewayID,
 	).Scan(&peer.GatewayID, &peer.Name, &pubKeyBytes, &peer.Endpoint, &peer.TrustDomain,
-		&peer.Status, &peer.TrustScore, &peer.AgentCount, &lastSync, &registeredAt)
+		&peer.PeerType, &peer.Status, &peer.TrustScore, &peer.AgentCount, &lastSync, &registeredAt)
 
 	if err != nil {
 		return nil, fmt.Errorf("peer not found: %w", err)
@@ -132,14 +140,28 @@ func (fs *FederationService) GetPeer(ctx context.Context, gatewayID string) (*Fe
 	return &peer, nil
 }
 
-func (fs *FederationService) ListPeers(ctx context.Context, status string) ([]FederationPeer, error) {
-	query := `SELECT gateway_id, name, public_key, endpoint, trust_domain, status, trust_score, agent_count, last_sync_at, registered_at
+func (fs *FederationService) ListPeers(ctx context.Context, status, peerType string) ([]FederationPeer, error) {
+	query := `SELECT gateway_id, name, public_key, endpoint, trust_domain, peer_type, status, trust_score, agent_count, last_sync_at, registered_at
 		FROM federation_peers`
 	args := []interface{}{}
+	argIdx := 1
+	conditions := []string{}
 
 	if status != "" {
-		query += " WHERE status = $1"
+		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
 		args = append(args, status)
+		argIdx++
+	}
+	if peerType != "" {
+		conditions = append(conditions, fmt.Sprintf("peer_type = $%d", argIdx))
+		args = append(args, peerType)
+		argIdx++
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + conditions[0]
+		for _, c := range conditions[1:] {
+			query += " AND " + c
+		}
 	}
 	query += " ORDER BY registered_at DESC"
 
@@ -157,7 +179,7 @@ func (fs *FederationService) ListPeers(ctx context.Context, status string) ([]Fe
 		var registeredAt time.Time
 
 		err := rows.Scan(&peer.GatewayID, &peer.Name, &pubKeyBytes, &peer.Endpoint, &peer.TrustDomain,
-			&peer.Status, &peer.TrustScore, &peer.AgentCount, &lastSync, &registeredAt)
+			&peer.PeerType, &peer.Status, &peer.TrustScore, &peer.AgentCount, &lastSync, &registeredAt)
 		if err != nil {
 			continue
 		}
@@ -217,9 +239,14 @@ func (fs *FederationService) VerifyPassport(ctx context.Context, passport AgentP
 	return nil
 }
 
-func (fs *FederationService) SyncAgent(ctx context.Context, passport AgentPassport, name, owner string, trustScore float64, capabilities, allowedTools []string, description string, tags []string) (*FederatedAgent, error) {
+func (fs *FederationService) SyncAgent(ctx context.Context, passport AgentPassport, name, owner string, trustScore float64, capabilities, allowedTools []string, description string, tags []string, scope string) (*FederatedAgent, error) {
 	if err := fs.VerifyPassport(ctx, passport); err != nil {
 		return nil, fmt.Errorf("passport verification failed: %w", err)
+	}
+
+	validScopes := map[string]bool{"domestic": true, "international": true}
+	if !validScopes[scope] {
+		scope = "international"
 	}
 
 	agentPubKeyBytes, err := base64.StdEncoding.DecodeString(passport.AgentPubKey)
@@ -240,15 +267,15 @@ func (fs *FederationService) SyncAgent(ctx context.Context, passport AgentPasspo
 	}
 
 	_, err = fs.querier.Exec(ctx,
-		`INSERT INTO federated_agents (agent_id, gateway_id, name, owner, public_key, trust_score, capabilities, allowed_tools, passport_signature, passport_issued_at, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', NOW(), NOW())
+		`INSERT INTO federated_agents (agent_id, gateway_id, name, owner, public_key, trust_score, capabilities, allowed_tools, passport_signature, passport_issued_at, scope, status, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active', NOW(), NOW())
 		 ON CONFLICT (agent_id) DO UPDATE SET
 			name = $3, owner = $4, public_key = $5, trust_score = $6,
 			capabilities = $7, allowed_tools = $8,
 			passport_signature = $9, passport_issued_at = $10,
-			status = 'active', updated_at = NOW()`,
+			scope = $11, status = 'active', updated_at = NOW()`,
 		passport.AgentID, passport.GatewayID, name, owner, agentPubKeyBytes,
-		trustScore, capabilities, allowedTools, sigBytes, passport.IssuedAt,
+		trustScore, capabilities, allowedTools, sigBytes, passport.IssuedAt, scope,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync federated agent: %w", err)
@@ -291,7 +318,7 @@ func (fs *FederationService) SyncAgent(ctx context.Context, passport AgentPasspo
 		slog.Error("failed to update peer agent_count", "error", err)
 	}
 
-	slog.Info("federated agent synced to airport", "agent_id", passport.AgentID, "gateway_id", passport.GatewayID, "name", name)
+	slog.Info("federated agent synced to airport", "agent_id", passport.AgentID, "gateway_id", passport.GatewayID, "name", name, "scope", scope)
 
 	return &FederatedAgent{
 		AgentID:          passport.AgentID,
@@ -304,6 +331,7 @@ func (fs *FederationService) SyncAgent(ctx context.Context, passport AgentPasspo
 		AllowedTools:     allowedTools,
 		PassportSignature: passport.GatewaySig,
 		PassportIssuedAt: passport.IssuedAt,
+		Scope:            scope,
 		Status:           "active",
 	}, nil
 }
@@ -331,7 +359,7 @@ func (fs *FederationService) FederatedHeartbeat(ctx context.Context, agentID, ga
 	return nil
 }
 
-func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, tag, owner string, minTrust float64, limit, offset int) ([]FederatedAgent, error) {
+func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, tag, owner string, minTrust float64, scope string, limit, offset int) ([]FederatedAgent, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -367,6 +395,12 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 		argIdx++
 	}
 
+	if scope != "" {
+		conditions = append(conditions, fmt.Sprintf("fa.scope = $%d", argIdx))
+		args = append(args, scope)
+		argIdx++
+	}
+
 	where := ""
 	for i, c := range conditions {
 		if i > 0 {
@@ -378,7 +412,7 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 	query := fmt.Sprintf(`SELECT fa.agent_id, fa.gateway_id, fa.name, fa.owner, fa.public_key,
 		fa.trust_score, COALESCE(array_to_json(fa.capabilities)::text, '[]') as capabilities,
 		COALESCE(array_to_json(fa.allowed_tools)::text, '[]') as allowed_tools,
-		fa.passport_issued_at, fa.status,
+		fa.passport_issued_at, fa.scope, fa.status,
 		COALESCE(fp.description, '') as description,
 		COALESCE(array_to_json(fp.tags)::text, '[]') as tags,
 		COALESCE(fh.status, 'offline') as heartbeat_status,
@@ -406,7 +440,7 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 
 		err := rows.Scan(&a.AgentID, &a.GatewayID, &a.Name, &a.Owner, &pubKeyBytes,
 			&a.TrustScore, &capsStr, &toolsStr,
-			&a.PassportIssuedAt, &a.Status,
+			&a.PassportIssuedAt, &a.Scope, &a.Status,
 			&a.Description, &tagsStr,
 			&a.HeartbeatStatus, &a.LastHeartbeat,
 		)
@@ -440,12 +474,11 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 	return agents, nil
 }
 
-func (fs *FederationService) ListFederatedOnline(ctx context.Context) ([]FederatedAgent, error) {
-	rows, err := fs.querier.Query(ctx,
-		`SELECT fa.agent_id, fa.gateway_id, fa.name, fa.owner, fa.public_key,
+func (fs *FederationService) ListFederatedOnline(ctx context.Context, scope string) ([]FederatedAgent, error) {
+	query := `SELECT fa.agent_id, fa.gateway_id, fa.name, fa.owner, fa.public_key,
 		fa.trust_score, COALESCE(array_to_json(fa.capabilities)::text, '[]') as capabilities,
 		COALESCE(array_to_json(fa.allowed_tools)::text, '[]') as allowed_tools,
-		fa.passport_issued_at, fa.status,
+		fa.passport_issued_at, fa.scope, fa.status,
 		COALESCE(fp.description, '') as description,
 		COALESCE(array_to_json(fp.tags)::text, '[]') as tags,
 		fh.status as heartbeat_status,
@@ -454,9 +487,16 @@ func (fs *FederationService) ListFederatedOnline(ctx context.Context) ([]Federat
 		JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
 		LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
 		WHERE fh.status = 'online' AND fh.last_heartbeat > NOW() - INTERVAL '5 minutes'
-		AND fa.status = 'active' AND COALESCE(fp.listed, true) = true
-		ORDER BY fa.trust_score DESC LIMIT 100`,
-	)
+		AND fa.status = 'active' AND COALESCE(fp.listed, true) = true`
+	args := []interface{}{}
+
+	if scope != "" {
+		query += ` AND fa.scope = $1`
+		args = append(args, scope)
+	}
+	query += ` ORDER BY fa.trust_score DESC LIMIT 100`
+
+	rows, err := fs.querier.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list federated online failed: %w", err)
 	}
@@ -470,7 +510,7 @@ func (fs *FederationService) ListFederatedOnline(ctx context.Context) ([]Federat
 
 		err := rows.Scan(&a.AgentID, &a.GatewayID, &a.Name, &a.Owner, &pubKeyBytes,
 			&a.TrustScore, &capsStr, &toolsStr,
-			&a.PassportIssuedAt, &a.Status,
+			&a.PassportIssuedAt, &a.Scope, &a.Status,
 			&a.Description, &tagsStr,
 			&a.HeartbeatStatus, &a.LastHeartbeat,
 		)
@@ -512,7 +552,7 @@ func (fs *FederationService) GetFederatedAgent(ctx context.Context, agentID stri
 		`SELECT fa.agent_id, fa.gateway_id, fa.name, fa.owner, fa.public_key,
 		fa.trust_score, COALESCE(array_to_json(fa.capabilities)::text, '[]') as capabilities,
 		COALESCE(array_to_json(fa.allowed_tools)::text, '[]') as allowed_tools,
-		fa.passport_issued_at, fa.status,
+		fa.passport_issued_at, fa.scope, fa.status,
 		COALESCE(fp.description, '') as description,
 		COALESCE(array_to_json(fp.tags)::text, '[]') as tags,
 		COALESCE(fh.status, 'offline') as heartbeat_status,
@@ -524,7 +564,7 @@ func (fs *FederationService) GetFederatedAgent(ctx context.Context, agentID stri
 		agentID,
 	).Scan(&a.AgentID, &a.GatewayID, &a.Name, &a.Owner, &pubKeyBytes,
 		&a.TrustScore, &capsStr, &toolsStr,
-		&a.PassportIssuedAt, &a.Status,
+		&a.PassportIssuedAt, &a.Scope, &a.Status,
 		&a.Description, &tagsStr,
 		&a.HeartbeatStatus, &a.LastHeartbeat,
 	)

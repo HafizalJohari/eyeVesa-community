@@ -661,17 +661,24 @@ class HermesIntegration:
         public_key: str,
         endpoint: str,
         trust_domain: str = "",
+        peer_type: str = "remote",
     ) -> dict[str, Any]:
         """Register this agent's local gateway with Central Airport.
 
         This is the 'embassy registration' step — your gateway must be registered
         before your passport is accepted at the Central Airport.
+
+        peer_type:
+            'self'     = this gateway's own registration
+            'domestic' = a peer on the same local network
+            'remote'   = a peer at a different Central Airport (default)
         """
         result = await self._client.federation_register_peer(
             name=name,
             public_key=public_key,
             endpoint=endpoint,
             trust_domain=trust_domain or name,
+            peer_type=peer_type,
         )
         return result.model_dump()
 
@@ -688,6 +695,7 @@ class HermesIntegration:
         central_endpoint: str,
         description: str = "",
         tags: Optional[list[str]] = None,
+        scope: str = "international",
     ) -> dict[str, Any]:
         """Sync this agent to a Central Airport.
 
@@ -697,6 +705,10 @@ class HermesIntegration:
         3. Present passport to Central Airport + create profile
 
         Requires: central_endpoint (URL of the Central Airport gateway)
+
+        scope:
+            'domestic'      = agent belongs to the same organization/network as the Central Airport
+            'international' = agent comes from a different gateway/organization (default)
         """
         import httpx as _httpx
 
@@ -756,6 +768,7 @@ class HermesIntegration:
                 "allowed_tools": ["read"],
                 "description": description,
                 "tags": tags or [],
+                "scope": scope,
             }
 
             sync_resp = await central_client.post("/v1/federation/agents/sync", json=sync_body)
