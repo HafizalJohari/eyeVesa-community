@@ -753,7 +753,7 @@ class HermesIntegration:
                 "agent_public_key": passport.agent_public_key,
                 "gateway_id": passport.gateway_id,
                 "issued_at": passport.issued_at,
-            }, sort_keys=True)
+            }, sort_keys=True, separators=(",", ":"))
 
             from nacl.signing import SigningKey as _SK
             sig_bytes = self._client._signing_key.sign(payload.encode()).signature
@@ -781,6 +781,7 @@ class HermesIntegration:
         self,
         central_endpoint: str,
         status: str = "online",
+        gateway_id: str = "",
     ) -> dict[str, Any]:
         """Send heartbeat to Central Airport."""
         import httpx as _httpx
@@ -800,11 +801,11 @@ class HermesIntegration:
         ) as central_client:
             resp = await central_client.post("/v1/federation/heartbeat", json={
                 "agent_id": self._client.agent_id,
-                "gateway_id": "",
+                "gateway_id": gateway_id,
                 "status": status,
             })
             if resp.status_code != 200:
-                raise Exception(f"Federated heartbeat failed: {resp.status_code}")
+                raise Exception(f"Federated heartbeat failed: {resp.status_code} {resp.text}")
             return resp.json()
 
     async def discover_federated_agents(

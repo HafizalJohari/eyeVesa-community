@@ -9,6 +9,7 @@ This project follows Semantic Versioning.
 
 ### Added
 - Added this changelog as the release history source of truth.
+- Added an Astro Starlight documentation site under `docs/` with overview, quickstart, architecture, Airport, CLI, and expanded SDK documentation pages.
 
 ### Changed
 - No changes yet.

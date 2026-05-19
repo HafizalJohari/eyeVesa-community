@@ -32,16 +32,15 @@ class SecureApiRequestInput(BaseModel):
 
 # 2. Create a custom LangChain Tool that routes through eyeVesa
 class EyeVesaSecureActionTool(BaseTool):
-    name = "secure_api_action"
-    description = "Executes a secure action via the eyeVesa identity proxy. Use this to perform sensitive network calls."
+    name: str = "secure_api_action"
+    description: str = "Executes a secure action via the eyeVesa identity proxy. Use this to perform sensitive network calls."
     args_schema: Type[BaseModel] = SecureApiRequestInput
     
     # We pass the authenticated eyeVesa client into the tool
-    client: AgentClient = None
+    client: Optional[AgentClient] = None
 
     def __init__(self, client: AgentClient, **kwargs):
-        super().__init__(**kwargs)
-        self.client = client
+        super().__init__(client=client, **kwargs)
 
     def _run(self, endpoint: str, payload: str) -> str:
         """Synchronous tool execution. In production, use aiohttp with _arun."""

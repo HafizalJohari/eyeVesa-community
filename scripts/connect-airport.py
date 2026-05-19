@@ -41,33 +41,28 @@ DEFAULT_KEY_PATH = EYEVESA_DIR / "gateway-ed25519.key"
 
 def generate_ed25519_key(path: Path) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        pub = subprocess.run(
-            ["openssl", "pkey", "-in", str(path), "-pubout"],
-            capture_output=True, text=True, check=True,
+    if not path.exists():
+        subprocess.run(
+            ["openssl", "genpkey", "-algorithm", "ED25519", "-out", str(path)],
+            check=True, capture_output=True,
         )
-        pubkey_b64 = base64.b64encode(
-            base64.b64decode(
-                "".join(pub.stdout.strip().split("\n")[1:-1])
-            )
-        ).decode()
+        logger.info("Generated Ed25519 key pair at %s", path)
+    else:
         logger.info("Loaded existing key from %s", path)
-        return pubkey_b64
 
-    subprocess.run(
-        ["openssl", "genpkey", "-algorithm", "ED25519", "-out", str(path)],
-        check=True, capture_output=True,
-    )
     pub = subprocess.run(
         ["openssl", "pkey", "-in", str(path), "-pubout"],
         capture_output=True, text=True, check=True,
     )
-    pubkey_b64 = base64.b64encode(
-        base64.b64decode(
-            "".join(pub.stdout.strip().split("\n")[1:-1])
-        )
-    ).decode()
-    logger.info("Generated Ed25519 key pair at %s", path)
+    
+    # OpenSSL outputs PEM with ASN.1 SubjectPublicKeyInfo (44 bytes for Ed25519)
+    # The raw Ed25519 public key is exactly the last 32 bytes.
+    der_bytes = base64.b64decode(
+        "".join(pub.stdout.strip().split("\n")[1:-1])
+    )
+    raw_32_bytes = der_bytes[-32:]
+    pubkey_b64 = base64.b64encode(raw_32_bytes).decode()
+    
     return pubkey_b64
 
 
@@ -141,6 +136,7 @@ async def main():
         gateway_endpoint="http://localhost:9443",
         agent_name=args.name.lower().replace(" ", "-") + "-agent",
         owner=args.name.lower().replace(" ", "-"),
+        api_key=args.api_key,
     )
     await hermes.connect()
     pubkey_raw = hermes.client.public_key_base64
@@ -197,6 +193,7 @@ async def main():
             hb = await hermes.federated_heartbeat(
                 central_endpoint=args.url,
                 status="online",
+                gateway_id=gateway_id,
             )
             heartbeat_count += 1
             now = datetime.now(timezone.utc).strftime("%H:%M:%S")
@@ -219,6 +216,7 @@ async def main():
         await hermes.federated_heartbeat(
             central_endpoint=args.url,
             status="offline",
+            gateway_id=gateway_id,
         )
         print("  ✅  Offline — agent disconnected")
     except Exception:

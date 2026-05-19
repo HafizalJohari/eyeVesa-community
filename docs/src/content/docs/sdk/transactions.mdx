@@ -1,0 +1,154 @@
+---
+title: Transactions
+description: Issue and verify capability tokens and transaction receipts.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Transactions provide a signed trail around authorization decisions. Use capability tokens to represent scoped permission, and transaction receipts to prove what decision happened at execution time.
+
+## Lifecycle
+
+<Steps>
+1. Issue a capability token for an agent, resource, action, scopes, and trust context.
+2. Verify the token before executing a sensitive action.
+3. Revoke the token if it should no longer be accepted.
+4. Issue a receipt after the decision.
+5. Verify the receipt later during audit or dispute workflows.
+</Steps>
+
+## Issue A Token
+
+<Tabs>
+  <TabItem label="TypeScript">
+
+```ts
+const token = await client.issueToken(
+  client.agentId,
+  'resource-crm-001',
+  'read',
+  client.trustScore,
+  ['crm:read'],
+  [{ skill_id: 'crm_lookup', proficiency: 4 }],
+  { customer_id: 'cus_123' },
+);
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python
+token = await client.issue_token(
+    agent_id=client.agent_id,
+    resource_id="resource-crm-001",
+    action="read",
+    trust_score=client.trust_score,
+    scopes=["crm:read"],
+    skills=[{"skill_id": "crm_lookup", "proficiency": 4}],
+    params={"customer_id": "cus_123"},
+)
+```
+
+  </TabItem>
+</Tabs>
+
+## Verify, Revoke, And List Revoked Tokens
+
+<Tabs>
+  <TabItem label="TypeScript">
+
+```ts
+const verified = await client.verifyToken(token.id);
+
+await client.revokeToken(token.id, 'Access window ended');
+const revoked = await client.listRevokedTokens();
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python
+verified = await client.verify_token(token.id)
+
+await client.revoke_token(token.id, reason="Access window ended")
+revoked = await client.list_revoked_tokens()
+```
+
+  </TabItem>
+</Tabs>
+
+## Issue And Verify Receipts
+
+<Tabs>
+  <TabItem label="TypeScript">
+
+```ts
+const receipt = await client.issueReceipt(
+  token.id,
+  true,
+  client.trustScore,
+  0.02,
+);
+
+const valid = await client.verifyReceipt(receipt);
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python
+receipt = await client.issue_receipt(
+    token_id=token.id,
+    allowed=True,
+    trust_score=client.trust_score,
+    trust_delta=0.02,
+)
+
+valid = await client.verify_receipt(receipt)
+```
+
+  </TabItem>
+</Tabs>
+
+## CapabilityToken Shape
+
+```ts
+interface CapabilityToken {
+  id: string;
+  issuer: string;
+  subject: string;
+  resourceId: string;
+  action: string;
+  scopes: string[];
+  trustScore: number;
+  agentSkills: Record<string, unknown>[];
+  params?: Record<string, unknown>;
+  issuedAt: number;
+  expiresAt: number;
+  nonce: string;
+  signature: string;
+}
+```
+
+## TransactionReceipt Shape
+
+```ts
+interface TransactionReceipt {
+  receiptId: string;
+  tokenId: string;
+  agentId: string;
+  resourceId: string;
+  action: string;
+  allowed: boolean;
+  trustScore: number;
+  trustDelta: number;
+  tokenIssuedAt: number;
+  tokenExpires: number;
+  issuedAt: string;
+  signature: string;
+}
+```
+
+<Aside type="note">
+Tokens and receipts are audit primitives. Store receipts with the business event they authorize so later review can connect identity, policy, trust, and action outcome.
+</Aside>

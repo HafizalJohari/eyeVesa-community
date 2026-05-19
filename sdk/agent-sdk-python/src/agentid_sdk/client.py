@@ -920,7 +920,7 @@ class AgentClient:
             "agent_public_key": self.public_key_base64,
             "gateway_id": "",
             "issued_at": issued_at,
-        }, sort_keys=True)
+        }, sort_keys=True, separators=(",", ":"))
 
         signature_bytes = self._signing_key.sign(payload.encode()).signature
         signature_b64 = base64.b64encode(signature_bytes).decode()

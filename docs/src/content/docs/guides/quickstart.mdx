@@ -1,0 +1,36 @@
+---
+title: Quickstart
+description: Start eyeVesa locally and make your first agent connection.
+---
+
+## Start Locally
+
+Clone the repository and run the local startup script:
+
+```bash
+git clone https://github.com/Hafizaljohari/eyeVesa.git
+cd eyeVesa
+./start.sh
+```
+
+The default local stack exposes the gateway core and control plane for development workflows.
+
+## Install the CLI
+
+Install the latest CLI from `main`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+```
+
+Install from a specific release tag:
+
+```bash
+VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+```
+
+## Next Steps
+
+- Review the [Architecture](/guides/architecture/) guide.
+- Learn how [Airport](/guides/airport/) handles agent discovery.
+- Pick an SDK from the [SDK overview](/sdk/).

@@ -13,8 +13,8 @@ dist/
 *.dylib
 Cargo.lock
 !**/Cargo.lock
-docs/
 docs-all/
+docs/.astro/
 eyevesa-pro
 *_license.json
 deploy/terraform/.terraform/
