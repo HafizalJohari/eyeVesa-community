@@ -17,6 +17,7 @@ type Client struct {
 	HTTPClient       *http.Client
 	APIKey           string
 	JWTToken         string
+	AgentID          string
 	generatedKeyPair *clientcrypto.KeyPair
 }
 
@@ -52,6 +53,9 @@ func (c *Client) doRequest(method, path string, body interface{}) (map[string]in
 		req.Header.Set("X-API-Key", c.APIKey)
 	} else if c.JWTToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.JWTToken)
+	}
+	if c.AgentID != "" {
+		req.Header.Set("X-Agent-Id", c.AgentID)
 	}
 
 	resp, err := c.HTTPClient.Do(req)
@@ -391,6 +395,7 @@ func (c *Client) MCPCallTool(agentID, toolName string, arguments map[string]inte
 	if arguments == nil {
 		arguments = map[string]interface{}{}
 	}
+	c.AgentID = agentID
 	body := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      3,
@@ -708,4 +713,22 @@ func (c *Client) FederationListPeers() (map[string]interface{}, error) {
 
 func (c *Client) FederationListOnline() (map[string]interface{}, error) {
 	return c.Get("/v1/federation/online")
+}
+
+func (c *Client) CreateAPIKey(name, tenantID string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"name": name,
+	}
+	if tenantID != "" {
+		body["tenant_id"] = tenantID
+	}
+	return c.Post("/v1/api-keys", body)
+}
+
+func (c *Client) ListAPIKeys() (map[string]interface{}, error) {
+	return c.Get("/v1/api-keys")
+}
+
+func (c *Client) RevokeAPIKey(keyID string) (map[string]interface{}, error) {
+	return c.Delete("/v1/api-keys/" + keyID)
 }

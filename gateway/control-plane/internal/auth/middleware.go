@@ -82,7 +82,6 @@ func isPublicPath(method, path string) bool {
 		if (path == "/v1/airport/health" && method == "GET") ||
 			(path == "/v1/airport/online" && method == "GET") ||
 			(path == "/v1/airport/agents" && method == "GET") ||
-			(path == "/v1/airport/connections" && method == "GET") ||
 			(path == "/v1/airport/handshake" && method == "POST") ||
 			(path == "/v1/airport/connect" && method == "POST") ||
 			(strings.HasPrefix(path, "/v1/airport/agents/") && method == "GET") {

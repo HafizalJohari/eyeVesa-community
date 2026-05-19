@@ -130,9 +130,15 @@ The **Airport** is eyeVesa's agent discovery layer — the place where agents me
 | `PUT /v1/airport/agents/{id}` | Yes | Must authenticate to update own profile |
 | `GET /v1/airport/connections` | Yes | Must authenticate to view connections |
 
-### MCP Airport Methods
+### MCP (Model Context Protocol)
 
-The Airport is also accessible via the MCP JSON-RPC endpoint (`POST /v1/mcp`):
+MCP is the **execution layer** on top of KYA + Airport.
+
+- **KYA** = Identity & Trust (who is this agent?)
+- **Airport** = Discovery (where are the other agents?)
+- **MCP** = Tool Execution (what can this agent *do*?)
+
+eyeVesa implements MCP as a standardized way for agents to discover and call tools through registered resource adapters.
 
 | Method | Maps to | Description |
 |--------|---------|-------------|
@@ -190,6 +196,20 @@ When `AUTH_ENABLED=false` (default), all routes are accessible without authentic
 
 The `eyevesa` CLI provides a terminal UI and commands for agent management, authorization, and airport operations.
 
+### Install
+
+Install the latest CLI from `main`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+```
+
+Install from a specific release tag:
+
+```bash
+VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+```
+
 Launch the interactive terminal dashboard:
 ```bash
 eyevesa tui
@@ -238,6 +258,55 @@ eyevesa airport connections <agent-id> [--limit 50]
 # Check airport health and stats
 eyevesa airport health
 ```
+
+### API Key Commands
+
+```bash
+# Create a new API key
+eyevesa api-keys create --name my-agent-key --tenant-id org:phos
+
+# List all API keys
+eyevesa api-keys list
+
+# Revoke an API key
+eyevesa api-keys revoke <key-id>
+```
+
+## API Keys
+
+API keys (`eyevesa_xxx`) are used to authenticate agent requests via the `X-API-Key` header. Anyone can generate a key — no admin required.
+
+### Key Format
+
+```
+eyevesa_k7xQmP2vF9wN5cR8tY3aB6dL1hJ4sU0o
+         ^-- 43 chars base64 URL-safe (32-byte random)
+```
+
+### Usage
+
+```bash
+# Generate key (public endpoint, no auth)
+curl -X POST http://localhost:8080/v1/api-keys \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-agent-key", "tenant_id": "org:phos"}'
+
+# Use key for authenticated requests
+curl -X POST http://localhost:8080/v1/delegate \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: eyevesa_k7xQmP2vF9wN5cR8tY3aB6dL1hJ4sU0o" \
+  -d '{"agent_id": "...", "target": "..."}'
+```
+
+### Auth Middleware
+
+The middleware checks:
+1. `X-API-Key` header → lookup in `api_keys` table (must be `is_active = TRUE`)
+2. Falls back to `Authorization: Bearer <jwt>` or SSO session cookie
+
+Public routes (no auth): `/health`, `/ready`, `/v1/agents/register`, `/v1/api-keys`, `/v1/auth/*`, airport browse endpoints.
+
+When `AUTH_ENABLED=false` (default in dev), all routes are open.
 
 ## API Endpoints
 
@@ -299,7 +368,10 @@ eyevesa airport health
 | POST | `/v1/auth/challenge` | Get auth challenge |
 | POST | `/v1/auth/login` | Login with API key or credentials |
 | GET | `/v1/auth/challenge` | Get SSO challenge |
-| POST | `/v1/api-keys` | Create API key |
+| **API Key endpoints** | | |
+| POST | `/v1/api-keys` | Create API key (public, no auth) |
+| GET | `/v1/api-keys` | List API keys |
+| DELETE | `/v1/api-keys/{keyID}` | Revoke API key |
 
 ### Core Proxy (HTTP/TLS/mTLS :9443)
 

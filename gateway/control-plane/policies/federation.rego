@@ -100,7 +100,7 @@ requires_hitl {
 }
 
 # Trust deltas
-trust_delta = +0.01 {
+trust_delta = 0.01 {
 	input.action == "federation.sync"
 	input.gateway.trust_score >= 0.8
 }

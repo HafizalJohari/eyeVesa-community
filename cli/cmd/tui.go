@@ -48,7 +48,9 @@ const (
 	viewHITL
 	viewAudit
 	viewFederation
+	viewAPIKeys
 	viewRegisterAgent
+	viewCreateAPIKey
 )
 
 type registerStep int
@@ -71,6 +73,7 @@ type model struct {
 	resources        []map[string]interface{}
 	hitlPending      []map[string]interface{}
 	auditLogs        []map[string]interface{}
+	apiKeys          []map[string]interface{}
 	federationHealth map[string]interface{}
 	federationPeers  []map[string]interface{}
 	federationOnline []map[string]interface{}
@@ -89,6 +92,9 @@ type model struct {
 	formIdx      int
 	registerOk   bool
 	inputFocused bool
+
+	apiKeyInputs []textinput.Model
+	apiKeyStep   int
 }
 
 type tickMsg struct{}
@@ -114,6 +120,19 @@ type federationLoadedMsg struct {
 	peers  []map[string]interface{}
 	online []map[string]interface{}
 	err    error
+}
+
+type apiKeysLoadedMsg struct {
+	keys []map[string]interface{}
+	err  error
+}
+
+type apiKeyCreatedMsg struct {
+	name string
+}
+
+type apiKeyCreateErrMsg struct {
+	err error
 }
 
 type agentRegisteredMsg struct {
@@ -215,6 +234,17 @@ func initialModel(client *api.Client) model {
 
 	inputs := newFormInputs()
 
+	akInputs := make([]textinput.Model, 2)
+	akInputs[0] = textinput.New()
+	akInputs[0].Placeholder = "e.g. my-agent-key"
+	akInputs[0].CharLimit = 64
+	akInputs[0].Width = 40
+
+	akInputs[1] = textinput.New()
+	akInputs[1].Placeholder = "e.g. org:phos (optional)"
+	akInputs[1].CharLimit = 64
+	akInputs[1].Width = 40
+
 	return model{
 		client:      client,
 		currentView: viewDashboard,
@@ -222,6 +252,7 @@ func initialModel(client *api.Client) model {
 		loading:     true,
 		table:       t,
 		formInputs:  inputs,
+		apiKeyInputs: akInputs,
 	}
 }
 
@@ -241,6 +272,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.currentView == viewRegisterAgent {
 			return m.handleRegisterKey(msg)
+		}
+		if m.currentView == viewCreateAPIKey {
+			return m.handleCreateAPIKeyKey(msg)
 		}
 		newM, cmd := m.handleMainKey(msg)
 		return newM, cmd
@@ -262,7 +296,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputFocused = true
 			return m, m.formInputs[m.formIdx].Focus()
 		}
+		if m.currentView == viewCreateAPIKey && !m.inputFocused {
+			m.inputFocused = true
+			return m, m.apiKeyInputs[0].Focus()
+		}
 		return m, nil
+
+	case apiKeysLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.apiKeys = msg.keys
+		}
+
+	case apiKeyCreatedMsg:
+		m.statusMsg = fmt.Sprintf("API key created: %s", msg.name)
+		m.currentView = viewAPIKeys
+		m.loading = true
+		return m, m.refreshCurrentView
+
+	case apiKeyCreateErrMsg:
+		m.err = msg.err
+		m.currentView = viewAPIKeys
 
 	case refreshMsg:
 		return m, tea.Batch(
@@ -271,6 +326,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadHITL,
 			m.loadAudit,
 			m.loadFederation,
+			m.loadAPIKeys,
 		)
 
 	case agentsLoadedMsg:
@@ -332,10 +388,27 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "tab":
-		m.currentView = (m.currentView + 1) % 6
+		m.currentView = (m.currentView + 1) % 8
 		m.formIdx = 0
 		m.formStep = stepName
 		m.formInputs = newFormInputs()
+		m.apiKeyStep = 0
+		m.apiKeyInputs = []textinput.Model{
+			func() textinput.Model {
+				t := textinput.New()
+				t.Placeholder = "e.g. my-agent-key"
+				t.CharLimit = 64
+				t.Width = 40
+				return t
+			}(),
+			func() textinput.Model {
+				t := textinput.New()
+				t.Placeholder = "e.g. org:phos (optional)"
+				t.CharLimit = 64
+				t.Width = 40
+				return t
+			}(),
+		}
 		m.selectedIdx = 0
 		m.statusMsg = ""
 		m.err = nil
@@ -345,13 +418,30 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "shift+tab":
 		if m.currentView == 0 {
-			m.currentView = 5
+			m.currentView = 7
 		} else {
 			m.currentView--
 		}
 		m.formIdx = 0
 		m.formStep = stepName
 		m.formInputs = newFormInputs()
+		m.apiKeyStep = 0
+		m.apiKeyInputs = []textinput.Model{
+			func() textinput.Model {
+				t := textinput.New()
+				t.Placeholder = "e.g. my-agent-key"
+				t.CharLimit = 64
+				t.Width = 40
+				return t
+			}(),
+			func() textinput.Model {
+				t := textinput.New()
+				t.Placeholder = "e.g. org:phos (optional)"
+				t.CharLimit = 64
+				t.Width = 40
+				return t
+			}(),
+		}
 		m.selectedIdx = 0
 		m.statusMsg = ""
 		m.err = nil
@@ -380,6 +470,31 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.formInputs = newFormInputs()
 			m.err = nil
 			m.registerOk = false
+			m.inputFocused = false
+			return m, focusInputCmd
+		}
+
+	case "c":
+		if m.currentView == viewAPIKeys {
+			m.currentView = viewCreateAPIKey
+			m.apiKeyStep = 0
+			m.apiKeyInputs = []textinput.Model{
+				func() textinput.Model {
+					t := textinput.New()
+					t.Placeholder = "e.g. my-agent-key"
+					t.CharLimit = 64
+					t.Width = 40
+					return t
+				}(),
+				func() textinput.Model {
+					t := textinput.New()
+					t.Placeholder = "e.g. org:phos (optional)"
+					t.CharLimit = 64
+					t.Width = 40
+					return t
+				}(),
+			}
+			m.err = nil
 			m.inputFocused = false
 			return m, focusInputCmd
 		}
@@ -556,10 +671,13 @@ func (m model) View() string {
 	b.WriteString(titleStyle.String())
 	b.WriteString("\n\n")
 
-	views := []string{"Dashboard", "Agents", "Resources", "HITL", "Audit", "Federation"}
+	views := []string{"Dashboard", "Agents", "Resources", "HITL", "Audit", "Federation", "API Keys"}
 	displayView := m.currentView
 	if m.currentView == viewRegisterAgent {
 		displayView = viewAgents
+	}
+	if m.currentView == viewCreateAPIKey {
+		displayView = viewAPIKeys
 	}
 	for i, v := range views {
 		if i == int(displayView) {
@@ -589,8 +707,12 @@ func (m model) View() string {
 		b.WriteString(m.renderAudit())
 	case viewFederation:
 		b.WriteString(m.renderFederation())
+	case viewAPIKeys:
+		b.WriteString(m.renderAPIKeys())
 	case viewRegisterAgent:
 		b.WriteString(m.renderRegisterForm())
+	case viewCreateAPIKey:
+		b.WriteString(m.renderCreateAPIKeyForm())
 	}
 
 	if m.statusMsg != "" {
@@ -599,7 +721,7 @@ func (m model) View() string {
 	}
 
 	b.WriteString("\n\n")
-	b.WriteString(helpStyle.Render("Tab: switch view | ↑↓: navigate | n: register agent | r: refresh | q: quit"))
+	b.WriteString(helpStyle.Render("Tab: switch view | ↑↓: navigate | n: register agent | c: create API key | r: refresh | q: quit"))
 
 	return b.String()
 }
@@ -625,6 +747,15 @@ func (m model) loadFederation() tea.Msg {
 		peers:  toMapSlice(peersResult["peers"]),
 		online: toMapSlice(onlineResult["agents"]),
 	}
+}
+
+func (m model) loadAPIKeys() tea.Msg {
+	result, err := m.client.ListAPIKeys()
+	if err != nil {
+		return apiKeysLoadedMsg{err: err}
+	}
+	keys := toMapSlice(result["keys"])
+	return apiKeysLoadedMsg{keys: keys}
 }
 
 func (m model) renderFederation() string {
@@ -717,6 +848,160 @@ func (m model) renderFederation() string {
 	}
 
 	return b.String()
+}
+
+func (m model) renderAPIKeys() string {
+	var b strings.Builder
+
+	if m.loading && len(m.apiKeys) == 0 {
+		return m.spinner.View() + " Loading API keys..."
+	}
+
+	b.WriteString(boxStyle.Render(fmt.Sprintf("API Keys (%d)", len(m.apiKeys))))
+	b.WriteString("\n\n")
+
+	if len(m.apiKeys) == 0 {
+		b.WriteString("No API keys\n\n")
+		b.WriteString(helpStyle.Render("  Press c to create a new API key"))
+		return b.String()
+	}
+
+	for i, key := range m.apiKeys {
+		cursor := "  "
+		if i == m.selectedIdx {
+			cursor = "▶ "
+		}
+
+		name, _ := key["name"].(string)
+		keyID, _ := key["key_id"].(string)
+		isActive, _ := key["is_active"].(bool)
+		created, _ := key["created_at"].(string)
+		tenantID, _ := key["tenant_id"].(string)
+
+		statusIcon := successStyle.Render("●")
+		statusText := "active"
+		if !isActive {
+			statusIcon = errorStyle.Render("●")
+			statusText = "revoked"
+		}
+
+		shortID := keyID
+		if len(keyID) > 8 {
+			shortID = keyID[:8] + "..."
+		}
+
+		line := fmt.Sprintf("%s%s %-20s %-12s %-8s",
+			cursor, statusIcon, name, shortID, statusText)
+		if i == m.selectedIdx {
+			b.WriteString(selectedStyle.Render(line))
+		} else {
+			b.WriteString(line)
+		}
+		b.WriteString("\n")
+
+		if i == m.selectedIdx {
+			b.WriteString(viewStyle.Render(fmt.Sprintf("  ID: %s", keyID)))
+			b.WriteString("\n")
+			if tenantID != "" {
+				b.WriteString(viewStyle.Render(fmt.Sprintf("  Tenant: %s", tenantID)))
+				b.WriteString("\n")
+			}
+			b.WriteString(viewStyle.Render(fmt.Sprintf("  Created: %s", created)))
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("c: create API key"))
+
+	return b.String()
+}
+
+func (m model) renderCreateAPIKeyForm() string {
+	labels := []string{"Name", "Tenant ID"}
+	var b strings.Builder
+	b.WriteString(boxStyle.Render("Create API Key"))
+	b.WriteString("\n\n")
+
+	for i := 0; i < len(labels); i++ {
+		indicator := "  "
+		if i == m.apiKeyStep {
+			indicator = "▶ "
+		}
+
+		b.WriteString(formLabelStyle.Render(fmt.Sprintf("%s%s:", indicator, labels[i])))
+		b.WriteString("\n  ")
+		b.WriteString(m.apiKeyInputs[i].View())
+		b.WriteString("\n\n")
+	}
+
+	if m.apiKeyStep == 2 {
+		b.WriteString(formLabelStyle.Render("▶ Submit") + "\n")
+	} else {
+		b.WriteString(viewStyle.Render("  Submit") + "\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("enter/tab: next field | esc: cancel | enter on Submit: create"))
+
+	return b.String()
+}
+
+func (m model) handleCreateAPIKeyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.currentView = viewAPIKeys
+		m.apiKeyStep = 0
+		for i := range m.apiKeyInputs {
+			m.apiKeyInputs[i].Blur()
+		}
+		m.err = nil
+		m.inputFocused = false
+		return m, nil
+
+	case "tab", "enter":
+		if m.apiKeyStep == 2 {
+			return m, m.submitCreateAPIKey()
+		}
+
+		m.apiKeyInputs[m.apiKeyStep].Blur()
+		if m.apiKeyStep < 2 {
+			m.apiKeyStep++
+		}
+		if m.apiKeyStep == 2 {
+			m.inputFocused = false
+			return m, nil
+		}
+		m.inputFocused = true
+		return m, m.apiKeyInputs[m.apiKeyStep].Focus()
+	}
+
+	var cmd tea.Cmd
+	m.apiKeyInputs[m.apiKeyStep], cmd = m.apiKeyInputs[m.apiKeyStep].Update(msg)
+	return m, cmd
+}
+
+func (m model) submitCreateAPIKey() tea.Cmd {
+	name := strings.TrimSpace(m.apiKeyInputs[0].Value())
+	tenantID := strings.TrimSpace(m.apiKeyInputs[1].Value())
+
+	if name == "" {
+		return func() tea.Msg {
+			return apiKeyCreateErrMsg{err: fmt.Errorf("name is required")}
+		}
+	}
+
+	return func() tea.Msg {
+		result, err := m.client.CreateAPIKey(name, tenantID)
+		if err != nil {
+			return apiKeyCreateErrMsg{err: err}
+		}
+		n := name
+		if v, ok := result["name"].(string); ok {
+			n = v
+		}
+		return apiKeyCreatedMsg{name: n}
+	}
 }
 
 func (m model) renderDashboard() string {

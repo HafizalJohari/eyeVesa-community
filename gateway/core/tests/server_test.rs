@@ -13,6 +13,7 @@ fn make_state(mock_server: &MockServer) -> Arc<ProxyState> {
         control_plane: Arc::new(Mutex::new(None)),
         control_plane_addr: "http://localhost:9999".to_string(),
         control_plane_http_addr: Arc::new(tokio::sync::RwLock::new(mock_server.uri().replace("http://", "").replace("https://", ""))),
+        central_airport_url: None,
         http_client: reqwest::Client::builder()
             .no_proxy()
             .build()
