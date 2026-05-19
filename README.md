@@ -188,7 +188,14 @@ When `AUTH_ENABLED=false` (default), all routes are accessible without authentic
 
 ## CLI
 
-The `eyevesa` CLI provides commands for agent management, authorization, and airport operations:
+The `eyevesa` CLI provides a terminal UI and commands for agent management, authorization, and airport operations.
+
+Launch the interactive terminal dashboard:
+```bash
+eyevesa tui
+```
+
+Subcommands:
 
 ### Agent & Resource Commands
 
@@ -448,6 +455,14 @@ pub struct AirportConnection {
 
 ```bash
 # Prerequisites: Go 1.22+, Rust 1.82+, PostgreSQL 16+ with pgvector
+
+# Build the CLI (cross-platform — works on any OS/arch with Go)
+cd cli && go build -o ~/go/bin/eyevesa .
+# Ensure ~/go/bin is in your PATH:
+export PATH=$PATH:$HOME/go/bin
+
+# After the initial build, update to the latest version from anywhere:
+eyevesa update
 
 # Start infrastructure
 docker-compose up -d
