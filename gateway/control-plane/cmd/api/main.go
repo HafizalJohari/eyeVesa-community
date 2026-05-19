@@ -416,6 +416,8 @@ func main() {
 		r.Post("/keys/clear-previous", handlers.ClearPreviousKey)
 
 		// Airport: Where agents meet
+		r.Post("/airport/handshake", handlers.AirportHandshakeHandler)
+		r.Post("/airport/connect", handlers.AirportConnectHandler)
 		r.Post("/airport/heartbeat", handlers.AirportHeartbeatHandler)
 		r.Get("/airport/agents", handlers.AirportSearchHandler)
 		r.Get("/airport/online", handlers.AirportListOnlineHandler)

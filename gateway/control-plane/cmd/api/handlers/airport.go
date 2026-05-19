@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
 	"github.com/google/uuid"
 )
 
@@ -626,6 +628,175 @@ func StartHeartbeatCleanup(ctx context.Context, interval time.Duration) {
 			}
 		}
 	}()
+}
+
+// AirportHandshakeRequest represents an Ed25519-signed agent handshake
+type AirportHandshakeRequest struct {
+	AgentID   string `json:"agent_id"`
+	PeerID    string `json:"peer_id"`
+	Timestamp string `json:"timestamp"`
+}
+
+func AirportHandshakeHandler(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Verify Ed25519 signature from headers
+	agentID := r.Header.Get("X-Agent-Id")
+	sigB64 := r.Header.Get("X-Signature")
+	pubKeyB64 := r.Header.Get("X-Public-Key")
+
+	if agentID == "" || sigB64 == "" {
+		http.Error(w, "missing X-Agent-Id or X-Signature header", http.StatusBadRequest)
+		return
+	}
+
+	// If public key provided in header, verify directly; otherwise fetch from DB
+	var pubKeyBytes []byte
+	if pubKeyB64 != "" {
+		pubKeyBytes, err = crypto.DecodeBase64(pubKeyB64)
+		if err != nil {
+			http.Error(w, "invalid public key encoding", http.StatusBadRequest)
+			return
+		}
+	} else {
+		err = querier.QueryRow(r.Context(),
+			`SELECT public_key FROM agents WHERE agent_id = $1`, agentID,
+		).Scan(&pubKeyBytes)
+		if err != nil {
+			http.Error(w, "agent not found", http.StatusNotFound)
+			return
+		}
+	}
+
+	sig, err := crypto.DecodeBase64(sigB64)
+	if err != nil {
+		http.Error(w, "invalid signature encoding", http.StatusBadRequest)
+		return
+	}
+
+	if !crypto.VerifySignature(pubKeyBytes, body, sig) {
+		logAirportConnection(r.Context(), agentID, "", "handshake", "denied", 0)
+		slog.Warn("handshake signature invalid", "agent", agentID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":       false,
+			"error":    "signature verification failed",
+			"agent_id": agentID,
+		})
+		return
+	}
+
+	// Parse handshake payload to extract peer
+	var hb AirportHandshakeRequest
+	if err := json.Unmarshal(body, &hb); err == nil && hb.PeerID != "" {
+		autoCreateHeartbeat(r.Context(), agentID)
+
+		// Look up peer details
+		var peerName, peerOwner string
+		var peerTrust float64
+		querier.QueryRow(r.Context(),
+			`SELECT name, owner, trust_score FROM agents WHERE agent_id = $1`, hb.PeerID,
+		).Scan(&peerName, &peerOwner, &peerTrust)
+
+		logAirportConnection(r.Context(), agentID, hb.PeerID, "handshake", "success", peerTrust)
+
+		slog.Info("agent handshake", "agent", agentID, "peer", hb.PeerID)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":         true,
+			"agent_id":   agentID,
+			"handshake":  "completed",
+			"peer": map[string]interface{}{
+				"agent_id":    hb.PeerID,
+				"name":        peerName,
+				"owner":       peerOwner,
+				"trust_score": peerTrust,
+			},
+			"timestamp": hb.Timestamp,
+		})
+		return
+	}
+
+	// No peer specified — just verify identity, log, heartbeat
+	autoCreateHeartbeat(r.Context(), agentID)
+	logAirportConnection(r.Context(), agentID, "", "handshake", "success", 0)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":        true,
+		"agent_id":  agentID,
+		"handshake": "verified",
+	})
+}
+
+// AirportConnectRequest is the body for POST /v1/airport/connect
+type AirportConnectRequest struct {
+	AgentID  string `json:"agent_id"`
+	PeerID   string `json:"peer_id"`
+	Action   string `json:"action"`
+}
+
+func AirportConnectHandler(w http.ResponseWriter, r *http.Request) {
+	var req AirportConnectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.AgentID == "" || req.PeerID == "" {
+		http.Error(w, "agent_id and peer_id are required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Action == "" {
+		req.Action = "connect"
+	}
+
+	// Look up trust score for logging
+	var trustScore float64
+	err := querier.QueryRow(r.Context(),
+		`SELECT trust_score FROM agents WHERE agent_id = $1`, req.AgentID,
+	).Scan(&trustScore)
+	if err != nil {
+		trustScore = 0
+	}
+
+	// Verify peer exists
+	var peerName string
+	peerErr := querier.QueryRow(r.Context(),
+		`SELECT name FROM agents WHERE agent_id = $1`, req.PeerID,
+	).Scan(&peerName)
+
+	outcome := "success"
+	if peerErr != nil {
+		outcome = "error"
+	}
+
+	logAirportConnection(r.Context(), req.AgentID, req.PeerID, req.Action, outcome, trustScore)
+
+	// Heartbeat both sides
+	autoCreateHeartbeat(r.Context(), req.AgentID)
+	if peerErr == nil {
+		autoCreateHeartbeat(r.Context(), req.PeerID)
+	}
+
+	slog.Info("agent connection", "agent", req.AgentID, "peer", req.PeerID, "action", req.Action)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":          outcome == "success",
+		"connection":  req.Action,
+		"agent_id":    req.AgentID,
+		"peer_id":     req.PeerID,
+		"peer_exists": peerErr == nil,
+		"trust_score": trustScore,
+	})
 }
 
 func AirportHealthHandler(w http.ResponseWriter, r *http.Request) {
