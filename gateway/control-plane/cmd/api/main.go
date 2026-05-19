@@ -60,6 +60,8 @@ func main() {
 
 	slog.Info("connected to database")
 
+	license.SetDB(db.Pool)
+
 	licInfo := license.Load()
 	slog.Info("license", "tier", licInfo.Tier, "max_agents", licInfo.MaxAgents, "max_resources", licInfo.MaxResources)
 
@@ -591,6 +593,9 @@ func main() {
 					}
 				}
 			}
+
+			license.Reload()
+			slog.Info("license reloaded", "tier", license.Get().Tier)
 
 			slog.Info("configuration reloaded")
 		}

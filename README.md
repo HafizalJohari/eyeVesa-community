@@ -10,6 +10,14 @@
 
 Connects AI agents to enterprise resources with cryptographic identity, policy-based authorization, and non-repudiable audit trails.
 
+### 10-Second Quickstart
+Secure your AI Agents instantly. No configuration required:
+```bash
+git clone https://github.com/Hafizaljohari/eyeVesa.git
+cd eyeVesa
+./start.sh
+```
+
 ## Architecture
 
 ```
@@ -208,6 +216,26 @@ Install from a specific release tag:
 
 ```bash
 VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+```
+
+Install via Bun:
+
+```bash
+bunx --bun bash -c "$(curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh)"
+```
+
+Install via Homebrew tap:
+
+```bash
+brew tap Hafizaljohari/eyevesa https://github.com/Hafizaljohari/eyeVesa
+brew install eyevesa
+```
+
+Run via Docker:
+
+```bash
+docker build -t eyevesa-cli -f cli/Dockerfile .
+docker run --rm eyevesa-cli --help
 ```
 
 Launch the interactive terminal dashboard:
@@ -525,29 +553,29 @@ pub struct AirportConnection {
 
 ## Quick Start
 
+The fastest way to get started with eyeVesa is using our frictionless setup wizard. It automatically generates secure keys, boots up the local environment via Docker, and prepares your database.
+
 ```bash
-# Prerequisites: Go 1.22+, Rust 1.82+, PostgreSQL 16+ with pgvector
+# 1. Clone the repository
+git clone https://github.com/Hafizaljohari/eyeVesa.git
+cd eyeVesa
 
-# Build the CLI (cross-platform — works on any OS/arch with Go)
-cd cli && go build -o ~/go/bin/eyevesa .
-# Ensure ~/go/bin is in your PATH:
-export PATH=$PATH:$HOME/go/bin
+# 2. Run the Onboarding Wizard
+./start.sh
+```
 
-# After the initial build, update to the latest version from anywhere:
-eyevesa update
+This will spin up the PostgreSQL database, Open Policy Agent (OPA), and the eyeVesa Control Plane/Proxy in the background.
 
-# Start infrastructure
-docker-compose up -d
+## Examples & Integrations
 
-# Run control plane
-cd gateway/control-plane && go run cmd/api/main.go
+Ready to integrate your actual AI agents with eyeVesa? Check out the [`examples/`](./examples) directory for framework-specific recipes:
 
-# Run gateway core (plaintext mode)
-cd gateway/core && cargo run
+- **[Vanilla Python Agent](./examples/python/01_basic_identity.py)**: How to register a cryptographic identity, log in via challenge-response, and maintain an Airport heartbeat.
+- **[LangChain Audited Agent](./examples/langchain/01_audited_agent.py)**: How to route an LLM's external Tool requests through the eyeVesa proxy, guaranteeing an immutable audit trail for every action.
 
-# Run resource adapter
-cd adapter/resource-adapter-go && go run ./cmd/ -RESOURCE_NAME=demo-resource
+Once running, you can immediately test agent registration via the API:
 
+```bash
 # Register an agent (auto-creates airport heartbeat + profile)
 curl -X POST http://localhost:9443/v1/register \
   -H "Content-Type: application/json" \

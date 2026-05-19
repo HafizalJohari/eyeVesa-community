@@ -31,3 +31,27 @@
         setTimeout(typeWriter, 800);
     }
 })();
+
+function copyCode(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var text = el.textContent || el.innerText;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(function() {});
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    }
+    var btn = el.parentNode.querySelector('.copy-btn');
+    if (btn) {
+        var orig = btn.textContent;
+        btn.textContent = '[Copied]';
+        setTimeout(function() { btn.textContent = orig; }, 1500);
+    }
+}

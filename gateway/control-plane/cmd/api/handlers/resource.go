@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/audit"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/license"
 )
 
 type ResourceRegistration struct {
@@ -32,6 +33,16 @@ type ResourceResponse struct {
 }
 
 func RegisterResource(w http.ResponseWriter, r *http.Request) {
+	// Enforce license resource limit.
+	lic := license.Get()
+	if lic.MaxResources > 0 {
+		var count int
+		if err := querier.QueryRow(r.Context(), `SELECT COUNT(*) FROM resources`).Scan(&count); err == nil && count >= lic.MaxResources {
+			http.Error(w, "resource limit reached for your license tier", http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	var req ResourceRegistration
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)

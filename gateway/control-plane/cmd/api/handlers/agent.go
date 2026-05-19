@@ -13,6 +13,7 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/audit"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/database"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/license"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
 )
 
@@ -65,6 +66,16 @@ func SetPolicyEngine(pe *policy.PolicyEngine) {
 }
 
 func RegisterAgent(w http.ResponseWriter, r *http.Request) {
+	// Enforce license agent limit.
+	lic := license.Get()
+	if lic.MaxAgents > 0 {
+		var count int
+		if err := querier.QueryRow(r.Context(), `SELECT COUNT(*) FROM agents`).Scan(&count); err == nil && count >= lic.MaxAgents {
+			http.Error(w, "agent limit reached for your license tier", http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	var req AgentRegistration
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)

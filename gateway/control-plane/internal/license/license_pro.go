@@ -24,8 +24,11 @@ type LicenseClaims struct {
 }
 
 var (
-	publicKey []byte
-	loadKeyOnce sync.Once
+	publicKey    []byte
+	loadKeyOnce  sync.Once
+	// BakedPublicKey can be injected at compile time via:
+	// -ldflags "-X github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/license.BakedPublicKey=hexstring"
+	BakedPublicKey string
 )
 
 var proFeatures = []string{
@@ -46,15 +49,18 @@ var proFeatures = []string{
 
 func getPublicKey() []byte {
 	loadKeyOnce.Do(func() {
-		keyHex := os.Getenv("EYEVESA_PUBLIC_KEY")
+		keyHex := BakedPublicKey
 		if keyHex == "" {
-			fmt.Fprintf(os.Stderr, "FATAL: EYEVESA_PUBLIC_KEY environment variable is required\n")
+			keyHex = os.Getenv("EYEVESA_PUBLIC_KEY")
+		}
+		if keyHex == "" {
+			fmt.Fprintf(os.Stderr, "FATAL: EYEVESA_PUBLIC_KEY environment variable or BakedPublicKey is required\n")
 			os.Exit(1)
 		}
 		var err error
 		publicKey, err = hex.DecodeString(keyHex)
 		if err != nil || len(publicKey) != ed25519.PublicKeySize {
-			fmt.Fprintf(os.Stderr, "FATAL: invalid EYEVESA_PUBLIC_KEY: must be a %d-byte Ed25519 public key hex string\n", ed25519.PublicKeySize)
+			fmt.Fprintf(os.Stderr, "FATAL: invalid public key: must be a %d-byte Ed25519 public key hex string\n", ed25519.PublicKeySize)
 			os.Exit(1)
 		}
 	})
@@ -62,7 +68,11 @@ func getPublicKey() []byte {
 }
 
 func Load() Info {
-	key := os.Getenv("EYEVESA_LICENSE_KEY")
+	// Support both EYEVESA_LICENSE_FILE (preferred) and EYEVESA_LICENSE_KEY (legacy).
+	key := os.Getenv("EYEVESA_LICENSE_FILE")
+	if key == "" {
+		key = os.Getenv("EYEVESA_LICENSE_KEY")
+	}
 	if key == "" {
 		return Info{
 			Tier:         TierCommunity,
@@ -70,6 +80,7 @@ func Load() Info {
 			MaxResources: 10,
 			Features: []string{
 				FeatureDelegation,
+				FeatureFederation,
 			},
 		}
 	}
@@ -83,6 +94,7 @@ func Load() Info {
 			MaxResources: 10,
 			Features: []string{
 				FeatureDelegation,
+				FeatureFederation,
 			},
 		}
 	}
@@ -96,6 +108,7 @@ func Load() Info {
 			MaxResources: 10,
 			Features: []string{
 				FeatureDelegation,
+				FeatureFederation,
 			},
 		}
 	}

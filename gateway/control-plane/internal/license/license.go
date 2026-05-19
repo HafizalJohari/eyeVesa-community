@@ -31,6 +31,11 @@ func (i Info) String() string {
 }
 
 const (
+	// ── Community ──────────────────────────────────────────────────────────
+	FeatureDelegation = "multi_level_delegation"
+	FeatureFederation = "gateway_federation"
+
+	// ── Pro ────────────────────────────────────────────────────────────────
 	FeatureMultiTenant    = "multi_tenant"
 	FeatureMultiLayerHITL = "multi_layer_hitl"
 	FeatureSlackNotify    = "slack_notify"
@@ -41,7 +46,15 @@ const (
 	FeatureBudget         = "budget_enforcement"
 	FeatureRateLimit      = "rate_limiting"
 	FeatureKubernetes     = "kubernetes"
-	FeatureDelegation     = "multi_level_delegation"
 	FeaturePushNotify     = "push_notifications"
-	FeatureFederation     = "gateway_federation"
+
+	// ── Enterprise ─────────────────────────────────────────────────────────
+	FeatureSOC2            = "soc2"
+	FeatureHIPAA           = "hipaa"
+	FeatureManagedCloud    = "managed_cloud"
+	FeatureDedicatedSupport = "dedicated_support"
+	FeatureMultiRegion     = "multi_region"
+	FeatureHSM             = "hsm_integration"
+	FeatureCustomPolicies  = "custom_policies"
+	FeatureCustomAdapters  = "custom_adapters"
 )

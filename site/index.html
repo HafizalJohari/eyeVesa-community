@@ -124,17 +124,18 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body id="top">
-    <div id="topbar">
-        <table width="100%"><tr>
-            <td align="left"><b>eyeVesa</b></td>
-            <td align="right">Identity &middot; Trust &middot; Audit &middot; <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener">[GitHub]</a></td>
-        </tr></table>
-    </div>
-
-    <hr>
-
-    <div id="nav">
-        <center>
+    <header id="site-header">
+        <div class="header-top">
+            <div class="logo-container">
+                <img src="logo.svg" alt="eyeVesa" width="24" height="24">
+                <b>eyeVesa</b>
+            </div>
+            <div class="header-meta">
+                <span>Identity</span> &middot; <span>Trust</span> &middot; <span>Audit</span>
+                <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener" class="github-link">[GitHub]</a>
+            </div>
+        </div>
+        <nav id="nav">
             <a href="#problem">[Problem]</a>
             <a href="#kya">[KYA]</a>
             <a href="#ptv">[PTV]</a>
@@ -153,10 +154,8 @@
             <a href="#quickstart">[Quick Start]</a>
             <a href="#sdk">[SDK]</a>
             <a href="#faq">[FAQ]</a>
-        </center>
-    </div>
-
-    <hr>
+        </nav>
+    </header>
 
     <div class="hero-container">
         <div align="center"><img src="logo.svg" alt="eyeVesa" width="260" height="260"></div>
@@ -958,6 +957,43 @@ EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
     eyevesa auth api-key list
     eyevesa auth api-key revoke &lt;key-id&gt;
     </pre>
+
+    <hr>
+
+    <a name="install"></a>
+    <h2>Install</h2>
+
+    <p>Install the latest CLI from main:</p>
+    <div class="code-block">
+        <pre id="install-curl">curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash</pre>
+        <a href="javascript:void(0)" onclick="copyCode('install-curl')" class="copy-btn">[Copy]</a>
+    </div>
+
+    <p>Install from a specific release tag:</p>
+    <div class="code-block">
+        <pre id="install-tag">VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash</pre>
+        <a href="javascript:void(0)" onclick="copyCode('install-tag')" class="copy-btn">[Copy]</a>
+    </div>
+
+    <p>Install via Bun:</p>
+    <div class="code-block">
+        <pre id="install-bun">bunx --bun bash -c "$(curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh)"</pre>
+        <a href="javascript:void(0)" onclick="copyCode('install-bun')" class="copy-btn">[Copy]</a>
+    </div>
+
+    <p>Install via Homebrew tap:</p>
+    <div class="code-block">
+        <pre id="install-brew">brew tap Hafizaljohari/eyevesa https://github.com/Hafizaljohari/eyeVesa
+brew install eyevesa</pre>
+        <a href="javascript:void(0)" onclick="copyCode('install-brew')" class="copy-btn">[Copy]</a>
+    </div>
+
+    <p>Run via Docker:</p>
+    <div class="code-block">
+        <pre id="install-docker">docker build -t eyevesa-cli -f cli/Dockerfile .
+docker run --rm eyevesa-cli --help</pre>
+        <a href="javascript:void(0)" onclick="copyCode('install-docker')" class="copy-btn">[Copy]</a>
+    </div>
 
     <hr>
 
