@@ -59,3 +59,11 @@ class SkillError(AgentIDError):
 
 class TxError(AgentIDError):
     pass
+
+
+class FederationError(AgentIDError):
+    pass
+
+
+class PassportVerifyError(FederationError):
+    pass

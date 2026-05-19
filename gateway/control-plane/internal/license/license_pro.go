@@ -41,6 +41,7 @@ var proFeatures = []string{
 	FeatureKubernetes,
 	FeatureDelegation,
 	FeaturePushNotify,
+	FeatureFederation,
 }
 
 func getPublicKey() []byte {

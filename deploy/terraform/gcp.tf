@@ -21,6 +21,11 @@ terraform {
   }
 }
 
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
 variable "project_id" {
   description = "GCP project ID"
   type        = string
@@ -71,6 +76,20 @@ resource "google_compute_network" "eyevesa" {
   auto_create_subnetworks = false
 }
 
+resource "google_compute_global_address" "private_service_access" {
+  name          = "eyevesa-private-service-access-${var.environment}"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.eyevesa.id
+}
+
+resource "google_service_networking_connection" "private_service_access" {
+  network                 = google_compute_network.eyevesa.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_service_access.name]
+}
+
 resource "google_compute_subnetwork" "eyevesa" {
   name          = "eyevesa-${var.environment}"
   network       = google_compute_network.eyevesa.id
@@ -104,23 +123,31 @@ resource "google_vpc_access_connector" "eyevesa" {
 }
 
 # ──────────────────────────────────────────────────────────────────
-# Cloud SQL — PostgreSQL 16 with pgvector
+# Cloud SQL — PostgreSQL 16 (existing eyevesa-db)
 # ──────────────────────────────────────────────────────────────────
 
 resource "google_sql_database_instance" "eyevesa" {
-  name             = "eyevesa-${var.environment}-${random_id.db_name.hex}"
+  name             = "eyevesa-db"
   database_version = "POSTGRES_16"
   region           = var.region
 
-  settings {
-    tier = "db-custom-2-8192"
+  depends_on = [google_service_networking_connection.private_service_access]
 
-    disk_size = 20
-    disk_type = "PD_SSD"
+  settings {
+    tier = "db-f1-micro"
+
+    disk_size       = 10
+    disk_type       = "PD_SSD"
+    pricing_plan    = "PER_USE"
+    availability_type = "ZONAL"
 
     ip_configuration {
-      ipv4_enabled    = false
+      ipv4_enabled    = true
       private_network = google_compute_network.eyevesa.id
+      authorized_networks {
+        name  = "external-access"
+        value = "180.74.224.195/32"
+      }
     }
 
     database_flags {
@@ -129,7 +156,7 @@ resource "google_sql_database_instance" "eyevesa" {
     }
   }
 
-  deletion_protection = var.environment == "production"
+  deletion_protection = false
 }
 
 resource "random_id" "db_name" {
@@ -148,19 +175,16 @@ resource "google_sql_user" "eyevesa" {
 }
 
 # Enable pgvector extension
-resource "google_sql_database" "enable_pgvector" {
-  name     = "agentid"
-  instance = google_sql_database_instance.eyevesa.name
-}
-
 resource "null_resource" "enable_pgvector" {
   depends_on = [google_sql_user.eyevesa]
 
   provisioner "local-exec" {
     command = <<-EOT
-      gcloud sql connect ${google_sql_database_instance.eyevesa.name} --user=agentid --quiet <<SQL
-      CREATE EXTENSION IF NOT EXISTS vector;
-      SQL
+      cloud-sql-proxy ${google_sql_database_instance.eyevesa.connection_name} --port 5432 &
+      PROXY_PID=$!
+      sleep 5
+      PGPASSWORD=${var.db_password} psql -h 127.0.0.1 -p 5432 -U agentid -d agentid -c "CREATE EXTENSION IF NOT EXISTS vector;" || echo "WARN: pgvector extension creation failed, may need manual setup"
+      kill $PROXY_PID 2>/dev/null || true
     EOT
   }
 
@@ -176,7 +200,7 @@ resource "null_resource" "enable_pgvector" {
 resource "google_secret_manager_secret" "db_password" {
   secret_id = "eyevesa-db-password-${var.environment}"
   replication {
-    automatic = true
+    auto {}
   }
 }
 
@@ -188,7 +212,7 @@ resource "google_secret_manager_secret_version" "db_password" {
 resource "google_secret_manager_secret" "jwt_secret" {
   secret_id = "eyevesa-jwt-secret-${var.environment}"
   replication {
-    automatic = true
+    auto {}
   }
 }
 
@@ -200,7 +224,7 @@ resource "google_secret_manager_secret_version" "jwt_secret" {
 resource "google_secret_manager_secret" "gateway_key" {
   secret_id = "eyevesa-gateway-ed25519-key-${var.environment}"
   replication {
-    automatic = true
+    auto {}
   }
 }
 
@@ -242,11 +266,10 @@ resource "google_cloud_run_v2_service" "gateway_control" {
       name  = "gateway-control"
       image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.eyevesa.repository_id}/gateway-control:latest"
 
+      command = ["/bin/sh", "-c", "cp /secrets/gateway-ed25519-key /tmp/agentid-gateway-ed25519.key 2>/dev/null; cp /secrets/ptv-ecdsa-key /tmp/agentid-ptv-ecdsa.key 2>/dev/null; /usr/local/bin/agentid-control"]
+
       ports {
         container_port = 8080
-      }
-      ports {
-        container_port = 9090
       }
 
       resources {
@@ -278,11 +301,11 @@ resource "google_cloud_run_v2_service" "gateway_control" {
       }
       env {
         name  = "GATEWAY_KEY_PATH"
-        value = "/secrets/gateway-ed25519.key"
+        value = "/tmp/agentid-gateway-ed25519.key"
       }
       env {
         name  = "PTV_KEY_PATH"
-        value = "/secrets/ptv-ecdsa.key"
+        value = "/tmp/agentid-ptv-ecdsa.key"
       }
 
       volume_mounts {
@@ -292,7 +315,6 @@ resource "google_cloud_run_v2_service" "gateway_control" {
       volume_mounts {
         name       = "secrets"
         mount_path = "/secrets"
-        read_only  = true
       }
     }
 
@@ -342,20 +364,30 @@ resource "google_cloud_run_v2_service" "gateway_core" {
         container_port = 9443
       }
 
+      startup_probe {
+        initial_delay_seconds = 10
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 12
+        tcp_socket {
+          port = 9443
+        }
+      }
+
       resources {
         limits = {
-          cpu    = "2000m"
-          memory = "256Mi"
+          cpu    = "1000m"
+          memory = "512Mi"
         }
       }
 
       env {
         name  = "CONTROL_PLANE_ADDR"
-        value = "${google_cloud_run_v2_service.gateway_control.uris[0]}:9090"
+        value = "${google_cloud_run_v2_service.gateway_control.uri}"
       }
       env {
         name  = "CONTROL_PLANE_HTTP_ADDR"
-        value = google_cloud_run_v2_service.gateway_control.status[0].traffic[0].uri
+        value = trimprefix(google_cloud_run_v2_service.gateway_control.uri, "https://")
       }
       env {
         name  = "GATEWAY_MODE"
@@ -400,7 +432,7 @@ resource "google_cloud_run_v2_service" "resource_adapter" {
       resources {
         limits = {
           cpu    = "1000m"
-          memory = "128Mi"
+          memory = "512Mi"
         }
       }
 
@@ -410,7 +442,7 @@ resource "google_cloud_run_v2_service" "resource_adapter" {
       }
       env {
         name  = "GATEWAY_ENDPOINT"
-        value = google_cloud_run_v2_service.gateway_core.status[0].traffic[0].uri
+        value = google_cloud_run_v2_service.gateway_core.uri
       }
     }
 
@@ -427,7 +459,6 @@ resource "google_cloud_run_v2_service" "resource_adapter" {
 
 resource "google_compute_ssl_certificate" "eyevesa" {
   name        = "eyevesa-${var.environment}"
-  domain      = var.domain
   private_key = tls_private_key.eyevesa.private_key_pem
   certificate = tls_self_signed_cert.eyevesa.cert_pem
 }
@@ -462,40 +493,25 @@ resource "google_compute_backend_bucket" "eyevesa" {
 
 resource "google_compute_url_map" "eyevesa" {
   name            = "eyevesa-${var.environment}"
-  default_service = google_compute_backend_bucket.eyevesa.self_link
+  default_service = google_compute_backend_service.eyevesa_gateway.self_link
+}
 
-  path_matcher {
-    name            = "gateway"
-    default_service = google_compute_backend_bucket.eyevesa.self_link
-
-    path_rule {
-      paths   = ["/v1/*", "/health"]
-      service = google_compute_backend_service.eyevesa_gateway.self_link
-    }
+resource "google_compute_region_network_endpoint_group" "eyevesa_gateway" {
+  name                  = "eyevesa-gateway-${var.environment}"
+  region                = var.region
+  network_endpoint_type = "SERVERLESS"
+  cloud_run {
+    service = google_cloud_run_v2_service.gateway_core.name
   }
 }
 
 resource "google_compute_backend_service" "eyevesa_gateway" {
   name        = "eyevesa-gateway-${var.environment}"
-  port_name   = "http1"
   protocol    = "HTTP"
   timeout_sec = 30
 
   backend {
-    group = google_cloud_run_v2_service.gateway_core.template[0].containers[0].name
-  }
-
-  health_checks = [google_compute_health_check.eyevesa.id]
-}
-
-resource "google_compute_health_check" "eyevesa" {
-  name               = "eyevesa-${var.environment}"
-  check_interval_sec = 10
-  timeout_sec        = 5
-
-  http_health_check {
-    port         = 9443
-    request_path = "/health"
+    group = google_compute_region_network_endpoint_group.eyevesa_gateway.id
   }
 }
 

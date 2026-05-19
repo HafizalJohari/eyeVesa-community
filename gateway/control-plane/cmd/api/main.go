@@ -126,6 +126,7 @@ func main() {
 	tenantService := tenant.NewTenantService(db)
 	pushService := hitl.NewPushService(db.Pool)
 	spireService := identity.NewSpireService(db.Pool)
+	federationService := identity.NewFederationService(db.Pool)
 
 	txTokenExpiry := 5 * time.Minute
 	if v := os.Getenv("TX_TOKEN_EXPIRY_SECS"); v != "" {
@@ -243,6 +244,7 @@ func main() {
 	handlers.SetRevocationStore(revocationStore)
 	handlers.SetKeyRotationService(keyRotationService)
 	handlers.SetJWTSecret(jwtSecret)
+	handlers.SetFederationService(federationService)
 
 	grpcSrv := grpcserver.NewGatewayServer(db, auditLogger, privKey, policyEngine)
 
@@ -415,6 +417,18 @@ func main() {
 		r.Get("/keys/status", handlers.GetKeyRotationStatus)
 		r.Post("/keys/clear-previous", handlers.ClearPreviousKey)
 
+		// Federation: Multi-gateway (Central Airport)
+		r.Post("/federation/register", handlers.RegisterFederationPeer)
+		r.Get("/federation/peers", handlers.ListFederationPeers)
+		r.Get("/federation/peers/{gatewayID}", handlers.GetFederationPeer)
+		r.Post("/federation/agents/sync", handlers.SyncFederatedAgent)
+		r.Post("/federation/heartbeat", handlers.FederatedHeartbeatHandler)
+		r.Get("/federation/agents", handlers.SearchFederatedAgentsHandler)
+		r.Get("/federation/online", handlers.ListFederatedOnlineHandler)
+		r.Get("/federation/agents/{agentID}", handlers.GetFederatedAgentHandler)
+		r.Post("/federation/peers/{gatewayID}/suspend", handlers.SuspendFederationPeerHandler)
+		r.Get("/federation/health", handlers.FederationHealthHandler)
+
 		// Airport: Where agents meet
 		r.Post("/airport/handshake", handlers.AirportHandshakeHandler)
 		r.Post("/airport/connect", handlers.AirportConnectHandler)
@@ -428,6 +442,7 @@ func main() {
 	})
 
 	handlers.StartHeartbeatCleanup(context.Background(), 2*time.Minute)
+	federationService.StartHeartbeatCleanup(context.Background(), 5*time.Minute)
 
 	var httpSrv *http.Server
 	go func() {

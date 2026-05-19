@@ -8,8 +8,11 @@ import pytest
 from agentid_sdk import (
     AgentClient,
     AgentConfig,
+    AgentPassport,
     AuthorizeResult,
     DelegateResult,
+    FederatedAgent,
+    FederationPeer,
     HitlApproval,
     InvokeResult,
     McpCapabilities,
@@ -22,9 +25,11 @@ from agentid_sdk import (
 )
 from agentid_sdk.exceptions import (
     AuthFailedError,
+    FederationError,
     HitlRequiredError,
     MaxDepthError,
     NotAuthorizedError,
+    PassportVerifyError,
 )
 
 
@@ -215,3 +220,84 @@ def test_exception_hierarchy():
     assert issubclass(NotAuthorizedError, AgentIDError)
     assert issubclass(HitlRequiredError, AgentIDError)
     assert issubclass(MaxDepthError, AgentIDError)
+    assert issubclass(FederationError, AgentIDError)
+    assert issubclass(PassportVerifyError, FederationError)
+
+
+def test_agent_passport_deserialization():
+    data = {
+        "agent_id": str(uuid4()),
+        "agent_public_key": "dGVzdA==",
+        "gateway_id": str(uuid4()),
+        "gateway_signature": "c2tnYXR1cmU=",
+        "issued_at": "2026-01-01T00:00:00Z",
+    }
+    passport = AgentPassport(**data)
+    assert passport.agent_public_key == "dGVzdA=="
+    assert passport.gateway_signature == "c2tnYXR1cmU="
+
+
+def test_agent_passport_serialization():
+    passport = AgentPassport(
+        agent_id=str(uuid4()),
+        agent_public_key="dGVzdA==",
+        gateway_id=str(uuid4()),
+        gateway_signature="c2duYXR1cmU=",
+        issued_at="2026-01-01T00:00:00Z",
+    )
+    json_str = passport.model_dump_json()
+    restored = AgentPassport.model_validate_json(json_str)
+    assert restored.agent_id == passport.agent_id
+    assert restored.gateway_signature == passport.gateway_signature
+
+
+def test_federation_peer_deserialization():
+    data = {
+        "gateway_id": str(uuid4()),
+        "name": "test-gateway",
+        "public_key": "dGVzdA==",
+        "endpoint": "http://localhost:9443",
+        "trust_domain": "org:test",
+        "status": "active",
+        "trust_score": 1.0,
+        "agent_count": 5,
+        "registered_at": "2026-01-01T00:00:00Z",
+    }
+    peer = FederationPeer(**data)
+    assert peer.name == "test-gateway"
+    assert peer.status == "active"
+    assert peer.agent_count == 5
+
+
+def test_federated_agent_deserialization():
+    data = {
+        "agent_id": str(uuid4()),
+        "gateway_id": str(uuid4()),
+        "name": "remote-agent",
+        "owner": "org:remote",
+        "public_key": "dGVzdA==",
+        "trust_score": 0.85,
+        "capabilities": ["mcp", "read"],
+        "allowed_tools": ["read", "search"],
+        "passport_issued_at": "2026-01-01T00:00:00Z",
+        "status": "active",
+        "description": "A remote agent",
+        "tags": ["remote", "research"],
+        "heartbeat_status": "online",
+        "last_heartbeat": "2026-01-01T01:00:00Z",
+    }
+    agent = FederatedAgent(**data)
+    assert agent.name == "remote-agent"
+    assert agent.trust_score == 0.85
+    assert "mcp" in agent.capabilities
+    assert agent.heartbeat_status == "online"
+
+
+def test_federation_error_hierarchy():
+    from agentid_sdk.exceptions import AgentIDError
+
+    assert issubclass(FederationError, AgentIDError)
+    assert issubclass(PassportVerifyError, FederationError)
+    err = PassportVerifyError("bad passport")
+    assert isinstance(err, FederationError)
+    assert isinstance(err, AgentIDError)

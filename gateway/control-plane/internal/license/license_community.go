@@ -9,6 +9,7 @@ func Load() Info {
 		MaxResources: 10,
 		Features: []string{
 			FeatureDelegation,
+			FeatureFederation,
 		},
 	}
 }

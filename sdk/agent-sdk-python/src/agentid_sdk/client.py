@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from datetime import datetime
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -14,12 +15,13 @@ from .exceptions import (
     ConnectError,
     DelegateError,
     DiscoverError,
+    FederationError,
     HitlError,
     HitlRequiredError,
-    InvokeError,
     MaxDepthError,
     McpError,
     NotAuthorizedError,
+    PassportVerifyError,
     PtvError,
     SkillError,
     TxError,
@@ -28,10 +30,13 @@ from .exceptions import (
 from .models import (
     AgentConfig,
     AgentSkill,
+    AgentPassport,
     AuthorizeResult,
     CapabilityToken,
     DelegateResult,
     Endorsement,
+    FederatedAgent,
+    FederationPeer,
     HitlApproval,
     InvokeResult,
     McpCapabilities,
@@ -755,6 +760,174 @@ class AgentClient:
             raise ConnectError(f"Connections query failed: {resp.status_code}")
 
         return resp.json()
+
+    async def federation_register_peer(
+        self,
+        name: str,
+        public_key: str,
+        endpoint: str,
+        trust_domain: str = "",
+    ) -> FederationPeer:
+        logger.info("Registering federation peer: %s at %s", name, endpoint)
+
+        body: dict[str, Any] = {
+            "name": name,
+            "public_key": public_key,
+            "endpoint": endpoint,
+            "trust_domain": trust_domain or name,
+        }
+
+        resp = await self._http.post("/v1/federation/register", json=body)
+        if resp.status_code not in (200, 201):
+            raise FederationError(f"Peer registration failed: {resp.status_code} {resp.text}")
+
+        return FederationPeer(**resp.json())
+
+    async def federation_list_peers(self, status: str = "") -> list[FederationPeer]:
+        params: dict[str, Any] = {}
+        if status:
+            params["status"] = status
+
+        resp = await self._http.get("/v1/federation/peers", params=params)
+        if resp.status_code != 200:
+            raise FederationError(f"List peers failed: {resp.status_code}")
+
+        data = resp.json()
+        return [FederationPeer(**p) for p in data.get("peers", [])]
+
+    async def federation_get_peer(self, gateway_id: str) -> FederationPeer:
+        resp = await self._http.get(f"/v1/federation/peers/{gateway_id}")
+        if resp.status_code != 200:
+            raise FederationError(f"Get peer failed: {resp.status_code}")
+
+        return FederationPeer(**resp.json())
+
+    async def federation_sync_agent(
+        self,
+        passport: AgentPassport,
+        name: str,
+        owner: str,
+        trust_score: float = 1.0,
+        capabilities: Optional[list[str]] = None,
+        allowed_tools: Optional[list[str]] = None,
+        description: str = "",
+        tags: Optional[list[str]] = None,
+    ) -> FederatedAgent:
+        logger.info("Syncing federated agent %s from gateway %s", passport.agent_id, passport.gateway_id)
+
+        body: dict[str, Any] = {
+            "passport": passport.model_dump(),
+            "name": name,
+            "owner": owner,
+            "trust_score": trust_score,
+            "capabilities": capabilities or [],
+            "allowed_tools": allowed_tools or [],
+            "description": description,
+            "tags": tags or [],
+        }
+
+        resp = await self._http.post("/v1/federation/agents/sync", json=body)
+        if resp.status_code not in (200, 201):
+            raise FederationError(f"Agent sync failed: {resp.status_code} {resp.text}")
+
+        return FederatedAgent(**resp.json())
+
+    async def federation_heartbeat(
+        self,
+        agent_id: str,
+        gateway_id: str,
+        status: str = "online",
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "agent_id": agent_id,
+            "gateway_id": gateway_id,
+            "status": status,
+        }
+        if metadata is not None:
+            body["metadata"] = json.dumps(metadata)
+
+        resp = await self._http.post("/v1/federation/heartbeat", json=body)
+        if resp.status_code != 200:
+            raise FederationError(f"Federated heartbeat failed: {resp.status_code}")
+
+        return resp.json()
+
+    async def federation_search_agents(
+        self,
+        status: Optional[str] = None,
+        tag: Optional[str] = None,
+        owner: Optional[str] = None,
+        min_trust: Optional[float] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if status is not None:
+            params["status"] = status
+        if tag is not None:
+            params["tag"] = tag
+        if owner is not None:
+            params["owner"] = owner
+        if min_trust is not None:
+            params["min_trust"] = min_trust
+
+        resp = await self._http.get("/v1/federation/agents", params=params)
+        if resp.status_code != 200:
+            raise FederationError(f"Federated search failed: {resp.status_code}")
+
+        return resp.json()
+
+    async def federation_list_online(self) -> dict[str, Any]:
+        resp = await self._http.get("/v1/federation/online")
+        if resp.status_code != 200:
+            raise FederationError(f"Federated online list failed: {resp.status_code}")
+
+        return resp.json()
+
+    async def federation_get_agent(self, agent_id: str) -> FederatedAgent:
+        resp = await self._http.get(f"/v1/federation/agents/{agent_id}")
+        if resp.status_code != 200:
+            raise FederationError(f"Get federated agent failed: {resp.status_code}")
+
+        return FederatedAgent(**resp.json())
+
+    async def federation_health(self) -> dict[str, Any]:
+        resp = await self._http.get("/v1/federation/health")
+        if resp.status_code != 200:
+            raise FederationError(f"Federation health check failed: {resp.status_code}")
+
+        return resp.json()
+
+    async def federation_suspend_peer(self, gateway_id: str) -> dict[str, Any]:
+        resp = await self._http.post(f"/v1/federation/peers/{gateway_id}/suspend")
+        if resp.status_code != 200:
+            raise FederationError(f"Suspend peer failed: {resp.status_code}")
+
+        return resp.json()
+
+    async def issue_passport(self) -> AgentPassport:
+        if not self._agent_id:
+            raise FederationError("Agent must be connected before issuing passport")
+
+        issued_at = datetime.utcnow().isoformat()
+        payload = json.dumps({
+            "agent_id": self._agent_id,
+            "agent_public_key": self.public_key_base64,
+            "gateway_id": "",
+            "issued_at": issued_at,
+        }, sort_keys=True)
+
+        signature_bytes = self._signing_key.sign(payload.encode()).signature
+        signature_b64 = base64.b64encode(signature_bytes).decode()
+
+        return AgentPassport(
+            agent_id=self._agent_id,
+            agent_public_key=self.public_key_base64,
+            gateway_id="",
+            gateway_signature=signature_b64,
+            issued_at=issued_at,
+        )
 
     async def close(self) -> None:
         await self._http.aclose()

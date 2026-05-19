@@ -1,5 +1,6 @@
 from .models import (
     AgentConfig,
+    AgentPassport,
     ToolInfo,
     InvokeResult,
     AuthorizeResult,
@@ -13,6 +14,8 @@ from .models import (
     SkillTrustScore,
     McpCapabilities,
     McpTool,
+    FederationPeer,
+    FederatedAgent,
 )
 from .client import AgentClient
 from .exceptions import (
@@ -26,6 +29,8 @@ from .exceptions import (
     VerifyError,
     SkillError,
     TxError,
+    FederationError,
+    PassportVerifyError,
 )
 from .integrations import (
     LangGraphIntegration,
@@ -41,6 +46,7 @@ from .integrations import (
 __all__ = [
     "AgentClient",
     "AgentConfig",
+    "AgentPassport",
     "ToolInfo",
     "InvokeResult",
     "AuthorizeResult",
@@ -54,6 +60,8 @@ __all__ = [
     "SkillTrustScore",
     "McpCapabilities",
     "McpTool",
+    "FederationPeer",
+    "FederatedAgent",
     "ConnectError",
     "DiscoverError",
     "InvokeError",
@@ -64,6 +72,8 @@ __all__ = [
     "VerifyError",
     "SkillError",
     "TxError",
+    "FederationError",
+    "PassportVerifyError",
     "LangGraphIntegration",
     "CrewAIIntegration",
     "AutoGenIntegration",

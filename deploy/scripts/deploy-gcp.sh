@@ -49,12 +49,23 @@ load_env() {
     : "${GCP_DOMAIN:=gateway.eyevesa.ai}"
     : "${ARTIFACT_REGISTRY:=}"
 
+    : "${GCP_REGION:=asia-southeast1}"
+    : "${GCP_ENVIRONMENT:=production}"
+    : "${GCP_DOMAIN:=gateway.eyevesa.ai}"
+    : "${ARTIFACT_REGISTRY:=}"
+
     if [[ -z "$GCP_PROJECT" ]]; then
         error "GCP_PROJECT is required. Set it in $ENV_FILE or as env var."
     fi
 }
 
 init() {
+    : "${GCP_PROJECT:=eyevesa}"
+    : "${GCP_REGION:=asia-southeast1}"
+    : "${GCP_ENVIRONMENT:=production}"
+    : "${GCP_DOMAIN:=gateway.eyevesa.ai}"
+    : "${ARTIFACT_REGISTRY:=}"
+
     info "Initializing GCP project: $GCP_PROJECT"
 
     # Enable required APIs
@@ -69,6 +80,7 @@ init() {
         --project="$GCP_PROJECT"
 
     # Create Artifact Registry repository
+    : "${ARTIFACT_REGISTRY:=}"
     if [[ -z "$ARTIFACT_REGISTRY" ]]; then
         ARTIFACT_REGISTRY="eyevesa-${GCP_ENVIRONMENT}"
     fi

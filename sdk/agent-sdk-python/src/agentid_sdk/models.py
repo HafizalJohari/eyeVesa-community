@@ -143,3 +143,41 @@ class TransactionReceipt(BaseModel):
     token_expires: int = 0
     issued_at: str = ""
     signature: str = ""
+
+
+class AgentPassport(BaseModel):
+    agent_id: str
+    agent_public_key: str
+    gateway_id: str
+    gateway_signature: str
+    issued_at: str = ""
+
+
+class FederationPeer(BaseModel):
+    gateway_id: str
+    name: str
+    public_key: str
+    endpoint: str
+    trust_domain: str = ""
+    status: str = "active"
+    trust_score: float = 1.0
+    agent_count: int = 0
+    last_sync_at: Optional[str] = None
+    registered_at: str = ""
+
+
+class FederatedAgent(BaseModel):
+    agent_id: str
+    gateway_id: str
+    name: str = ""
+    owner: str = ""
+    public_key: str = ""
+    trust_score: float = 1.0
+    capabilities: list[str] = Field(default_factory=list)
+    allowed_tools: list[str] = Field(default_factory=list)
+    passport_issued_at: str = ""
+    status: str = "active"
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    heartbeat_status: str = "offline"
+    last_heartbeat: str = ""

@@ -43,4 +43,5 @@ const (
 	FeatureKubernetes     = "kubernetes"
 	FeatureDelegation     = "multi_level_delegation"
 	FeaturePushNotify     = "push_notifications"
+	FeatureFederation     = "gateway_federation"
 )

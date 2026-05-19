@@ -5,7 +5,7 @@ import logging
 from typing import Any, Optional
 
 from .client import AgentClient
-from .models import AgentConfig
+from .models import AgentConfig, AgentPassport
 
 logger = logging.getLogger("agentid_sdk.integrations")
 
@@ -654,6 +654,181 @@ class HermesIntegration:
     ) -> dict[str, Any]:
         """Get connection history for an agent at the Airport."""
         return await self._client.airport_connections(agent_id=agent_id, limit=limit)
+
+    async def register_gateway(
+        self,
+        name: str,
+        public_key: str,
+        endpoint: str,
+        trust_domain: str = "",
+    ) -> dict[str, Any]:
+        """Register this agent's local gateway with Central Airport.
+
+        This is the 'embassy registration' step — your gateway must be registered
+        before your passport is accepted at the Central Airport.
+        """
+        result = await self._client.federation_register_peer(
+            name=name,
+            public_key=public_key,
+            endpoint=endpoint,
+            trust_domain=trust_domain or name,
+        )
+        return result.model_dump()
+
+    async def issue_passport(self) -> AgentPassport:
+        """Generate a passport for this agent, signed by the local gateway.
+
+        The passport is the credential that the Central Airport verifies
+        before allowing the agent to enter.
+        """
+        return await self._client.issue_passport()
+
+    async def sync_to_central(
+        self,
+        central_endpoint: str,
+        description: str = "",
+        tags: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
+        """Sync this agent to a Central Airport.
+
+        Steps:
+        1. Register this agent's gateway with Central Airport
+        2. Issue a passport (signed by local gateway)
+        3. Present passport to Central Airport + create profile
+
+        Requires: central_endpoint (URL of the Central Airport gateway)
+        """
+        import httpx as _httpx
+
+        passport = await self._client.issue_passport()
+
+        gateway_pub_key = self._client.public_key_base64
+
+        reg_body = {
+            "name": self._client.name,
+            "public_key": gateway_pub_key,
+            "endpoint": self._client.gateway_endpoint,
+            "trust_domain": self._client.owner,
+        }
+
+        headers = {"Content-Type": "application/json"}
+        api_key = self._client._api_key
+        jwt_token = self._client._jwt_token
+        if api_key:
+            headers["X-API-Key"] = api_key
+        if jwt_token:
+            headers["Authorization"] = f"Bearer {jwt_token}"
+
+        async with _httpx.AsyncClient(
+            base_url=central_endpoint.rstrip("/"),
+            headers=headers,
+            timeout=30.0,
+        ) as central_client:
+            reg_resp = await central_client.post("/v1/federation/register", json=reg_body)
+            if reg_resp.status_code not in (200, 201):
+                raise Exception(f"Gateway registration failed: {reg_resp.status_code} {reg_resp.text}")
+
+            reg_data = reg_resp.json()
+            gateway_id = reg_data.get("gateway_id", "")
+
+            passport.gateway_id = gateway_id
+
+            from datetime import datetime as _dt
+            import base64 as _b64
+
+            payload = json.dumps({
+                "agent_id": passport.agent_id,
+                "agent_public_key": passport.agent_public_key,
+                "gateway_id": passport.gateway_id,
+                "issued_at": passport.issued_at,
+            }, sort_keys=True)
+
+            from nacl.signing import SigningKey as _SK
+            sig_bytes = self._client._signing_key.sign(payload.encode()).signature
+            passport.gateway_signature = _b64.b64encode(sig_bytes).decode()
+
+            sync_body = {
+                "passport": passport.model_dump(),
+                "name": self._client.name,
+                "owner": self._client.owner,
+                "trust_score": self._client.trust_score,
+                "capabilities": ["mcp"],
+                "allowed_tools": ["read"],
+                "description": description,
+                "tags": tags or [],
+            }
+
+            sync_resp = await central_client.post("/v1/federation/agents/sync", json=sync_body)
+            if sync_resp.status_code not in (200, 201):
+                raise Exception(f"Agent sync failed: {sync_resp.status_code} {sync_resp.text}")
+
+            return sync_resp.json()
+
+    async def federated_heartbeat(
+        self,
+        central_endpoint: str,
+        status: str = "online",
+    ) -> dict[str, Any]:
+        """Send heartbeat to Central Airport."""
+        import httpx as _httpx
+
+        headers = {"Content-Type": "application/json"}
+        api_key = self._client._api_key
+        jwt_token = self._client._jwt_token
+        if api_key:
+            headers["X-API-Key"] = api_key
+        if jwt_token:
+            headers["Authorization"] = f"Bearer {jwt_token}"
+
+        async with _httpx.AsyncClient(
+            base_url=central_endpoint.rstrip("/"),
+            headers=headers,
+            timeout=30.0,
+        ) as central_client:
+            resp = await central_client.post("/v1/federation/heartbeat", json={
+                "agent_id": self._client.agent_id,
+                "gateway_id": "",
+                "status": status,
+            })
+            if resp.status_code != 200:
+                raise Exception(f"Federated heartbeat failed: {resp.status_code}")
+            return resp.json()
+
+    async def discover_federated_agents(
+        self,
+        central_endpoint: str,
+        tag: Optional[str] = None,
+        status: Optional[str] = None,
+        min_trust: Optional[float] = None,
+    ) -> dict[str, Any]:
+        """Search for agents at the Central Airport."""
+        import httpx as _httpx
+
+        headers = {"Content-Type": "application/json"}
+        api_key = self._client._api_key
+        jwt_token = self._client._jwt_token
+        if api_key:
+            headers["X-API-Key"] = api_key
+        if jwt_token:
+            headers["Authorization"] = f"Bearer {jwt_token}"
+
+        async with _httpx.AsyncClient(
+            base_url=central_endpoint.rstrip("/"),
+            headers=headers,
+            timeout=30.0,
+        ) as central_client:
+            params: dict[str, Any] = {}
+            if tag:
+                params["tag"] = tag
+            if status:
+                params["status"] = status
+            if min_trust is not None:
+                params["min_trust"] = min_trust
+
+            resp = await central_client.get("/v1/federation/agents", params=params)
+            if resp.status_code != 200:
+                raise Exception(f"Federated search failed: {resp.status_code}")
+            return resp.json()
 
     @property
     def client(self) -> AgentClient:
