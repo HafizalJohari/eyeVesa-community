@@ -857,4 +857,6 @@ Production deploy env files, Terraform state, and Terraform plans are intentiona
 
 ## License
 
-Proprietary
+Apache License 2.0. See [LICENSE](LICENSE).
+
+The open-source license covers the code in this repository. It does not grant access to any hosted International Airport, production GCP environment, private API keys, trademarks, or operator-managed services.
