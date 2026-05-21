@@ -10,13 +10,25 @@
 
 Connects AI agents to enterprise resources with cryptographic identity, policy-based authorization, and non-repudiable audit trails.
 
-### 10-Second Quickstart
-Secure your AI Agents instantly. No configuration required:
+## Community Quickstart
+
+Run a local eyeVesa sandbox with Docker. This does not connect to the official International Airport or any GCP production resources.
+
 ```bash
-git clone https://github.com/Hafizaljohari/eyeVesa.git
-cd eyeVesa
+git clone https://github.com/HafizalJohari/eyeVesa-community.git
+cd eyeVesa-community
 ./start.sh
 ```
+
+The quickstart starts local PostgreSQL, OPA, the Go control plane, and the Rust gateway. Local development runs with `AUTH_ENABLED=false`, so API keys are not required for basic testing.
+
+| Local endpoint | Purpose |
+|---|---|
+| `http://localhost:8080` | Go control-plane API |
+| `http://localhost:9443` | Rust gateway proxy |
+| `http://localhost:8181` | OPA policy server |
+
+To connect to the official International Airport, you need an invite or API key from the operator. Public code access is not Airport access.
 
 ## Architecture
 
@@ -182,24 +194,6 @@ ORDER BY created_at DESC
 LIMIT 50
 ```
 
-## Auth Middleware
-
-The auth middleware (controlled by `AUTH_ENABLED` env var) distinguishes between public and authenticated routes.
-
-**Public routes** (no authentication required):
-- `/health`, `/ready`, `/identity`
-- `/v1/agents/register`
-- `/v1/resources/register`
-- `/v1/mcp`
-- `/v1/api-keys`
-- `/v1/auth/challenge`, `/v1/auth/login`
-- Airport browse endpoints: `GET /v1/airport/agents`, `GET /v1/airport/online`, `GET /v1/airport/health`, `GET /v1/airport/agents/{id}`
-
-**Authenticated routes** (require `X-API-Key` header or `Bearer` JWT token):
-- Everything else, including `POST /v1/airport/heartbeat`, `PUT /v1/airport/agents/{id}`, `GET /v1/airport/connections`
-
-When `AUTH_ENABLED=false` (default), all routes are accessible without authentication.
-
 ## CLI
 
 The `eyevesa` CLI provides a terminal UI and commands for agent management, authorization, and airport operations.
@@ -302,7 +296,14 @@ eyevesa api-keys revoke <key-id>
 
 ## API Keys
 
-API keys (`eyevesa_xxx`) are used to authenticate agent requests via the `X-API-Key` header. In production, keys should be issued by an admin and delivered outside git.
+API keys (`eyevesa_xxx`) authenticate agent and gateway requests through the `X-API-Key` header.
+
+There are two modes:
+
+| Mode | What happens |
+|---|---|
+| Community local sandbox | `AUTH_ENABLED=false`; API keys are optional for learning because all local routes are open. |
+| Production / International Airport | `AUTH_ENABLED=true`; API keys are admin-issued, named, revocable, and delivered outside git. |
 
 ### Key Format
 
@@ -314,27 +315,38 @@ eyevesa_REPLACE_WITH_YOUR_API_KEY
 ### Usage
 
 ```bash
-# Generate key (public endpoint, no auth)
+# Production: create a key with an admin JWT
 curl -X POST http://localhost:8080/v1/api-keys \
+  -H "Authorization: Bearer <ADMIN_JWT>" \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-agent-key", "tenant_id": "org:phos"}'
+  -d '{"name": "dev:amir", "tenant_id": "org:community"}'
 
-# Use key for authenticated requests
+# Use the assigned key for authenticated requests
 curl -X POST http://localhost:8080/v1/delegate \
   -H "Content-Type: application/json" \
   -H "X-API-Key: eyevesa_REPLACE_WITH_YOUR_API_KEY" \
   -d '{"agent_id": "...", "target": "..."}'
 ```
 
-### Auth Middleware
+For the official International Airport, developers do not generate their own production keys. The operator creates one key per developer or gateway and shares it through a password manager or Secret Manager.
 
-The middleware checks:
+## Auth Middleware
+
+When `AUTH_ENABLED=true`, the middleware checks:
 1. `X-API-Key` header → lookup in `api_keys` table (must be `is_active = TRUE`)
 2. Falls back to `Authorization: Bearer <jwt>` or SSO session cookie
 
-Public routes (no auth): `/health`, `/ready`, `/v1/agents/register`, `/v1/api-keys`, `/v1/auth/*`, airport browse endpoints.
+Public routes with auth enabled:
+- `/health`, `/ready`, `/identity`, `/metrics`
+- `/v1/auth/challenge`, `/v1/auth/login`
+- `GET /v1/airport/health`, `GET /v1/airport/stats`
+- `GET /v1/airport/agents`, `GET /v1/airport/agents/{id}`, `GET /v1/airport/online`
+- `POST /v1/airport/handshake`, `POST /v1/airport/connect`
+- `/v1/resources/register` and `/v1/mcp` are currently public compatibility endpoints and should be reviewed before production exposure.
 
-When `AUTH_ENABLED=false` (default in dev), all routes are open.
+Authenticated routes include API key creation, agent registration, heartbeat writes, profile updates, connections, delegation, authorization, tenants, key rotation, and most operational APIs.
+
+When `AUTH_ENABLED=false`, all routes are open. Use this only for local community/dev sandboxes.
 
 ## API Endpoints
 
@@ -397,7 +409,7 @@ When `AUTH_ENABLED=false` (default in dev), all routes are open.
 | POST | `/v1/auth/login` | Login with API key or credentials |
 | GET | `/v1/auth/challenge` | Get SSO challenge |
 | **API Key endpoints** | | |
-| POST | `/v1/api-keys` | Create API key (public, no auth) |
+| POST | `/v1/api-keys` | Create API key (admin-only when auth is enabled) |
 | GET | `/v1/api-keys` | List API keys |
 | DELETE | `/v1/api-keys/{keyID}` | Revoke API key |
 
@@ -550,21 +562,6 @@ pub struct AirportConnection {
     pub created_at: String,
 }
 ```
-
-## Quick Start
-
-The fastest way to get started with eyeVesa is using our frictionless setup wizard. It automatically generates secure keys, boots up the local environment via Docker, and prepares your database.
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/Hafizaljohari/eyeVesa.git
-cd eyeVesa
-
-# 2. Run the Onboarding Wizard
-./start.sh
-```
-
-This will spin up the PostgreSQL database, Open Policy Agent (OPA), and the eyeVesa Control Plane/Proxy in the background.
 
 ## Examples & Integrations
 

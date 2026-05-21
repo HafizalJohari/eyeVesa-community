@@ -20,6 +20,7 @@ This project follows Semantic Versioning.
 - Updated `eyevesa connect` to use configured credentials for secure agent registration.
 - Expanded ignore rules for local env files, Terraform variables/state/plans, and generated deployment artifacts.
 - Changed the community test default gateway to localhost so live production endpoints are not embedded in the repo.
+- Clarified the README community quickstart, local sandbox behavior, production API-key flow, and International Airport invite boundary.
 
 ### Deprecated
 - Nothing deprecated.
