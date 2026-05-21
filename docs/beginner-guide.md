@@ -66,6 +66,14 @@ This does not use production secrets.
 
 It is just your own local playground.
 
+## Can My AI Agent Install This For Me?
+
+Yes. If you use Hermes, OpenClaw, Claude, Codex, or another AI agent with terminal access, you can ask it to install eyeVesa Community for you.
+
+Give it the repo URL and ask it to follow `AGENT_INSTALL.md`. The agent should only run the local sandbox, verify the health endpoints, and report the local URLs back to you.
+
+It should not ask for GCP credentials, Terraform state, production secrets, or official International Airport keys.
+
 ## What Is The Airport?
 
 The Airport is where agents become discoverable.

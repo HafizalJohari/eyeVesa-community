@@ -14,7 +14,9 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-clear
+if [ -t 1 ] && command -v clear &> /dev/null; then
+    clear || true
+fi
 echo -e "${CYAN}=======================================================${NC}"
 echo -e "${BOLD}${BLUE}          👁️  Welcome to eyeVesa Onboarding 👁️          ${NC}"
 echo -e "${CYAN}=======================================================${NC}"
@@ -61,7 +63,7 @@ docker compose up -d postgres opa gateway-control gateway-core
 
 # 4. Wait for database health
 echo -e "${BLUE}[2/2] Waiting for database to become healthy...${NC}"
-until docker exec agentid-postgres pg_isready -U agentid &> /dev/null; do
+until docker compose exec -T postgres pg_isready -U agentid &> /dev/null; do
     echo -n "."
     sleep 1
 done

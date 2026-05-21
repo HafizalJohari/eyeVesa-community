@@ -13,6 +13,7 @@ This project follows Semantic Versioning.
 - Added a framework integration kit for Hermes, OpenClaw, and other agentic runtimes covering registration, Airport discovery, authorization, A2A handoff, and monetization positioning.
 - Added a Community release workflow note and Terraform GCS backend example for clean public publishing without private history.
 - Added a plain-language beginner guide for non-technical readers and new community users.
+- Added agent-native onboarding docs so Hermes, OpenClaw, Claude, Codex, and similar agents can install and verify the local community sandbox.
 
 ### Changed
 - Protected agent registration and airport heartbeat behind authenticated requests.
@@ -25,6 +26,8 @@ This project follows Semantic Versioning.
 - Removed the README link to the missing learning roadmap.
 - Clarified that the repository code is Apache 2.0 licensed while hosted services and credentials remain separate.
 - Refreshed the README opening with badges, clearer navigation, and visual feature cards for community readers.
+- Updated the README and beginner guide to explain the local-only AI-agent installation flow.
+- Made Docker Compose services project-scoped so separate checkouts do not fight over fixed container names.
 
 ### Deprecated
 - Nothing deprecated.
@@ -35,6 +38,8 @@ This project follows Semantic Versioning.
 ### Fixed
 - Persisted `tenant_id` on agent registration when tenant context is present.
 - Enforced per-tenant agent caps during agent registration (falling back to the license cap when no tenant context is available).
+- Fixed `./start.sh` startup in non-interactive agent shells where `TERM` may be unset.
+- Updated `./start.sh` to wait on the Compose `postgres` service instead of a fixed global container name.
 
 ### Security
 - Added tenant/owner checks before airport heartbeat and profile update writes.

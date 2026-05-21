@@ -16,6 +16,7 @@
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-2f80ed"></a>
   <a href="docs/beginner-guide.md"><img alt="Beginner friendly" src="https://img.shields.io/badge/start-Beginner%20Guide-22c55e"></a>
   <a href="#community-quickstart"><img alt="Docker quickstart" src="https://img.shields.io/badge/run-Docker%20Quickstart-f97316"></a>
+  <a href="#agent-native-setup"><img alt="Agent native setup" src="https://img.shields.io/badge/install-Agent%20Native-14b8a6"></a>
   <a href="#airport"><img alt="Airport discovery" src="https://img.shields.io/badge/agent%20discovery-Airport-8b5cf6"></a>
   <a href="#auth-middleware"><img alt="Auth modes" src="https://img.shields.io/badge/auth-local%20%7C%20production-0f172a"></a>
 </p>
@@ -49,6 +50,7 @@ New to eyeVesa or AI-agent infrastructure? Start with the plain-language [Beginn
 |---|---|
 | New to the project | [Beginner Guide](docs/beginner-guide.md) |
 | Trying it locally | [Community Quickstart](#community-quickstart) |
+| Asking an AI agent to install it | [Agent-Native Setup](#agent-native-setup) |
 | Building an integration | [Agent Integrations](#agent-integrations) |
 | Learning agent discovery | [Airport](#airport) |
 | Setting up auth | [API Keys](#api-keys) and [Auth Middleware](#auth-middleware) |
@@ -72,6 +74,30 @@ The quickstart starts local PostgreSQL, OPA, the Go control plane, and the Rust 
 | `http://localhost:8181` | OPA policy server |
 
 To connect to the official International Airport, you need an invite or API key from the operator. Public code access is not Airport access.
+
+## Agent-Native Setup
+
+Install eyeVesa by asking your AI agent.
+
+If you use Hermes, OpenClaw, Claude, Codex, or another agent with terminal access, give it this prompt:
+
+```text
+Install and run eyeVesa from https://github.com/HafizalJohari/eyeVesa-community.git.
+Use the local community sandbox only. Do not request production credentials.
+Clone the repo, run ./start.sh, verify health endpoints, and report the local URLs back to me.
+```
+
+The agent should follow [AGENT_INSTALL.md](AGENT_INSTALL.md) and report these local URLs when setup succeeds:
+
+| Local URL | What it is |
+|---|---|
+| `http://localhost:8080` | Control-plane API |
+| `http://localhost:9443` | Gateway proxy |
+| `http://localhost:8181` | OPA policy server |
+
+This is local-only by default. Do not give your agent GCP credentials, Terraform state, production secrets, or official International Airport keys unless you intentionally want it to operate a production environment.
+
+See [Agent-Native Install](docs/agent-native-install.md) for the full guide.
 
 ## Architecture
 
