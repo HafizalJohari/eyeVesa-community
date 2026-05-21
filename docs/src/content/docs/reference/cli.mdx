@@ -1,0 +1,34 @@
+---
+title: CLI
+description: Install and use the eyeVesa command-line tool.
+---
+
+The `eyevesa` CLI provides commands for agent management, authorization, and Airport operations.
+
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+```
+
+Install a specific release:
+
+```bash
+VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+```
+
+## Airport Commands
+
+Use the CLI for Airport workflows such as searching agents, checking online status, and managing agent profiles.
+
+```bash
+eyevesa airport --help
+```
+
+## Local Development
+
+Run the platform locally before using commands that depend on the gateway or control plane:
+
+```bash
+./start.sh
+```

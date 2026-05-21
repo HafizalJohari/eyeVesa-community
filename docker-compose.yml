@@ -1,0 +1,105 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agentid-postgres
+    environment:
+      POSTGRES_DB: agentid
+      POSTGRES_USER: agentid
+      POSTGRES_PASSWORD: agentid_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentid"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.9.6
+    container_name: agentid-spire-server
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./gateway/spire/server.conf:/opt/spire/conf/server/server.conf
+      - spire-data:/opt/spire/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent:1.9.6
+    container_name: agentid-spire-agent
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./gateway/spire/agent.conf:/opt/spire/conf/agent/agent.conf
+    depends_on:
+      - spire-server
+
+  opa:
+    image: openpolicyagent/opa:0.68.0
+    container_name: agentid-opa
+    ports:
+      - "8181:8181"
+    command: "run --server --addr :8181 /policies"
+    volumes:
+      - ./gateway/control-plane/policies:/policies
+
+  gateway-control:
+    build:
+      context: .
+      dockerfile: gateway/control-plane/Dockerfile
+    container_name: agentid-control
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      DATABASE_URL: postgres://agentid:agentid_dev@postgres:5432/agentid?sslmode=disable
+      JWT_SECRET: ${EYEVESA_JWT_SECRET:?EYEVESA_JWT_SECRET must be set}
+      AUTH_ENABLED: "false"
+      OPA_ENDPOINT: http://opa:8181
+      SPIRE_ENDPOINT: spire-agent:8090
+      POLICY_DIR: /policies
+    volumes:
+      - ./gateway/control-plane/policies:/policies:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opa:
+        condition: service_started
+
+  gateway-core:
+    build:
+      context: .
+      dockerfile: gateway/core/Dockerfile
+    container_name: agentid-core
+    ports:
+      - "9443:9443"
+    environment:
+      CONTROL_PLANE_ADDR: http://gateway-control:9090
+      CONTROL_PLANE_HTTP_ADDR: gateway-control:8080
+      RUST_LOG: info
+      GATEWAY_MODE: plaintext
+    depends_on:
+      - gateway-control
+
+  resource-adapter:
+    build:
+      context: ./adapter/resource-adapter-go
+      dockerfile: Dockerfile
+    container_name: agentid-resource-adapter
+    ports:
+      - "8443:8443"
+    environment:
+      RESOURCE_NAME: enterprise-resource
+      GATEWAY_ENDPOINT: gateway-core:9443
+    depends_on:
+      - gateway-core
+
+volumes:
+  pgdata:
+  spire-data:

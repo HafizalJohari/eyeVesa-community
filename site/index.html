@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eyeVesa -- Identity &amp; Trust Layer for AI Agents</title>
+    <meta name="description" content="eyeVesa connects AI agents to enterprise resources with cryptographic identity, policy enforcement, and non-repudiable audit trails.">
+    <meta name="keywords" content="AI agent security, agent identity, MCP gateway, AI governance, agent authorization, policy enforcement, human-in-the-loop, AI audit trail, enterprise AI, agent trust">
+    <meta name="author" content="Hafizal Johari">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://eyevesa.pages.dev/">
+    <meta property="og:title" content="eyeVesa -- Identity & Trust Layer for AI Agents">
+    <meta property="og:description" content="Cryptographic identity, real-time authorization, and non-repudiable audit trails for autonomous AI agents.">
+    <meta property="og:image" content="https://eyevesa.pages.dev/logo.svg">
+    <meta property="og:url" content="https://eyevesa.pages.dev/">
+    <meta property="og:type" content="website">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="eyeVesa -- Identity & Trust Layer for AI Agents">
+    <meta name="twitter:description" content="Cryptographic identity, real-time authorization, and non-repudiable audit trails for autonomous AI agents.">
+    <meta name="twitter:image" content="https://eyevesa.pages.dev/logo.svg">
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "eyeVesa",
+        "applicationCategory": "SecurityApplication",
+        "operatingSystem": "Linux, macOS",
+        "description": "Identity and trust layer for autonomous AI agents. Provides Ed25519 cryptographic identity, 3-tier OPA policy enforcement, human-in-the-loop approvals, PTV runtime attestation, and non-repudiable audit trails.",
+        "url": "https://eyevesa.pages.dev/",
+        "author": {
+            "@type": "Person",
+            "name": "Hafizal Johari",
+            "url": "https://safrplus.dev"
+        },
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "availability": "https://schema.org/InStock"
+        }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "eyeVesa",
+        "url": "https://eyevesa.pages.dev/",
+        "description": "Identity and trust layer for the agentic economy.",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://github.com/hafizaljohari/eyeVesa/search?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+        }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "What is eyeVesa?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "eyeVesa is an identity and trust layer for autonomous AI agents. It gives agents cryptographic identity (Ed25519), enforces real-time authorization policies via OPA, and produces non-repudiable audit trails, so enterprises can trust what their agents do."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How does eyeVesa authorize agent actions?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "eyeVesa uses a 3-tier OPA policy engine: auto-allow, human-in-the-loop (HITL), or deny. Policies are written in Rego and evaluated in real-time against the agent's identity, action, resource, environment, and trust score."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What is PTV attestation?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "PTV (Process Trait Verification) ensures the agent process hasn't been tampered with. It detects code injection, binary replacement, or memory manipulation by comparing runtime measurements against a registered baseline hash."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What notification backends does HITL support?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "eyeVesa supports Slack, PagerDuty, webhooks, Apple Push Notification Service (APNs), Firebase Cloud Messaging (FCM), Telegram Bot API, and Discord webhooks for human-in-the-loop approval workflows."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How does agent delegation work?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "An agent can delegate authority to a sub-agent via signed delegation tokens. The sub-agent presents the delegation chain when making requests. eyeVesa verifies chain signatures, scope coverage, and that the chain is unbroken before allowing the action."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "What gateway modes are available?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Three modes: plaintext (local dev), tls (server-side TLS for staging), and mtls (mutual TLS for production with client certificate verification)."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "How is the audit log protected against tampering?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Every audit log entry is signed with Ed25519. The signature covers all fields including agent ID, action, resource, decision, and timestamp. Re-computing the signature on read verifies the entry has not been modified."
+                }
+            }
+        ]
+    }
+    </script>
+    <link rel="icon" type="image/svg+xml" href="logo.svg">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body id="top">
+    <header id="site-header">
+        <div class="header-top">
+            <div class="logo-container">
+                <img src="logo.svg" alt="eyeVesa" width="24" height="24">
+                <b>eyeVesa</b>
+            </div>
+            <div class="header-meta">
+                <span>Identity</span> &middot; <span>Trust</span> &middot; <span>Audit</span>
+                <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener" class="github-link">[GitHub]</a>
+            </div>
+        </div>
+        <button class="menu-toggle" id="menu-toggle">Menu ▾</button>
+        <ul id="nav">
+            <!-- Group 1: Why eyeVesa? -->
+            <li class="nav-item">
+                <a class="nav-link" href="javascript:void(0)">[Why eyeVesa? ▾]</a>
+                <ul class="dropdown-menu">
+                    <li class="dropdown-item"><a href="#problem">The Problem</a></li>
+                    <li class="dropdown-item"><a href="#kya">Know Your Agent (KYA)</a></li>
+                    <li class="dropdown-item"><a href="#use-cases">Use Cases</a></li>
+                    <li class="dropdown-item"><a href="#who-benefits">Who Benefits</a></li>
+                </ul>
+            </li>
+            <!-- Group 2: Capabilities -->
+            <li class="nav-item">
+                <a class="nav-link" href="javascript:void(0)">[Capabilities ▾]</a>
+                <ul class="dropdown-menu">
+                    <li class="dropdown-item"><a href="#how-it-works">How It Works</a></li>
+                    <li class="dropdown-item"><a href="#integrations">Integrations</a></li>
+                    <li class="dropdown-item"><a href="#features">Core Capabilities</a></li>
+                </ul>
+            </li>
+            <!-- Group 3: Get Started -->
+            <li class="nav-item">
+                <a class="nav-link" href="javascript:void(0)">[Get Started ▾]</a>
+                <ul class="dropdown-menu">
+                    <li class="dropdown-item"><a href="#quickstart">Quick Start</a></li>
+                    <li class="dropdown-item"><a href="#install">Installation</a></li>
+                    <li class="dropdown-item"><a href="#sdk">SDK References</a></li>
+                    <li class="dropdown-item"><a href="#hermes">Hermes Agent</a></li>
+                </ul>
+            </li>
+            <!-- Group 4: Deep Dive -->
+            <li class="nav-item">
+                <a class="nav-link" href="javascript:void(0)">[Deep Dive ▾]</a>
+                <ul class="dropdown-menu">
+                    <li class="dropdown-item"><a href="#architecture">Architecture &amp; Flow</a></li>
+                    <li class="dropdown-item"><a href="#ptv">PTV Attestation</a></li>
+                    <li class="dropdown-item"><a href="#opa">Policy Engine</a></li>
+                    <li class="dropdown-item"><a href="#hitl">Human-in-the-Loop</a></li>
+                    <li class="dropdown-item"><a href="#trust">Trust Scoring</a></li>
+                    <li class="dropdown-item"><a href="#delegation">Agent Delegation</a></li>
+                    <li class="dropdown-item"><a href="#cli">CLI Reference</a></li>
+                    <li class="dropdown-item"><a href="#api">API Reference</a></li>
+                </ul>
+            </li>
+            <!-- Group 5: FAQ -->
+            <li class="nav-item">
+                <a href="#faq" class="nav-link">[FAQ]</a>
+            </li>
+        </ul>
+    </header>
+
+    <!-- SECTION 1: Introduction & Hook -->
+    <div class="hero-container">
+        <div align="center"><img src="logo.svg" alt="eyeVesa" width="260" height="260"></div>
+        <div class="pixel-bubble">
+            <span id="typing-text"></span><span class="cursor" id="typing-cursor"></span>
+            <svg class="pixel-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4">
+                <rect x="3" y="1" width="1" height="2" fill="#000" />
+                <rect x="2" y="2" width="1" height="1" fill="#000" />
+                <rect x="3" y="0" width="1" height="1" fill="#66ff66" />
+                <rect x="2" y="1" width="1" height="1" fill="#66ff66" />
+                <rect x="1" y="2" width="1" height="1" fill="#66ff66" />
+                <rect x="1" y="3" width="3" height="1" fill="#66ff66" />
+            </svg>
+        </div>
+    </div>
+
+    <h1 align="center">The Gateway That Keeps AI Agents in Check</h1>
+
+    <blockquote align="center">
+        <i>"In an agent-first world, the core challenge is no longer about capability,<br>
+        but about identity, provenance, and secure execution."</i><br>
+        <font size="1">-- Dr. Vivian Balakrishnan, Minister for Foreign Affairs, Singapore (AI Engineer Day, 2026)</font>
+    </blockquote>
+
+    <p align="center"><i>eyeVesa gives autonomous AI agents cryptographic identity, enforces real-time authorization
+    policies, and produces non-repudiable audit trails -- so enterprises can trust what their agents do.</i></p>
+
+    <p align="center">
+    <a href="#how-it-works">[See How It Works]</a>
+    &nbsp;
+    <a href="https://github.com/hafizaljohari/eyeVesa" target="_blank" rel="noopener">[View on GitHub]</a>
+    </p>
+
+    <center><table border="1" cellpadding="8" cellspacing="0" class="statbox">
+        <tr>
+            <th>86+</th><th>Ed25519+PTV</th><th>3-Tier</th><th>100%</th>
+        </tr><tr>
+            <td>API Endpoints</td><td>Crypto Identity</td><td>Policy Engine</td><td>Audit Integrity</td>
+        </tr>
+    </table></center>
+
+    <hr>
+
+    <section id="problem">
+        <a name="problem"></a>
+        <h2>The Problem</h2>
+        <p>When AI agents access production systems, three questions have no good answer:</p>
+
+        <dl>
+            <dt><b>1. Who is this agent?</b></dt>
+            <dd>API keys can be stolen. JWTs can be leaked. There's no cryptographic proof tying an action to a specific agent identity.</dd>
+
+            <dt><b>2. Should this be allowed?</b></dt>
+            <dd>Static RBAC doesn't adapt. Either agents get full access (dangerous) or humans approve everything (slow). No middle ground.</dd>
+
+            <dt><b>3. Can we prove what happened?</b></dt>
+            <dd>When something goes wrong, logs can be tampered with. You need cryptographic proof of who did what, when, and why.</dd>
+        </dl>
+    </section>
+
+    <hr>
+
+    <section id="kya">
+        <a name="kya"></a>
+        <h2>Know Your Agent (KYA)</h2>
+        <p>The same principles banks use for <b>Know Your Customer (KYC)</b>, applied to AI agents.
+        The core loop is the same: <font color="#ffcc00"><b>identify &rarr; assess &rarr; authorize &rarr; monitor &rarr; enforce</b></font>.
+        Just swapped "customer" for "agent."</p>
+
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>KYC (Banking)</th><th>KYA (eyeVesa)</th></tr>
+            <tr><td>Verify customer identity</td><td>Ed25519 keypairs + PTV hardware attestation</td></tr>
+            <tr><td>Assess risk profile</td><td>Trust scoring + behavioral embeddings (pgvector)</td></tr>
+            <tr><td>Set transaction limits</td><td>OPA policies (auto-deny / auto-allow / HITL / escalation)</td></tr>
+            <tr><td>Monitor transactions</td><td>Non-repudiable audit logs with signatures</td></tr>
+            <tr><td>Flag suspicious activity</td><td>Anomaly detection, trust degradation</td></tr>
+            <tr><td>Report to regulators</td><td>Cryptographic proof of who did what, when, who approved</td></tr>
+        </table>
+    </section>
+
+    <hr>
+
+    <section id="use-cases">
+        <a name="use-cases"></a>
+        <h2>Use Cases</h2>
+        <p>Where autonomous agents meet real consequences.</p>
+
+        <h3>1. DevOps / SRE -- 3am Incident Response</h3>
+        <blockquote>
+            <tt>
+            Agent reads logs.......... <font color="#66ff66">[AUTO-ALLOW]</font><br>
+            Scales up service......... <font color="#66ff66">[AUTO-ALLOW]</font><br>
+            Deploys hotfix............ <font color="#ffff66">[HITL]</font> -- 1 human tap<br>
+            <br>
+            <b>4 minutes total. Full audit trail. No 3am pages.</b>
+            </tt>
+        </blockquote>
+
+        <h3>2. Finance / Banking -- Automated Transfers</h3>
+        <blockquote>
+            <tt>
+            $50 transfer............. <font color="#66ff66">[AUTO-ALLOW]</font><br>
+            $300 transfer............ <font color="#ffff66">[HITL]</font> -- manager approves<br>
+            $6,000 transfer.......... <font color="#ff6666">[AUTO-DENY]</font><br>
+            <br>
+            <b>Hard limits enforced. Cryptographic audit for compliance.</b>
+            </tt>
+        </blockquote>
+
+        <h3>3. Healthcare / Pharma -- PHI Access Control</h3>
+        <blockquote>
+            <tt>
+            Query public data........ <font color="#66ff66">[AUTO-ALLOW]</font><br>
+            Access patient records... <font color="#ffff66">[HITL]</font><br>
+            Bulk data export......... <font color="#ff6666">[AUTO-DENY]</font><br>
+            <br>
+            <b>HIPAA compliant. PHI access audit with proofs.</b>
+            </tt>
+        </blockquote>
+    </section>
+
+    <hr>
+
+    <section id="who-benefits">
+        <a name="who-benefits"></a>
+        <h2>Who Benefits</h2>
+
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Score</th><th>Role</th><th>Benefit</th></tr>
+            <tr><td align="center"><b>95</b></td><td>CISO / Security</td><td>Cryptographic identity, tamper-proof audit, trust degradation. Proof and control.</td></tr>
+            <tr><td align="center"><b>90</b></td><td>DevOps / SRE</td><td>Auto-handle 80% of ops. Only woken for HITL approvals.</td></tr>
+            <tr><td align="center"><b>85</b></td><td>Compliance / Legal</td><td>Signed audit trail. Defensible evidence for regulators.</td></tr>
+            <tr><td align="center"><b>75</b></td><td>Enterprise IT</td><td>One registry, one policy engine, one audit source.</td></tr>
+            <tr><td align="center"><b>65</b></td><td>Agent Developers</td><td>Standard SDK: connect() -&gt; discover() -&gt; invoke().</td></tr>
+            <tr><td align="center"><b>60</b></td><td>Business Leaders</td><td>Fewer incidents, simplified compliance, reduced risk.</td></tr>
+        </table>
+    </section>
+
+    <hr>
+
+    <!-- SECTION 2: Core Mechanism & Value -->
+    <section id="how-it-works">
+        <a name="how-it-works"></a>
+        <h2>How It Works</h2>
+        <p>Four layers decide every agent action in milliseconds:</p>
+
+        <table border="1" cellpadding="10" cellspacing="0" width="100%">
+            <tr bgcolor="#6b0000">
+                <th width="30">1</th>
+                <th><font color="#ff9999">AUTO-DENY</font> -- Hard blocks, no override</th>
+                <th><font color="#ff6666"><b>[DENY]</b></font></th>
+            </tr>
+            <tr><td colspan="3"><font size="2">Bank transfers over $5,000. Trust below 0.1. Budget exceeded. Instantly denied. Trust -= 0.05</font></td></tr>
+
+            <tr bgcolor="#003300">
+                <th width="30">2</th>
+                <th><font color="#99ff99">AUTO-ALLOW</font> -- Low-risk, no human needed</th>
+                <th><font color="#66ff66"><b>[ALLOW]</b></font></th>
+            </tr>
+            <tr><td colspan="3"><font size="2">Trust > 0.8 + low-risk resource. Read-only operations. Scaling within limits. Trust += 0.01</font></td></tr>
+
+            <tr bgcolor="#333300">
+                <th width="30">3</th>
+                <th><font color="#ffff99">HUMAN-IN-THE-LOOP</font> -- Needs human judgment</th>
+                <th><font color="#ffff66"><b>[HITL]</b></font></th>
+            </tr>
+            <tr><td colspan="3"><font size="2">Production deployments. Bank transfers $100-$500. Restricted data with trust &lt; 0.8. Pending until human approves.</font></td></tr>
+
+            <tr bgcolor="#1a0033">
+                <th width="30">4</th>
+                <th><font color="#cc99ff">ESCALATION</font> -- Needs multiple approvals</th>
+                <th><font color="#cc66ff"><b>[ESCALATE]</b></font></th>
+            </tr>
+            <tr><td colspan="3"><font size="2">Bank transfers over $1,000. Database schema changes. Requires 2+ separate sign-offs.</font></td></tr>
+        </table>
+    </section>
+
+    <hr>
+
+    <section id="integrations">
+        <a name="integrations"></a>
+        <h2>Integrates with Any Major Agentic AI</h2>
+        <p>eyeVesa supports seamless integration with top LLM providers and agent frameworks to ensure any autonomous agent can operate securely:</p>
+        <ul>
+            <li><b>Claude (Anthropic)</b> &mdash; Support via Claude Computer Use + custom MCP tool calling</li>
+            <li><b>OpenAI </b> &mdash; Support via OpenAI Agents + function calling to eyeVesa MCP endpoint</li>
+            <li><b>Grok (xAI)</b> &mdash; Native support via our Rust SDK</li>
+            <li><b>Gemini, Llama, LangGraph, CrewAI, AutoGen</b> &mdash; Supported via standard HTTP/MCP tool calling</li>
+        </ul>
+        <p>Agents interact via our <b>Rust SDK</b> (for native performance), standard <b>MCP Protocol</b> (<tt>/v1/mcp</tt>), or <b>REST APIs</b>, providing every agent with verified identity, policy enforcement, behavioral monitoring, and auditability.</p>
+    </section>
+
+    <hr>
+
+    <section id="features">
+        <a name="features"></a>
+        <h2>Core Capabilities</h2>
+        <p>Every agent request passes through decision layers before reaching your production systems.</p>
+
+        <table border="1" cellpadding="10" cellspacing="0" width="100%">
+            <tr bgcolor="#333">
+                <th>Capability</th><th>Description</th>
+            </tr>
+            <tr>
+                <td><b>Ed25519 Identity</b></td>
+                <td>Every agent gets a keypair on registration. Requests are signed, verified, and non-repudiable. No shared API keys.</td>
+            </tr>
+            <tr>
+                <td><b>PTV Attestation</b></td>
+                <td>Prove-Transform-Verify protocol binds Ed25519 identity to hardware (TPM/Secure Enclave). Cryptographic proof of platform integrity.</td>
+            </tr>
+            <tr>
+                <td><b>3-Tier Policy Engine</b></td>
+                <td>Embedded OPA (fast, in-process) -- external OPA server (centralized) -- local Go fallback (always works). Never blocked on policy.</td>
+            </tr>
+            <tr>
+                <td><b>HITL + Escalation</b></td>
+                <td>Human-in-the-loop approvals with multi-layer escalation. Slack buttons, PagerDuty alerts, webhooks, APNs/FCM push, Telegram Bot API, Discord webhooks. 5-min auto-escalation.</td>
+            </tr>
+            <tr>
+                <td><b>Trust Scoring</b></td>
+                <td>Dynamic trust scores adapt in real-time. Good behavior earns trust (+0.01). Policy violations degrade it (-0.05). Low-trust agents get contained.</td>
+            </tr>
+            <tr>
+                <td><b>Non-Repudiable Audit</b></td>
+                <td>Every action logged with Ed25519 signature. SHA-256 chain integrity. VerifyIntegrity() proves logs weren't tampered with.</td>
+            </tr>
+            <tr>
+                <td><b>Delegation</b></td>
+                <td>Agents delegate scoped authority to sub-agents. Max depth 3. Time-limited. Revocable. Every link in the chain is tracked.</td>
+            </tr>
+            <tr>
+                <td><b>mTLS + SPIRE</b></td>
+                <td>Three gateway modes: plaintext (dev), TLS (staging), mTLS (production). SPIRE/SPIFFE workload identity with local dev fallback.</td>
+            </tr>
+            <tr>
+                <td><b>Behavioral Anomalies</b></td>
+                <td>pgvector 1536-dim behavioral embeddings. Cosine similarity detects anomalous agents. Trust events feed the model.</td>
+            </tr>
+            <tr>
+                <td><b>LLM Integration</b></td>
+                <td>HITL summaries (OpenAI/Anthropic), audit narratives, natural-language-to-Rego policy translation. Graceful fallback when no API key.</td>
+            </tr>
+            <tr>
+                <td><b>Budget &amp; Rate Limits</b></td>
+                <td>Per-agent spend tracking. OPA checks budget before authorization. Rate limiting per agent per resource.</td>
+            </tr>
+            <tr>
+                <td><b>Skills System</b></td>
+                <td>Declarative skill registry with CRUD, assignment, endorsement chains, and per-skill trust scoring. Search and discover agents by skill.</td>
+            </tr>
+            <tr>
+                <td><b>Airport</b></td>
+                <td>Agent discovery and dispatch hub. Agents broadcast presence via heartbeat, search for peers by capability, and establish direct connections. Decentralized agent mesh.</td>
+            </tr>
+            <tr>
+                <td><b>Transaction Protocol</b></td>
+                <td>Ed25519-signed capability tokens and transaction receipts. Issue, verify, and revoke tokens. Non-repudiable proof of authorization for financial-grade transactions.</td>
+            </tr>
+            <tr>
+                <td><b>SPIRE Federation</b></td>
+                <td>Cross-cluster SPIFFE trust bundles. Register workloads, fetch remote bundles, attest workload identities. Multi-cluster SVID-based authentication.</td>
+            </tr>
+            <tr>
+                <td><b>Key Rotation</b></td>
+                <td>Ed25519 signing key rotation with configurable grace period. Rotate keys without downtime. Previous keys remain valid until grace expiry, then cleared.</td>
+            </tr>
+            <tr>
+                <td><b>Multi-Tenancy</b></td>
+                <td>Tenant-scoped isolation of agents, resources, policies, and audit logs. Create and manage tenants with dedicated approver pools.</td>
+            </tr>
+            <tr>
+                <td><b>Terminal UI</b></td>
+                <td>Full bubbletea TUI dashboard with real-time views of agents, resources, HITL approvals, delegation chains, and audit trail. Keyboard-navigable.</td>
+            </tr>
+            <tr>
+                <td><b>License-Gated Pro Features</b></td>
+                <td>Multi-layer HITL escalation, LLM integration (summaries, narratives, policy translation), behavioral anomaly detection, multi-tenancy, budget metering, push notifications. Enabled via license key.</td>
+            </tr>
+        </table>
+    </section>
+
+    <hr>
+
+    <!-- SECTION 3: Getting Started -->
+    <section id="quickstart">
+        <a name="quickstart"></a>
+        <h2>Quick Start</h2>
+        <p>Get running in under 5 minutes.</p>
+
+        <h3>Start Infrastructure</h3>
+        <pre>docker-compose up -d</pre>
+
+        <h3>Start Gateway</h3>
+        <pre># Terminal 1: Gateway core (Rust proxy)
+cd gateway/core &amp;&amp; cargo run
+
+# Terminal 2: Control plane (Go API)
+cd gateway/control-plane &amp;&amp; go run cmd/api/main.go</pre>
+
+        <h3>Register an Agent</h3>
+        <pre>curl -X POST http://localhost:8080/v1/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"hermes-ops","owner":"org:devops",
+       "capabilities":["infrastructure_read","deployment"],
+       "allowed_tools":["k8s_deploy","log_search"]}'</pre>
+
+        <h3>Verify Services</h3>
+        <pre>curl http://localhost:8080/health     # Control plane
+curl http://localhost:9443/health     # Gateway core
+curl http://localhost:8181/v1/data/agentid/authz/allow  # OPA</pre>
+    </section>
+
+    <hr>
+
+    <section id="install">
+        <a name="install"></a>
+        <h2>Install</h2>
+
+        <p>Install the latest CLI from main:</p>
+        <div class="code-block">
+            <pre id="install-curl">curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash</pre>
+            <a href="javascript:void(0)" onclick="copyCode('install-curl')" class="copy-btn">[Copy]</a>
+        </div>
+
+        <p>Install from a specific release tag:</p>
+        <div class="code-block">
+            <pre id="install-tag">VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash</pre>
+            <a href="javascript:void(0)" onclick="copyCode('install-tag')" class="copy-btn">[Copy]</a>
+        </div>
+
+        <p>Install via Bun:</p>
+        <div class="code-block">
+            <pre id="install-bun">bunx --bun bash -c "$(curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh)"</pre>
+            <a href="javascript:void(0)" onclick="copyCode('install-bun')" class="copy-btn">[Copy]</a>
+        </div>
+
+        <p>Install via Homebrew tap:</p>
+        <div class="code-block">
+            <pre id="install-brew">brew tap Hafizaljohari/eyevesa https://github.com/Hafizaljohari/eyeVesa
+brew install eyevesa</pre>
+            <a href="javascript:void(0)" onclick="copyCode('install-brew')" class="copy-btn">[Copy]</a>
+        </div>
+
+        <p>Run via Docker:</p>
+        <div class="code-block">
+            <pre id="install-docker">docker build -t eyevesa-cli -f cli/Dockerfile .
+docker run --rm eyevesa-cli --help</pre>
+            <a href="javascript:void(0)" onclick="copyCode('install-docker')" class="copy-btn">[Copy]</a>
+        </div>
+    </section>
+
+    <hr>
+
+    <section id="sdk">
+        <a name="sdk"></a>
+        <h2>SDK</h2>
+        <p>Agent SDKs for Python, Rust, and TypeScript. Every SDK provides cryptographic identity (Ed25519), MCP tool invocation, policy-based authorization, HITL approvals, PTV attestation, agent delegation, skills management, and a transaction protocol with signed capability tokens and receipts.</p>
+
+        <h3>SDK Comparison</h3>
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Feature</th><th>Python</th><th>Rust</th><th>TypeScript</th></tr>
+            <tr><td>Agent Registration</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>MCP Invocation</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Ed25519 Signing</td><td>PyNaCl</td><td>ed25519-dalek</td><td>tweetnacl</td></tr>
+            <tr><td>HITL Approvals</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>PTV Attestation</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Agent Delegation</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Skills System</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+            <tr><td>Token TX Protocol</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+            <tr><td>Framework Integrations</td><td>LangGraph, CrewAI, AutoGen</td><td>None</td><td>LangGraph, CrewAI, AutoGen</td></tr>
+            <tr><td>from_env() Config</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+            <tr><td>Async / Sync</td><td>Async (httpx)</td><td>Async (tokio)</td><td>Async (fetch)</td></tr>
+            <tr><td>Min Version</td><td>Python 3.10+</td><td>Rust 2021 Edition</td><td>Node 18+</td></tr>
+        </table>
+
+        <h3>Python SDK</h3>
+
+        <p>Package: <tt>agentid-sdk</tt> &middot; Dependencies: httpx, pydantic, PyNaCl</p>
+
+        <pre>
+import asyncio
+from agentid_sdk import AgentClient, AgentConfig
+
+async def main():
+    config = AgentConfig(
+        agent_id="my-agent-001",
+        name="my-agent",
+        owner="my-team",
+        gateway_endpoint="http://localhost:9443",
+    )
+    async with AgentClient(config) as client:
+        await client.connect()
+        print(f"Trust score: {client.trust_score}")
+        tools = await client.discover("mcp")
+        result = await client.invoke(
+            resource_id="d4385f9f-bcf8-47b9-90f4-b1fce91def59",
+            tool="read",
+            params={"location": "Kuala Lumpur"},
+        )
+        print(f"Result: {result.data}")
+
+asyncio.run(main())
+        </pre>
+
+        <h3>Rust SDK</h3>
+
+        <p>Crate: <tt>agentid-sdk</tt> &middot; Dependencies: tokio, reqwest, ed25519-dalek, serde</p>
+
+        <pre>
+use agentid_sdk::{AgentClient, AgentConfig};
+use ed25519_dalek::SigningKey;
+use rand::rngs::OsRng;
+
+#[tokio::main]
+async fn main() {
+    let config = AgentConfig {
+        agent_id: "my-agent-001".into(),
+        name: "my-agent".into(),
+        owner: "my-team".into(),
+        gateway_endpoint: "http://localhost:9443".into(),
+        capabilities: vec!["read".into(), "write".into()],
+        allowed_tools: vec!["log_search".into()],
+    };
+    let signing_key = SigningKey::generate(&mut OsRng);
+    let client = AgentClient::connect(config, signing_key).await.unwrap();
+    println!("Trust score: {}", client.trust_score());
+    let result = client.invoke(
+        "d4385f9f-bcf8-47b9-90f4-b1fce91def59",
+        "read",
+        serde_json::json!({"location": "Kuala Lumpur"}),
+    ).await.unwrap();
+    println!("Result: {}", result.data);
+}
+        </pre>
+
+        <h3>TypeScript SDK</h3>
+
+        <p>Package: <tt>agentid-sdk</tt> &middot; Dependencies: tweetnacl</p>
+
+        <pre>
+import { AgentClient, AgentConfig } from "agentid-sdk";
+
+const config: AgentConfig = {
+    agentId: "my-agent-001",
+    name: "my-agent",
+    owner: "my-team",
+    gatewayEndpoint: "http://localhost:9443",
+};
+const client = new AgentClient(config);
+await client.connect();
+console.log(`Trust score: ${client.trustScore}`);
+const tools = await client.discover("mcp");
+const result = await client.invoke(
+    "d4385f9f-bcf8-47b9-90f4-b1fce91def59",
+    "read",
+    { location: "Kuala Lumpur" },
+);
+console.log(`Result: ${result.data}`);
+        </pre>
+
+        <h3>Framework Integrations</h3>
+        <p>Python and TypeScript SDKs include ready-made integrations for popular agent frameworks:</p>
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Framework</th><th>Integration</th><th>Methods</th></tr>
+            <tr><td><b>LangGraph</b></td><td>LangGraphIntegration</td><td>from_config(), connect(), get_tools(), call_tool(), authorize_and_invoke()</td></tr>
+            <tr><td><b>CrewAI</b></td><td>CrewAIIntegration</td><td>from_config(), connect(), create_tool_definition()</td></tr>
+            <tr><td><b>AutoGen</b></td><td>AutoGenIntegration</td><td>from_config(), connect(), get_function_definitions(), execute_function()</td></tr>
+        </table>
+
+        <h3>Configuration</h3>
+        <p>All three SDKs read from environment variables or constructor arguments:</p>
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Variable</th><th>Default</th><th>Description</th></tr>
+            <tr><td><tt>AGENT_ID</tt></td><td>UUID v4</td><td>Unique agent identifier</td></tr>
+            <tr><td><tt>AGENT_NAME</tt></td><td>python-agent/node-agent</td><td>Human-readable name</td></tr>
+            <tr><td><tt>AGENT_OWNER</tt></td><td>default</td><td>Owning entity (org:team)</td></tr>
+            <tr><td><tt>GATEWAY_ENDPOINT</tt></td><td>http://localhost:9443</td><td>eyeVesa Gateway URL</td></tr>
+        </table>
+
+        <h3>SDK API Endpoints</h3>
+        <table border="1" cellpadding="4" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Method</th><th>Path</th><th>SDK Method</th></tr>
+            <tr><td>POST</td><td><tt>/v1/register</tt></td><td>connect()</td></tr>
+            <tr><td>GET</td><td><tt>/v1/resources</tt></td><td>discover()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/auth</tt></td><td>authorize (internal)</td></tr>
+            <tr><td>POST</td><td><tt>/v1/mcp</tt></td><td>mcp_initialize / mcp_list_tools / mcp_call_tool</td></tr>
+            <tr><td>POST</td><td><tt>/v1/delegate</tt></td><td>delegate()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/ptv/attest</tt></td><td>attest()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/ptv/bind</tt></td><td>bind()</td></tr>
+            <tr><td>GET</td><td><tt>/v1/ptv/verify/{id}</tt></td><td>verify_binding()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/hitl/request</tt></td><td>request_approval()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/hitl/{id}/decide</tt></td><td>decide_approval()</td></tr>
+            <tr><td>GET</td><td><tt>/v1/hitl/{id}</tt></td><td>get_approval_status()</td></tr>
+            <tr><td>GET</td><td><tt>/v1/hitl/pending</tt></td><td>list_pending_approvals()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/verify-signature</tt></td><td>verify_signature()</td></tr>
+            <tr><td>GET/POST</td><td><tt>/v1/skills</tt></td><td>list_skills() / create_skill()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/agents/{id}/skills</tt></td><td>assign_skill()</td></tr>
+            <tr><td>GET</td><td><tt>/v1/agents/{id}/skill-trust</tt></td><td>get_skill_trust()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/tx/issue</tt></td><td>issue_token()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/tx/verify</tt></td><td>verify_token()</td></tr>
+            <tr><td>POST</td><td><tt>/v1/tx/receipt</tt></td><td>issue_receipt()</td></tr>
+        </table>
+    </section>
+
+    <hr>
+
+    <section id="hermes">
+        <a name="hermes"></a>
+        <h2>Connect with Hermes Agent</h2>
+        <p>Hermes is a self-improving autonomous AI agent by <a href="https://nousresearch.com" target="_blank" rel="noopener">Nous Research</a>.
+        It features 70+ built-in tools, MCP client/server support, persistent memory, and runs on 20+ messaging platforms.
+        Here's how to connect it to eyeVesa for identity, authorization, and audit.</p>
+
+        <h3>Install Hermes</h3>
+        <pre>curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash</pre>
+
+        <h3>Register Hermes as an Agent</h3>
+        <pre>curl -X POST http://localhost:8080/v1/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "hermes-ops",
+    "owner": "org:devops",
+    "capabilities": ["infrastructure_read", "infrastructure_write", "deployment"],
+    "allowed_tools": ["k8s_deploy", "k8s_scale", "log_search", "incident_create"],
+    "max_budget_usd": 500.0,
+    "delegation_policy": "single_level",
+    "behavioral_tags": ["production", "sre", "high_autonomy"]
+  }'</pre>
+
+        <h3>Configure Hermes MCP to Use Gateway</h3>
+        <pre>mcp_servers:
+  agentid-gateway:
+    url: "http://localhost:9443/v1/mcp"
+    headers:
+      X-Agent-ID: "YOUR-AGENT-ID"
+    tools:
+      include: [tools/list, tools/call, resources/list, prompts/list]</pre>
+
+        <h3>Set Environment Variables</h3>
+        <pre>EYEVESA_AGENT_ID=your-agent-id-here
+EYEVESA_AGENT_NAME=hermes-ops
+EYEVESA_AGENT_OWNER=org:devops
+EYEVESA_GATEWAY=https://gateway.yourcompany.com:9443
+EYEVESA_KEY_PATH=/run/secrets/hermes.key</pre>
+
+        <h3>Two-Layer Security</h3>
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Layer</th><th>System</th><th>What it Controls</th></tr>
+            <tr><td><b>Hermes approval</b></td><td>Hermes Agent</td><td>Should this <i>shell command</i> run? (local process safety)</td></tr>
+            <tr><td><b>eyeVesa authorization</b></td><td>eyeVesa Gateway</td><td>Should this <i>agent identity</i> access this <i>enterprise resource</i>? (remote access policy)</td></tr>
+        </table>
+
+        <h3>Decision Flow</h3>
+        <pre>
+User sends message to Hermes (Telegram/Discord/CLI)
+  |
+  +-- Hermes LLM reasons about the request
+  |
+  +-- Is it an enterprise resource? (via eyeVesa Gateway MCP)
+        |
+        +-- Gateway verifies Ed25519 identity
+        |
+        +-- Gateway evaluates OPA policy
+        |     +-- AUTO-DENY  (trust &lt; 0.1, budget exceeded, never event)
+        |     +-- AUTO-ALLOW (trust &gt; 0.8, low-risk, tool in allowed_tools)
+        |     +-- HITL       (production deploy, bank transfer &gt; $100)
+        |
+        +-- Gateway signs audit log entry
+        |
+        +-- Gateway returns result + trust delta to Hermes
+        </pre>
+
+        <p><a href="https://github.com/hafizaljohari/eyeVesa/blob/main/docs/HERMES_SETUP_GUIDE.md" target="_blank" rel="noopener">[Full Hermes Setup Guide]</a></p>
+    </section>
+
+    <hr>
+
+    <!-- SECTION 4: Deep Technical Reference -->
+    <section id="architecture">
+        <a name="architecture"></a>
+        <h2>Architecture</h2>
+        <p>Dual-protocol gateway: Rust core proxies to Go control plane for auth, registration, and crypto.</p>
+
+        <pre>
++-------------------------------------------------------+
+|                     ENTERPRISE                        |
+|                                                       |
+|  +-------------+  +-------------+  +--------------+   |
+|  | K8s Adapter |  |  DB Adapter |  | Slack Adapter |   |
+|  |  (Go :8443) |  |  (Go :8443) |  |  (Go :8443)   |   |
+|  +------+------+  +------+------+  +------+-------+   |
+|         |                 |                |           |
+|         +--------+--------+----------------+           |
+|                  |                                     |
+|                  v                                     |
+|       +----------------------+                        |
+|       |   eyeVesa Gateway    |                        |
+|       |                      |                        |
+|       |  +----------------+ |                        |
+|       |  | Gateway Core   | |                        |
+|       |  | (Rust :9443)   | |                        |
+|       |  | mTLS, proxy,  | |                        |
+|       |  | crypto, MCP    | |                        |
+|       |  +----------------+ |                        |
+|       |                      |                        |
+|       |  +----------------+ |                        |
+|       |  | Control Plane  | |                        |
+|       |  | (Go :8080)     | |                        |
+|       |  | REST, gRPC,    | |                        |
+|       |  | HITL, audit    | |                        |
+|       |  +--------+-------+ |                        |
+|       +----------+----------+                        |
+|                  |                                     |
+|    +-------------+-------------+                     |
+|    |             |             |                     |
+|    v             v             v                     |
+| +----------+ +---------+ +---------+               |
+| |PostgreSQL| |  SPIRE  | |   OPA   |               |
+| |+pgvector | |Identity | | Policy  |               |
+| | :5432    | |:8081/90 | | :8181   |               |
+| +----------+ +---------+ +---------+               |
+|                                                       |
+| +-----------------------------------------------+   |
+| | Agent SDK (Rust)                               |   |
+| | connect() -&gt; discover() -&gt; invoke() -&gt; delegate()|   |
+| +-----------------------------------------------+   |
++-------------------------------------------------------+
+        </pre>
+
+        <h3>Request Flow</h3>
+        <p>From agent action to audit log in 12 steps:</p>
+
+        <pre>
+ 1. Agent registers            -&gt; POST /v1/agents/register  -&gt; PostgreSQL
+ 2. Resource registers         -&gt; POST /v1/resources/register -&gt; PostgreSQL
+ 3. Agent connects via SDK     -&gt; mTLS to Gateway Core (:9443)
+ 4. Agent discovers tools      -&gt; GET /v1/agents/{id}
+ 5. Agent invokes a tool       -&gt; Ed25519-signed MCP request
+ 6. Gateway verifies signature
+ 7. Gateway checks policy       -&gt; OPA evaluates Rego rules
+ 8. If HITL required            -&gt; Write to hitl_approvals, notify human
+ 9. If allowed                  -&gt; Proxy MCP request to Resource Adapter
+10. Result returns              -&gt; Agent gets response + trust score
+11. Audit log written           -&gt; Ed25519-signed entry
+12. Trust score updated         -&gt; +0.01 or -0.05
+        </pre>
+    </section>
+
+    <hr>
+
+    <section id="ptv">
+        <a name="ptv"></a>
+        <h2>PTV: Prove-Transform-Verify</h2>
+        <p>Hardware-rooted identity attestation. Agents prove their platform identity, the gateway transforms it into a binding, and any party can verify.</p>
+
+        <pre>
+Prove:
+  Agent generates hardware attestation (TPM / Secure Enclave)
+  Signs with Ed25519 identity key
+  Submits to /v1/ptv/attest
+
+Transform:
+  Gateway verifies TPM signature
+  Creates identity binding (attestation + public key + expiry)
+  Stores binding in identity_bindings table
+  /v1/ptv/bind
+
+Verify:
+  Any party checks binding expiry and signature
+  Confirms agent is who it claims to be
+  /v1/ptv/verify/{bindingID}
+        </pre>
+
+        <p>Three-step protocol. No shared secrets. No API keys. Cryptographic proof that the agent
+        ran on specific hardware at a specific time.</p>
+    </section>
+
+    <hr>
+
+    <section id="opa">
+        <a name="opa"></a>
+        <h2>3-Tier Policy Engine</h2>
+        <p>Never blocked on policy. Three fallback layers ensure authorization always returns an answer.</p>
+
+        <table border="1" cellpadding="10" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Tier</th><th>How</th><th>Latency</th><th>When Used</th></tr>
+            <tr>
+                <td><b>1. Embedded OPA</b></td>
+                <td>Rego policies compiled and evaluated in-process via OPA Go SDK</td>
+                <td>&lt;1ms</td>
+                <td>Default. Always available. No external dependency.</td>
+            </tr>
+            <tr>
+                <td><b>2. External OPA</b></td>
+                <td>HTTP query to standalone OPA server at OPA_ENDPOINT</td>
+                <td>~5ms</td>
+                <td>Centralized policy management. Hot-reload without gateway restart.</td>
+            </tr>
+            <tr>
+                <td><b>3. Local Fallback</b></td>
+                <td>Hardcoded Go rules: trust thresholds, tool allowlists, budget limits</td>
+                <td>&lt;0.1ms</td>
+                <td>Everything else fails. Last line of defense. Always works.</td>
+            </tr>
+        </table>
+
+        <p>Policy decisions return four fields: <tt>allow</tt>, <tt>requires_hitl</tt>, <tt>reason</tt>, <tt>trust_delta</tt>.
+        The gateway updates the agent's trust score based on <tt>trust_delta</tt> after every call.</p>
+    </section>
+
+    <hr>
+
+    <section id="hitl">
+        <a name="hitl"></a>
+        <h2>Human-in-the-Loop</h2>
+        <p>When policy is uncertain, humans decide. And they get notified everywhere.</p>
+
+        <h3>Approval Flow</h3>
+        <pre>
+Request enters HITL:
+  1. Write to hitl_approvals table (persistent, won't disappear)
+  2. Notify primary approver (Slack DM / push notification / webhook)
+  3. Start expiry timer (default: 30 minutes)
+  4. Start escalation timer (5 min -&gt; secondary -&gt; 15 min -&gt; team channel)
+
+Minute 0:    Notify primary approver
+Minute 5:    No response? Escalate to secondary approver
+Minute 15:   No response? Escalate to team channel (anyone can approve)
+Minute 30:   No response? EXPIRED (never auto-approve)
+             Trust -= 0.01 for expired approval
+
+For Layer 4 (escalation):
+  Requires 2 separate approvals (e.g., VP Engineering + CTO)
+  First approval: marks 1/2 approved, still pending
+  Second approval: marks 2/2 approved, request executes
+        </pre>
+
+        <h3>Notification Backends</h3>
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Backend</th><th>How</th><th>Interactive?</th></tr>
+            <tr><td><b>Slack</b></td><td>Webhook with interactive Approve/Deny buttons</td><td>Yes</td></tr>
+            <tr><td><b>PagerDuty</b></td><td>Events API v2 payload with severity and links</td><td>Links only</td></tr>
+            <tr><td><b>Webhook</b></td><td>Generic JSON POST with X-EyeVesa-Event header</td><td>Custom</td></tr>
+            <tr><td><b>APNs</b></td><td>Push notification to iOS devices (JWT auth)</td><td>Tap to approve</td></tr>
+            <tr><td><b>FCM</b></td><td>Push notification to Android devices</td><td>Tap to approve</td></tr>
+            <tr><td><b>Telegram</b></td><td>Bot API sendMessage with HTML parse mode. TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID</td><td>Links</td></tr>
+            <tr><td><b>Discord</b></td><td>Webhook with rich embeds (title, description, color, footer). DISCORD_WEBHOOK_URL</td><td>Custom</td></tr>
+        </table>
+    </section>
+
+    <hr>
+
+    <section id="trust">
+        <a name="trust"></a>
+        <h2>Trust Scoring</h2>
+        <p>Trust is earned, not given. Agents start at 1.0 and adapt based on behavior.</p>
+
+        <table border="1" cellpadding="6" cellspacing="0">
+            <tr bgcolor="#333"><th>Outcome</th><th>Trust Change</th><th>Effect</th></tr>
+            <tr><td><font color="#66ff66">Successful call</font></td><td><tt>+0.01</tt></td><td>Gradually earns more autonomy</td></tr>
+            <tr><td><font color="#ffff66">Policy denied</font></td><td><tt>-0.05</tt></td><td>Restricted until recovered</td></tr>
+            <tr><td><font color="#ff9966">Budget exceeded</font></td><td><tt>-0.10</tt></td><td>Severe restriction</td></tr>
+            <tr><td><font color="#ff6666">Never-event violation</font></td><td><tt>BLOCKED</tt></td><td>Auto-deny, no override</td></tr>
+        </table>
+
+        <br>
+
+        <p><b>Trust Thresholds:</b></p>
+        <ul>
+            <li><font color="#66ff66"><b>&gt;= 0.8</b></font> -- Auto-allow for low-risk</li>
+            <li><font color="#6699ff"><b>&gt;= 0.5</b></font> -- Normal operation, HITL for risky</li>
+            <li><font color="#ffff66"><b>&gt;= 0.1</b></font> -- Restricted, HITL for everything</li>
+            <li><font color="#ff6666"><b>&lt; 0.1</b></font> -- BLOCKED, cannot operate</li>
+        </ul>
+    </section>
+
+    <hr>
+
+    <section id="delegation">
+        <a name="delegation"></a>
+        <h2>Agent Delegation</h2>
+        <p>Agents can delegate scoped authority to sub-agents. But not forever, and not without limits.</p>
+
+        <pre>
+Hermes (level 0, trust: 0.92)
+  +-- Worker Agent (level 1, delegated by Hermes)
+        scope: ["log_search"] only
+        max_depth: 1 (cannot delegate further)
+        expires: 1 hour
+
+        +-- NOT ALLOWED -- delegation_policy prevents depth &gt; 1
+        </pre>
+
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Property</th><th>Value</th><th>Why</th></tr>
+            <tr><td>Max depth</td><td>3</td><td>Prevents unbounded delegation chains</td></tr>
+            <tr><td>Scope</td><td>Tool-level allowlist</td><td>Sub-agent can only use delegated tools</td></tr>
+            <tr><td>Expiry</td><td>Configurable (default: 1 hour)</td><td>No permanent sub-agent permissions</td></tr>
+            <tr><td>Revocation</td><td>DELETE /v1/delegations/{id}</td><td>Parent can revoke at any time</td></tr>
+            <tr><td>Chain tracking</td><td>parent_agent_id + child_agent_id</td><td>Full audit trail of who delegated to whom</td></tr>
+        </table>
+    </section>
+
+    <hr>
+
+    <section id="cli">
+        <a name="cli"></a>
+        <h2>CLI</h2>
+        <p>The <tt>eyevesa</tt> CLI covers agent management, authorization, HITL, audit, skills, SPIRE federation, airport discovery, budget, keys, tenants, push notifications, and more. <b>22 parent commands, 85+ subcommands, all working.</b></p>
+
+        <pre>
+# Agent operations
+eyevesa agent register --name hermes-ops --owner org:devops --capabilities "read,write" --tools "k8s_deploy,log_search"
+eyevesa agent list
+eyevesa agent get &lt;agent-id&gt;
+eyevesa agent trust &lt;agent-id&gt;
+
+# Authorization
+eyevesa authorize --agent-id &lt;id&gt; --action read --resource-id &lt;rid&gt;
+
+# HITL approvals
+eyevesa hitl list
+eyevesa hitl approve &lt;approval-id&gt;
+eyevesa hitl deny &lt;approval-id&gt;
+eyevesa hitl status &lt;approval-id&gt;
+eyevesa hitl request --action deploy --reason "prod deploy" --risk-level high
+eyevesa hitl escalate &lt;approval-id&gt;
+
+# Delegation
+eyevesa delegate create --parent &lt;id&gt; --child &lt;id&gt; --scope "log_search" --max-depth 1
+eyevesa delegate list &lt;agent-id&gt;
+eyevesa delegate revoke &lt;delegation-id&gt;
+eyevesa delegate validate &lt;delegation-id&gt;
+
+# Audit
+eyevesa audit --agent-id &lt;id&gt; --limit 50
+
+# Resources
+eyevesa resource register --name k8s-api --type mcp_server --endpoint https://k8s:8443
+eyevesa resource list
+eyevesa resource get &lt;resource-id&gt;
+
+# MCP
+eyevesa mcp initialize
+eyevesa mcp tools-list
+eyevesa mcp call &lt;tool&gt; --params '{"key":"val"}'
+
+# Skills (11 subcommands)
+eyevesa skills list --category monitoring
+eyevesa skills search --query "kubernetes"
+eyevesa skills create --name k8s-deploy --description "Deploy to K8s" --category ops --risk-level medium
+eyevesa skills assign --agent-id &lt;id&gt; --skill-id &lt;sid&gt; --proficiency expert
+eyevesa skills endorse --agent-id &lt;id&gt; --skill-id &lt;sid&gt;
+eyevesa skills trust &lt;agent-id&gt;
+
+# Transaction Protocol
+eyevesa tx issue --subject &lt;agent-id&gt; --scope '{"read":true}' --ttl 3600
+eyevesa tx verify &lt;token-id&gt;
+eyevesa tx revoke &lt;token-id&gt; --reason "compromised"
+eyevesa tx receipt --token-id &lt;tid&gt; --action purchase --value 50
+
+# SPIRE Federation (13 subcommands)
+eyevesa spire create-bundle --name prod-cluster --domain prod.example.org
+eyevesa spire list-bundles
+eyevesa spire fetch-bundle --endpoint https://spire.other-cluster:8081
+eyevesa spire register-workload --spiffe-id spiffe://prod/k8s/my-svc --selectors "k8s:pod-label:app=myapp"
+eyevesa spire attest-workload &lt;workload-id&gt;
+eyevesa spire status
+
+# Airport (Agent Discovery)
+eyevesa airport search --capability "database"
+eyevesa airport online
+eyevesa airport profile &lt;agent-id&gt;
+eyevesa airport heartbeat
+eyevesa airport connections
+
+# Budget & Rate Limits
+eyevesa budget check --agent-id &lt;id&gt;
+eyevesa budget record --agent-id &lt;id&gt; --amount 10 --resource "api-call"
+
+# Key Rotation
+eyevesa keys rotate
+eyevesa keys status
+eyevesa keys clear-previous
+
+# Tenants
+eyevesa tenants create --name acme-corp --domain acme.com
+eyevesa tenants list
+eyevesa tenants get &lt;tenant-id&gt;
+
+# Push Notifications
+eyevesa push register --token &lt;device-token&gt; --platform ios
+eyevesa push list
+eyevesa push deactivate &lt;token-id&gt;
+
+# PTV Attestation
+eyevesa ptv attest --platform tpm2.0 --firmware-version 2.1
+eyevesa ptv verify &lt;binding-id&gt;
+
+# Other CLI Commands
+eyevesa init                       # Interactive agent registration wizard
+eyevesa config show                # Show current config
+eyevesa doctor                     # Diagnostic checks
+eyevesa ready                      # Readiness check
+eyevesa discover                   # Explore resources + MCP tools
+eyevesa verify-signature &lt;agent-id&gt; &lt;message&gt; &lt;signature&gt;
+eyevesa tui                        # Full terminal dashboard
+
+# Authentication
+eyevesa auth api-key create --label "ci-cd"
+eyevesa auth api-key list
+eyevesa auth api-key revoke &lt;key-id&gt;
+        </pre>
+    </section>
+
+    <hr>
+
+    <section id="api">
+        <a name="api"></a>
+        <h2>API Endpoints</h2>
+
+        <h3>Control Plane (HTTP :8080)</h3>
+        <table border="1" cellpadding="4" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Method</th><th>Path</th><th>Description</th></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>System</b></td></tr>
+            <tr><td>GET</td><td><tt>/health</tt></td><td>Health check</td></tr>
+            <tr><td>GET</td><td><tt>/ready</tt></td><td>Readiness check</td></tr>
+            <tr><td>GET</td><td><tt>/identity</tt></td><td>SPIFFE identity info</td></tr>
+            <tr><td>GET</td><td><tt>/metrics</tt></td><td>Prometheus metrics</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Agents</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/agents/register</tt></td><td>Register a new AI agent</td></tr>
+            <tr><td>GET</td><td><tt>/v1/agents</tt></td><td>List all agents</td></tr>
+            <tr><td>GET</td><td><tt>/v1/agents/{id}</tt></td><td>Get agent by ID</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Resources</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/resources/register</tt></td><td>Register an enterprise resource</td></tr>
+            <tr><td>GET</td><td><tt>/v1/resources</tt></td><td>List all resources</td></tr>
+            <tr><td>GET</td><td><tt>/v1/resources/{id}</tt></td><td>Get resource by ID</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Authorization</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/authorize</tt></td><td>Authorize an agent action (OPA)</td></tr>
+            <tr><td>POST</td><td><tt>/v1/verify-signature</tt></td><td>Verify Ed25519 signature</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Authentication</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/auth/challenge</tt></td><td>Auth challenge request</td></tr>
+            <tr><td>POST</td><td><tt>/v1/auth/login</tt></td><td>Agent login with challenge response</td></tr>
+            <tr><td>POST</td><td><tt>/v1/auth/api-keys</tt></td><td>Create API key</td></tr>
+            <tr><td>GET</td><td><tt>/v1/auth/api-keys</tt></td><td>List API keys</td></tr>
+            <tr><td>DELETE</td><td><tt>/v1/auth/api-keys/{id}</tt></td><td>Revoke API key</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Delegation</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/delegate</tt></td><td>Delegate scope to another agent</td></tr>
+            <tr><td>POST</td><td><tt>/v1/delegate/validate</tt></td><td>Validate delegation chain</td></tr>
+            <tr><td>GET</td><td><tt>/v1/delegations/{id}</tt></td><td>Get delegation chain</td></tr>
+            <tr><td>DELETE</td><td><tt>/v1/delegations/{id}</tt></td><td>Revoke a delegation</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>HITL</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/hitl/request</tt></td><td>Request human approval</td></tr>
+            <tr><td>GET</td><td><tt>/v1/hitl/pending</tt></td><td>List pending approvals</td></tr>
+            <tr><td>GET</td><td><tt>/v1/hitl/{id}</tt></td><td>Get approval status</td></tr>
+            <tr><td>POST</td><td><tt>/v1/hitl/{id}/decide</tt></td><td>Approve/reject with FaceID/password</td></tr>
+            <tr><td>POST</td><td><tt>/v1/hitl/escalate</tt></td><td>Escalated multi-approver HITL</td></tr>
+            <tr><td>POST</td><td><tt>/v1/hitl/escalate/decision</tt></td><td>Process escalation chain decision</td></tr>
+            <tr><td>GET</td><td><tt>/v1/hitl/escalate/{id}</tt></td><td>Get escalation chain status</td></tr>
+            <tr><td>GET</td><td><tt>/v1/notifications</tt></td><td>Get notifications for approver</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>PTV (Prove-Transform-Verify)</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/ptv/attest</tt></td><td>Attest hardware identity</td></tr>
+            <tr><td>POST</td><td><tt>/v1/ptv/bind</tt></td><td>Transform attestation to binding</td></tr>
+            <tr><td>GET</td><td><tt>/v1/ptv/verify/{id}</tt></td><td>Verify identity binding</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Audit</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/audit</tt></td><td>Query audit trail</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Behavioral Anomaly Detection</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/behavior/{id}/embedding</tt></td><td>Update behavioral embedding</td></tr>
+            <tr><td>GET</td><td><tt>/v1/behavior/{id}/anomalies</tt></td><td>Detect behavioral anomalies</td></tr>
+            <tr><td>GET</td><td><tt>/v1/behavior/{id}/similar</tt></td><td>Find similar agents by behavior</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>LLM Integration</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/llm/hitl-summary/{id}</tt></td><td>Generate HITL summary</td></tr>
+            <tr><td>POST</td><td><tt>/v1/llm/audit-narrative</tt></td><td>Generate audit narrative</td></tr>
+            <tr><td>POST</td><td><tt>/v1/llm/translate-policy</tt></td><td>Translate natural language to Rego</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Budget &amp; Rate Limits</b></td></tr>
+            <tr><td>GET</td><td><tt>/v1/budget/check</tt></td><td>Check agent budget</td></tr>
+            <tr><td>POST</td><td><tt>/v1/budget/spend</tt></td><td>Record agent spend</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Push Notifications</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/push/register</tt></td><td>Register push token</td></tr>
+            <tr><td>GET</td><td><tt>/v1/push/tokens</tt></td><td>List push tokens</td></tr>
+            <tr><td>POST</td><td><tt>/v1/push/deactivate</tt></td><td>Deactivate push token</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Key Rotation</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/keys/rotate</tt></td><td>Rotate Ed25519 signing key</td></tr>
+            <tr><td>GET</td><td><tt>/v1/keys/status</tt></td><td>Get key rotation status</td></tr>
+            <tr><td>POST</td><td><tt>/v1/keys/clear-previous</tt></td><td>Clear previous key</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Multi-Tenancy</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/tenants</tt></td><td>Create tenant</td></tr>
+            <tr><td>GET</td><td><tt>/v1/tenants</tt></td><td>List tenants</td></tr>
+            <tr><td>GET</td><td><tt>/v1/tenants/{id}</tt></td><td>Get tenant detail</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Skills</b></td></tr>
+            <tr><td>GET</td><td><tt>/v1/skills</tt></td><td>List skills (optional category filter)</td></tr>
+            <tr><td>POST</td><td><tt>/v1/skills</tt></td><td>Create a skill</td></tr>
+            <tr><td>GET</td><td><tt>/v1/skills/{id}</tt></td><td>Get skill by ID</td></tr>
+            <tr><td>PUT</td><td><tt>/v1/skills/{id}</tt></td><td>Update skill</td></tr>
+            <tr><td>DELETE</td><td><tt>/v1/skills/{id}</tt></td><td>Delete skill</td></tr>
+            <tr><td>GET</td><td><tt>/v1/skills/search</tt></td><td>Search skills by name/description</td></tr>
+            <tr><td>POST</td><td><tt>/v1/agents/{id}/skills</tt></td><td>Assign skill to agent</td></tr>
+            <tr><td>GET</td><td><tt>/v1/agents/{id}/skills</tt></td><td>List agent skills</td></tr>
+            <tr><td>DELETE</td><td><tt>/v1/agents/{id}/skills/{skillId}</tt></td><td>Remove skill from agent</td></tr>
+            <tr><td>POST</td><td><tt>/v1/agents/{id}/skills/{skillId}/endorse</tt></td><td>Endorse agent skill</td></tr>
+            <tr><td>POST</td><td><tt>/v1/agents/{id}/skills/{skillId}/verify</tt></td><td>Verify agent skill</td></tr>
+            <tr><td>GET</td><td><tt>/v1/agents/{id}/skill-trust</tt></td><td>Get per-skill trust scores</td></tr>
+            <tr><td>POST</td><td><tt>/v1/agents/{id}/skill-trust/adjust</tt></td><td>Adjust skill trust score</td></tr>
+            <tr><td>POST</td><td><tt>/v1/skills/authz</tt></td><td>Check skill authorization</td></tr>
+            <tr><td>GET</td><td><tt>/v1/agents/{id}/skills/missing</tt></td><td>Find missing skills</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Transaction Protocol</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/tx/issue</tt></td><td>Issue capability token</td></tr>
+            <tr><td>POST</td><td><tt>/v1/tx/verify</tt></td><td>Verify capability token</td></tr>
+            <tr><td>POST</td><td><tt>/v1/tx/revoke/{id}</tt></td><td>Revoke capability token</td></tr>
+            <tr><td>GET</td><td><tt>/v1/tx/revoked</tt></td><td>List revoked tokens</td></tr>
+            <tr><td>POST</td><td><tt>/v1/tx/receipt</tt></td><td>Issue transaction receipt</td></tr>
+            <tr><td>POST</td><td><tt>/v1/tx/receipt/verify</tt></td><td>Verify transaction receipt</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>SPIRE Federation</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/spire/bundles</tt></td><td>Create trust bundle</td></tr>
+            <tr><td>GET</td><td><tt>/v1/spire/bundles</tt></td><td>List trust bundles</td></tr>
+            <tr><td>GET</td><td><tt>/v1/spire/bundles/{id}</tt></td><td>Get trust bundle</td></tr>
+            <tr><td>PUT</td><td><tt>/v1/spire/bundles/{id}</tt></td><td>Update trust bundle</td></tr>
+            <tr><td>DELETE</td><td><tt>/v1/spire/bundles/{id}</tt></td><td>Delete trust bundle</td></tr>
+            <tr><td>POST</td><td><tt>/v1/spire/bundles/verify</tt></td><td>Verify trust bundle</td></tr>
+            <tr><td>POST</td><td><tt>/v1/spire/bundles/fetch</tt></td><td>Fetch bundle from remote endpoint</td></tr>
+            <tr><td>POST</td><td><tt>/v1/spire/workloads</tt></td><td>Register workload</td></tr>
+            <tr><td>GET</td><td><tt>/v1/spire/workloads</tt></td><td>List workloads</td></tr>
+            <tr><td>GET</td><td><tt>/v1/spire/workloads/{id}</tt></td><td>Get workload</td></tr>
+            <tr><td>POST</td><td><tt>/v1/spire/workloads/{id}/attest</tt></td><td>Attest workload</td></tr>
+            <tr><td>DELETE</td><td><tt>/v1/spire/workloads/{id}</tt></td><td>Delete workload</td></tr>
+            <tr><td>GET</td><td><tt>/v1/spire/status</tt></td><td>SPIRE status</td></tr>
+            <tr bgcolor="#444"><td colspan="3"><b>Airport (Agent Discovery)</b></td></tr>
+            <tr><td>POST</td><td><tt>/v1/airport/heartbeat</tt></td><td>Agent heartbeat</td></tr>
+            <tr><td>GET</td><td><tt>/v1/airport/search</tt></td><td>Search agents by capability</td></tr>
+            <tr><td>GET</td><td><tt>/v1/airport/online</tt></td><td>List online agents</td></tr>
+            <tr><td>GET</td><td><tt>/v1/airport/profile/{id}</tt></td><td>Get agent airport profile</td></tr>
+            <tr><td>PUT</td><td><tt>/v1/airport/profile/{id}</tt></td><td>Update agent profile</td></tr>
+            <tr><td>GET</td><td><tt>/v1/airport/connections</tt></td><td>List active connections</td></tr>
+            <tr><td>GET</td><td><tt>/v1/airport/health</tt></td><td>Airport health</td></tr>
+        </table>
+
+        <h3>Core Proxy (HTTP/TLS/mTLS :9443)</h3>
+        <table border="1" cellpadding="4" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Method</th><th>Path</th><th>Description</th></tr>
+            <tr><td>GET</td><td><tt>/health</tt></td><td>Health check</td></tr>
+            <tr><td>POST</td><td><tt>/v1/mcp</tt></td><td>MCP JSON-RPC proxy</td></tr>
+            <tr><td>POST</td><td><tt>/v1/register</tt></td><td>Agent registration (proxied via gRPC)</td></tr>
+            <tr><td>POST</td><td><tt>/v1/auth</tt></td><td>Authorization (proxied via gRPC)</td></tr>
+            <tr><td>*</td><td><tt>/v1/*</tt></td><td>All other /v1/ paths forwarded to Go control plane</td></tr>
+        </table>
+
+        <p><b>Total: 86+ API endpoints</b> across all services.</p>
+
+        <h3>Gateway Modes</h3>
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Mode</th><th>Description</th><th>Use When</th></tr>
+            <tr><td><tt>plaintext</tt></td><td>HTTP, no TLS</td><td>Local development</td></tr>
+            <tr><td><tt>tls</tt></td><td>Server TLS, no client cert</td><td>Staging</td></tr>
+            <tr><td><tt>mtls</tt></td><td>Mutual TLS with client cert</td><td>Production</td></tr>
+        </table>
+    </section>
+
+    <hr>
+
+    <!-- SECTION 5: Support & Action -->
+    <section id="faq">
+        <a name="faq"></a>
+        <h2>FAQ</h2>
+
+        <dl>
+            <dt>What is eyeVesa?</dt>
+            <dd>An identity and trust layer for autonomous AI agents. It gives agents cryptographic identity (Ed25519), enforces real-time authorization via OPA, and produces non-repudiable audit trails &mdash; so enterprises can trust what their agents do.</dd>
+
+            <dt>How does eyeVesa authorize agent actions?</dt>
+            <dd>A 3-tier OPA policy engine evaluates each request: <b>auto-allow</b> (routine actions under threshold), <b>human-in-the-loop</b> (risky actions require approval), or <b>deny</b> (unauthorized). Policies are Rego rules evaluated against agent identity, action, resource, environment, and trust score.</dd>
+
+            <dt>What is PTV attestation?</dt>
+            <dd><b>Process Trait Verification</b> detects whether an agent process has been tampered with &mdash; code injection, binary replacement, or memory manipulation. Runtime measurements are compared against a registered baseline hash at every request.</dd>
+
+            <dt>What happens when HITL is triggered?</dt>
+            <dd>The action is paused. A notification is sent to the configured channel (Slack, PagerDuty, webhook, APNs, FCM, Telegram, or Discord). A human reviews and approves or rejects via button, API, or callback. If approved, the action proceeds; if rejected, it is denied and logged.</dd>
+
+            <dt>How does agent delegation work?</dt>
+            <dd>An agent can delegate authority to a sub-agent via a signed delegation token specifying scope (actions, resources, max depth). The sub-agent presents the chain when making requests. eyeVesa verifies all signatures, scope coverage, and chain integrity before allowing the action.</dd>
+
+            <dt>What gateway modes are available?</dt>
+            <dd>Three modes: <b>plaintext</b> (local development), <b>tls</b> (server-side TLS for staging/internal networks), and <b>mtls</b> (mutual TLS for production with client certificate verification).</dd>
+
+            <dt>How is the audit log tamper-proof?</dt>
+            <dd>Every audit entry is signed with Ed25519. The signature covers agent ID, action, resource, decision, and timestamp. Re-computing the signature on read instantly detects any modification.</dd>
+
+            <dt>What protocols does eyeVesa support?</dt>
+            <dd>eyeVesa is built around the <b>Model Context Protocol (MCP)</b> for agent-tool communication. It also provides REST/gRPC APIs for management, and supports SPIRE/X.509 SVID for workload identity.</dd>
+        </dl>
+    </section>
+
+    <hr>
+
+    <div id="cta">
+        <h2 align="center">Are you an agent or a merchant?</h2>
+        <p align="center"><i>eyeVesa works for both sides of the agent economy.</i></p>
+        <br>
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" id="cta-table">
+        <tr valign="top">
+            <td align="center" width="50%" class="cta-cell">
+            <div class="cta-box">
+                <font size="5" color="#66ff66"><b>Agent</b></font>
+                <p><font size="2">You build AI agents that need to<br>
+                access enterprise resources securely.</font></p>
+                <p>
+                <a href="#hermes" class="cta-btn">[Hermes SDK]</a>
+                &nbsp;
+                <a href="#quickstart" class="cta-btn">[Quick Start]</a>
+                </p>
+            </div>
+            </td>
+            <td align="center" width="50%" class="cta-cell">
+            <div class="cta-box">
+                <font size="5" color="#6699ff"><b>Merchant</b></font>
+                <p><font size="2">You run a software marketplace<br>
+                and need agent authentication.</font></p>
+                <p>
+                <a href="#ptv" class="cta-btn">[PTV &amp; Identity]</a>
+                &nbsp;
+                <a href="#api" class="cta-btn">[API Reference]</a>
+                </p>
+            </div>
+            </td>
+        </tr>
+        </table>
+    </div>
+
+    <hr>
+
+    <table width="100%" cellpadding="8"><tr valign="top">
+        <td width="60%">
+            <b>eyeVesa</b><br>
+            <font size="2">Identity and trust layer for the agentic economy.</font>
+        </td>
+        <td>
+            <font size="2"><b>Stack</b><br>
+            Rust Gateway, 
+            Go Control Plane, 
+            PostgreSQL, 
+            OPA/Rego</font>
+        </td>
+    </tr></table>
+
+    <hr>
+
+    <p align="center"><font size="1">&copy; 2026 eyeVesa. Proprietary license.</font></p>
+
+    <p align="center"><font size="1">Developed by <a href="https://safrplus.dev" target="_blank" rel="noopener" style="text-decoration:none"><b>Hafizal Johari</b></a> &middot; <a href="llm.txt" style="text-decoration:none">llm.txt</a></font></p>
+
+    <a href="#top" id="goUp" title="Go to top">&#9650;</a>
+
+    <script src="script.js"></script>
+</body>
+</html>

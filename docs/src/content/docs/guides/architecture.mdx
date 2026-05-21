@@ -1,0 +1,29 @@
+---
+title: Architecture
+description: eyeVesa platform architecture and runtime flow.
+---
+
+## Runtime Flow
+
+```text
+Agent (SDK) --mTLS--> Gateway Core --gRPC--> Control Plane --mTLS--> Resource (Adapter)
+                         |                       |
+                     MCP Proxy              Registry + Policy
+                                             SPIRE + Audit + HITL + PTV + Airport
+```
+
+## Gateway Core
+
+The Rust gateway core proxies MCP JSON-RPC requests and handles cryptographic identity, TLS, mTLS, and PTV identity verification. The gateway listens on port `9443` by default and can be configured through `PORT` and `GATEWAY_MODE`.
+
+## Control Plane
+
+The Go control plane exposes HTTP and gRPC APIs for agent registration, authorization, API keys, Airport discovery, audit logging, policy evaluation, HITL decisions, and PTV operations.
+
+## Policy And Trust
+
+Authorization decisions use OPA/Rego policies with local fallback behavior. Trust scoring is session-aware and can adjust per action based on previous outcomes, policy decisions, and escalation state.
+
+## Audit Trail
+
+Every action is logged with signature material so teams can verify integrity and reconstruct agent activity later.

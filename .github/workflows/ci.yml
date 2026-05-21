@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway/core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo check
+      - run: cargo test
+      - run: cargo clippy -- -D warnings
+      - name: Install tarpaulin
+        run: cargo install cargo-tarpaulin
+      - name: Generate coverage
+        run: cargo tarpaulin --out Xml --skip-clean
+      - name: Report coverage
+        run: cargo tarpaulin --out Stdout --skip-clean --quiet
+
+  sdk-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/agent-sdk-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo check
+      - run: cargo test
+      - run: cargo clippy -- -D warnings
+
+  go-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway/control-plane
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - run: go build ./...
+      - run: go test -race -coverprofile=coverage.out ./internal/...
+      - run: go vet ./...
+      - name: Check coverage
+        run: |
+          go tool cover -func=coverage.out
+          COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "Go coverage: ${COVERAGE}%"
+
+  adapter-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adapter/resource-adapter-go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - run: go build ./...
+      - run: go vet ./...
+
+  rust-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-security-tools-${{ runner.os }}
+      - name: Install cargo-audit
+        run: command -v cargo-audit || cargo install cargo-audit
+      - name: Install cargo-deny
+        run: command -v cargo-deny || cargo install cargo-deny
+      - name: Audit core proxy
+        run: cargo audit
+        working-directory: gateway/core
+      - name: Deny check core proxy
+        run: cargo deny check
+        working-directory: gateway/core
+      - name: Audit SDK
+        run: cargo audit
+        working-directory: sdk/agent-sdk-rust
+      - name: Deny check SDK
+        run: cargo deny check
+        working-directory: sdk/agent-sdk-rust
+
+  go-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Vuln check control plane
+        run: govulncheck ./...
+        working-directory: gateway/control-plane
+      - name: Vuln check resource adapter
+        run: govulncheck ./...
+        working-directory: adapter/resource-adapter-go
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [rust-check, go-check, adapter-check, sdk-check]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: agentid
+          POSTGRES_USER: agentid
+          POSTGRES_PASSWORD: agentid_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Run database migrations
+        run: |
+          for f in registry/migrations/*.sql; do
+            PGPASSWORD=agentid_dev psql -h localhost -U agentid -d agentid -f "$f"
+          done
+      - name: Build and start control plane
+        run: |
+          cd gateway/control-plane
+          go build -o /tmp/agentid-control ./cmd/api/
+          DATABASE_URL="postgres://agentid:agentid_dev@localhost:5432/agentid?sslmode=disable" \
+            POLICY_DIR="../../gateway/control-plane/policies" \
+            /tmp/agentid-control &
+          sleep 3
+      - name: Health check
+        run: curl -f http://localhost:8080/health
+      - name: Integration tests
+        run: |
+          cd gateway/control-plane
+          DATABASE_URL="postgres://agentid:agentid_dev@localhost:5432/agentid?sslmode=disable" \
+            go test -tags=integration ./internal/integration/ -v -timeout 60s
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [integration]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build control plane image
+        run: docker build -t agentid-control:ci ./gateway/control-plane
+      - name: Build core image
+        run: docker build -t agentid-core:ci ./gateway/core
+      - name: Build resource adapter image
+        run: docker build -t agentid-adapter:ci ./adapter/resource-adapter-go

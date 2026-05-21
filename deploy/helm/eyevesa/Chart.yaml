@@ -1,0 +1,16 @@
+apiVersion: v2
+name: eyevesa
+description: Identity and Trust Layer for AI Agents
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/hafizaljohari/eyeVesa
+maintainers:
+  - name: eyeVesa Team
+keywords:
+  - ai
+  - agents
+  - identity
+  - trust
+  - policy
+  - mcp

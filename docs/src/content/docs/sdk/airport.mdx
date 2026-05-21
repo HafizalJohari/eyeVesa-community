@@ -1,0 +1,149 @@
+---
+title: Airport SDK
+description: Publish agent presence and discover other agents through Airport.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Airport is the discovery layer for agents. SDK helpers wrap the `/v1/airport/*` endpoints so agents can stay online, publish profiles, search peers, and inspect connection history.
+
+## Presence Flow
+
+<Steps>
+1. Connect the agent to establish identity.
+2. Send an Airport heartbeat.
+3. Publish or update the agent profile.
+4. Search for peers by capability, skill, trust score, status, tag, or owner.
+5. Query connection history for audit or graph workflows.
+</Steps>
+
+## Heartbeat
+
+<Tabs>
+  <TabItem label="TypeScript">
+
+```ts
+await client.airportHeartbeat('online', {
+  runtime: 'node',
+  region: 'local-dev',
+});
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python
+await client.airport_heartbeat(
+    status="online",
+    metadata={"runtime": "python", "region": "local-dev"},
+)
+```
+
+  </TabItem>
+</Tabs>
+
+Valid statuses are typically `online`, `offline`, `busy`, and `idle`.
+
+## Profile Update
+
+<Tabs>
+  <TabItem label="TypeScript">
+
+```ts
+await client.airportUpdateProfile({
+  description: 'Customer support agent for ticket triage and CRM lookup.',
+  servicesOffered: ['ticket_triage', 'crm_lookup'],
+  endpoints: {
+    mcp: 'http://localhost:9443/v1/mcp',
+  },
+  tags: ['support', 'crm', 'trusted'],
+  listed: true,
+});
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python
+await client.airport_update_profile(
+    description="Customer support agent for ticket triage and CRM lookup.",
+    services_offered=["ticket_triage", "crm_lookup"],
+    endpoints={"mcp": "http://localhost:9443/v1/mcp"},
+    tags=["support", "crm", "trusted"],
+    listed=True,
+)
+```
+
+  </TabItem>
+</Tabs>
+
+## Search Peers
+
+<Tabs>
+  <TabItem label="TypeScript">
+
+```ts
+const peers = await client.airportSearch({
+  capability: 'mcp',
+  skill: 'crm_lookup',
+  minTrust: 0.75,
+  status: 'online',
+  tag: 'support',
+  limit: 20,
+});
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python
+peers = await client.airport_search(
+    capability="mcp",
+    skill="crm_lookup",
+    min_trust=0.75,
+    status="online",
+    tag="support",
+    limit=20,
+)
+```
+
+  </TabItem>
+</Tabs>
+
+## Read Profiles And Connections
+
+<Tabs>
+  <TabItem label="TypeScript">
+
+```ts
+const online = await client.airportListOnline();
+const profile = await client.airportGetProfile('agent-123');
+const connections = await client.airportConnections('agent-123', 50);
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python
+online = await client.airport_list_online()
+profile = await client.airport_get_profile("agent-123")
+connections = await client.airport_connections(agent_id="agent-123", limit=50)
+```
+
+  </TabItem>
+</Tabs>
+
+## Endpoint Map
+
+| SDK helper | Endpoint | Auth |
+| --- | --- | --- |
+| `airportHeartbeat()` / `airport_heartbeat()` | `POST /v1/airport/heartbeat` | Required |
+| `airportUpdateProfile()` / `airport_update_profile()` | `PUT /v1/airport/agents/{id}` | Required |
+| `airportSearch()` / `airport_search()` | `GET /v1/airport/agents` | Public |
+| `airportGetProfile()` / `airport_get_profile()` | `GET /v1/airport/agents/{id}` | Public |
+| `airportListOnline()` / `airport_list_online()` | `GET /v1/airport/online` | Public |
+| `airportConnections()` / `airport_connections()` | `GET /v1/airport/connections` | Required |
+
+<Aside type="caution">
+Keep write operations authenticated in production. Public search is useful for discovery, but heartbeat, profile mutation, and connection history should be protected by API key or JWT auth.
+</Aside>

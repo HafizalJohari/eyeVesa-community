@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package agentid;
+
+option go_package = "github.com/hafizaljohari/eyeVesa/proto/agentid";
+
+import "google/protobuf/timestamp.proto";
+
+service GatewayService {
+    rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+    rpc RegisterResource(RegisterResourceRequest) returns (RegisterResourceResponse);
+    rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+    rpc VerifySignature(VerifySignatureRequest) returns (VerifySignatureResponse);
+    rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+    rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+    rpc Audit(AuditRequest) returns (AuditResponse);
+}
+
+message RegisterAgentRequest {
+    string name = 1;
+    string owner = 2;
+    repeated string capabilities = 3;
+    repeated string allowed_tools = 4;
+    double max_budget_usd = 5;
+    string delegation_policy = 6;
+    repeated string behavioral_tags = 7;
+}
+
+message RegisterAgentResponse {
+    string agent_id = 1;
+    bytes public_key = 2;
+    string status = 3;
+    double trust_score = 4;
+    google.protobuf.Timestamp created_at = 5;
+}
+
+message RegisterResourceRequest {
+    string name = 1;
+    string type = 2;
+    string endpoint = 3;
+    string auth_method = 4;
+    string capabilities_json = 5;
+    string risk_level = 6;
+    string data_sensitivity = 7;
+    int32 rate_limit_per_agent = 8;
+}
+
+message RegisterResourceResponse {
+    string resource_id = 1;
+    google.protobuf.Timestamp created_at = 2;
+}
+
+message AuthorizeRequest {
+    string agent_id = 1;
+    string resource_id = 2;
+    string action = 3;
+    string params_json = 4;
+}
+
+message AuthorizeResponse {
+    bool allowed = 1;
+    bool requires_hitl = 2;
+    string reason = 3;
+    double trust_delta = 4;
+}
+
+message VerifySignatureRequest {
+    string agent_id = 1;
+    bytes message = 2;
+    bytes signature = 3;
+}
+
+message VerifySignatureResponse {
+    bool valid = 1;
+    string agent_id = 2;
+}
+
+message GetAgentRequest {
+    string agent_id = 1;
+}
+
+message GetAgentResponse {
+    string agent_id = 1;
+    string name = 2;
+    string owner = 3;
+    double trust_score = 4;
+    string status = 5;
+    repeated string capabilities = 6;
+    repeated string allowed_tools = 7;
+}
+
+message ListAgentsRequest {}
+
+message ListAgentsResponse {
+    repeated GetAgentResponse agents = 1;
+}
+
+message AuditRequest {
+    string agent_id = 1;
+    int32 limit = 2;
+    int32 offset = 3;
+}
+
+message AuditResponse {
+    repeated AuditEntry entries = 1;
+}
+
+message AuditEntry {
+    string log_id = 1;
+    string agent_id = 2;
+    string resource_id = 3;
+    string action = 4;
+    string result_status = 5;
+    double trust_score_before = 6;
+    double trust_score_after = 7;
+    google.protobuf.Timestamp created_at = 8;
+}

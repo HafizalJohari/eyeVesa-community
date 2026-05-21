@@ -1,0 +1,111 @@
+version: "3.9"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: eyevesa-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - gateway-core
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: eyevesa-postgres
+    environment:
+      POSTGRES_DB: agentid
+      POSTGRES_USER: agentid
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agentid_dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentid"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  opa:
+    image: openpolicyagent/opa:0.68.0
+    container_name: eyevesa-opa
+    command: "run --server --addr :8181 /policies"
+    volumes:
+      - ./policies:/policies:ro
+    ports:
+      - "127.0.0.1:8181:8181"
+    restart: unless-stopped
+
+  gateway-control:
+    build:
+      context: .
+      dockerfile: gateway/control-plane/Dockerfile
+    container_name: eyevesa-control
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+    environment:
+      DATABASE_URL: postgres://agentid:${DB_PASSWORD:-agentid_dev}@postgres:5432/agentid?sslmode=disable
+      AUTH_ENABLED: "true"
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      OPA_ENDPOINT: http://opa:8181
+      POLICY_DIR: /policies
+      MIGRATIONS_DIR: /registry/migrations
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      PAGERDUTY_INTEGRATION_KEY: ${PAGERDUTY_INTEGRATION_KEY:-}
+      APNS_KEY_PATH: ${APNS_KEY_PATH:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-}
+      FCM_SERVER_KEY: ${FCM_SERVER_KEY:-}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+    volumes:
+      - ./policies:/policies:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opa:
+        condition: service_started
+    restart: unless-stopped
+
+  gateway-core:
+    build:
+      context: .
+      dockerfile: gateway/core/Dockerfile
+    container_name: eyevesa-core
+    ports:
+      - "127.0.0.1:9443:9443"
+    environment:
+      CONTROL_PLANE_ADDR: http://gateway-control:9090
+      CONTROL_PLANE_HTTP_ADDR: gateway-control:8080
+      RUST_LOG: info
+      GATEWAY_MODE: plaintext
+    depends_on:
+      - gateway-control
+    restart: unless-stopped
+
+  resource-adapter:
+    build:
+      context: ./adapter/resource-adapter-go
+      dockerfile: Dockerfile
+    container_name: eyevesa-resource-adapter
+    ports:
+      - "127.0.0.1:8443:8443"
+    environment:
+      RESOURCE_NAME: ${RESOURCE_NAME:-enterprise-resource}
+      GATEWAY_ENDPOINT: gateway-core:9443
+    depends_on:
+      - gateway-core
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

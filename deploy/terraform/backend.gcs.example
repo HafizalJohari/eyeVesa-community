@@ -1,0 +1,6 @@
+terraform {
+  backend "gcs" {
+    bucket = "REPLACE_WITH_PRIVATE_TERRAFORM_STATE_BUCKET"
+    prefix = "eyevesa/production"
+  }
+}

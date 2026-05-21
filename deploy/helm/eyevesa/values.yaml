@@ -1,0 +1,89 @@
+replicaCount: 2
+
+image:
+  gatewayCore:
+    repository: eyevesa/gateway-core
+    tag: latest
+    pullPolicy: IfNotPresent
+  controlPlane:
+    repository: eyevesa/control-plane
+    tag: latest
+    pullPolicy: IfNotPresent
+
+service:
+  gatewayCore:
+    type: ClusterIP
+    port: 9443
+  controlPlane:
+    type: ClusterIP
+    port: 8080
+
+database:
+  host: eyevesa-postgres
+  port: 5432
+  name: agentid
+  user: agentid
+  passwordSecret: eyevesa-db-password
+  passwordKey: password
+
+opa:
+  endpoint: http://eyevesa-opa:8181
+
+spire:
+  enabled: true
+  server:
+    image: ghcr.io/spiffe/spire-server:1.9.6
+  agent:
+    image: ghcr.io/spiffe/spire-agent:1.9.6
+
+llm:
+  provider: openai
+  model: gpt-4
+  apiKeySecret: eyevesa-llm-api-key
+  apiKeyKey: api-key
+
+notifications:
+  slack:
+    enabled: false
+    webhookUrlSecret: eyevesa-slack-webhook
+    webhookUrlKey: url
+  pagerduty:
+    enabled: false
+    integrationKeySecret: eyevesa-pagerduty-key
+    integrationKeyKey: key
+
+auth:
+  jwtSecret: eyevesa-jwt-secret
+  jwtSecretKey: secret
+
+resources:
+  gatewayCore:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  controlPlane:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 10Gi

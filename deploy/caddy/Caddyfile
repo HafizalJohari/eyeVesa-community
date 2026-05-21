@@ -1,0 +1,7 @@
+{$DOMAIN:localhost} {
+    reverse_proxy gateway-core:9443
+
+    log {
+        output stdout
+    }
+}

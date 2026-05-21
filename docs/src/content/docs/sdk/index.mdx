@@ -1,0 +1,115 @@
+---
+title: SDKs
+description: SDK packages and agent framework integrations.
+---
+
+import { Card, CardGrid, LinkCard, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+eyeVesa SDKs give agents one consistent workflow: register identity, authenticate with the gateway, discover MCP resources, request authorization, invoke tools, maintain Airport presence, and verify transaction artifacts.
+
+## Pick A Path
+
+<CardGrid>
+  <LinkCard title="TypeScript SDK" href="/sdk/typescript/" description="Node.js agents, framework adapters, Airport helpers, capability tokens, and receipt verification." />
+  <LinkCard title="Python SDK" href="/sdk/python/" description="Async Python client with Pydantic models and integrations for common agent frameworks." />
+  <LinkCard title="Airport SDK" href="/sdk/airport/" description="Heartbeat, profile, search, online presence, and connection history flows." />
+  <LinkCard title="Transactions" href="/sdk/transactions/" description="Capability token and transaction receipt issue, verify, revoke, and audit flows." />
+</CardGrid>
+
+## Packages
+
+| SDK | Language | Path |
+| --- | --- | --- |
+| Agent SDK Python | Python | `sdk/agent-sdk-python` |
+| Agent SDK TypeScript | TypeScript | `sdk/agent-sdk-typescript` |
+| Agent SDK Rust | Rust | `sdk/agent-sdk-rust` |
+
+## Common Agent Lifecycle
+
+<Steps>
+1. Create an `AgentConfig` with identity, owner, and gateway endpoint.
+2. Connect to the gateway. The SDK registers the agent and performs login.
+3. Discover MCP-capable resources.
+4. Invoke tools. The gateway authorizes the action before execution.
+5. Use Airport to publish presence and discover peers.
+6. For sensitive workflows, issue capability tokens and signed receipts.
+</Steps>
+
+## Quick Compare
+
+<Tabs>
+  <TabItem label="TypeScript">
+
+```ts
+import { AgentClient } from 'agentid-sdk';
+
+const client = new AgentClient({
+  agentId: 'ops-agent-001',
+  name: 'ops-agent',
+  owner: 'platform-team',
+  gatewayEndpoint: 'http://localhost:9443',
+});
+
+await client.connect();
+const tools = await client.discover('mcp');
+const result = await client.invoke(tools[0].resourceId, 'read', {
+  location: 'Kuala Lumpur',
+});
+```
+
+  </TabItem>
+  <TabItem label="Python">
+
+```python
+from agentid_sdk import AgentClient, AgentConfig
+
+config = AgentConfig(
+    agent_id="ops-agent-001",
+    name="ops-agent",
+    owner="platform-team",
+    gateway_endpoint="http://localhost:9443",
+)
+
+async with AgentClient(config) as client:
+    await client.connect()
+    tools = await client.discover("mcp")
+    result = await client.invoke(
+        resource_id=tools[0].resource_id,
+        tool="read",
+        params={"location": "Kuala Lumpur"},
+    )
+```
+
+  </TabItem>
+</Tabs>
+
+## Integration Coverage
+
+| Provider | Integration |
+| --- | --- |
+| Claude | `ClaudeIntegration` |
+| OpenAI | `OpenAIIntegration` |
+| LangGraph | `LangGraphIntegration` |
+| CrewAI | `CrewAIIntegration` |
+| AutoGen | `AutoGenIntegration` |
+| Hermes | `HermesIntegration` |
+| OpenClaw | `OpenClawIntegration` |
+| NanoClaw | `NanoClawIntegration` |
+
+## Authentication Modes
+
+| Mode | Use When | SDK Shape |
+| --- | --- | --- |
+| Registration + login | Local dev and agent-owned key flows. | `await client.connect()` |
+| API key | Production gateway with `AUTH_ENABLED=true`. | `new AgentClient(config, { apiKey })` |
+| JWT | Existing identity provider or gateway-issued token. | `new AgentClient(config, { jwtToken })` |
+| Environment config | Runtime config is injected by deployment. | `AgentClient.fromEnv()` / `AgentClient.from_env()` |
+
+## What To Document Next
+
+Use the SDK pages as the source of truth for developers, then add framework-specific walkthroughs as the integrations mature:
+
+- Claude tool calling and Claude Code MCP server usage.
+- OpenAI function tools, computer tools, and MCP connector usage.
+- Hermes and OpenClaw Airport registration patterns.
+- Production auth, key rotation, and audit receipt retention.
