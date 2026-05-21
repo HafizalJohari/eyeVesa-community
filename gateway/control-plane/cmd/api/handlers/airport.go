@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
 	"github.com/google/uuid"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/auth"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
 )
 
 type AirportHeartbeat struct {
@@ -42,28 +43,28 @@ type AirportSearchRequest struct {
 }
 
 type AirportConnection struct {
-	ConnectionID   string  `json:"connection_id"`
-	RequesterID    string  `json:"requester_id"`
-	ResponderID    string  `json:"responder_id"`
-	Action         string  `json:"action"`
-	Outcome        string  `json:"outcome"`
+	ConnectionID     string  `json:"connection_id"`
+	RequesterID      string  `json:"requester_id"`
+	ResponderID      string  `json:"responder_id"`
+	Action           string  `json:"action"`
+	Outcome          string  `json:"outcome"`
 	TrustScoreAtTime float64 `json:"trust_score_at_time"`
-	CreatedAt      string  `json:"created_at"`
+	CreatedAt        string  `json:"created_at"`
 }
 
 type AirportAgent struct {
-	AgentID      string  `json:"agent_id"`
-	Name         string  `json:"name"`
-	Owner        string  `json:"owner"`
-	TrustScore   float64 `json:"trust_score"`
-	Status       string  `json:"status"`
-	Description  string  `json:"description"`
+	AgentID         string          `json:"agent_id"`
+	Name            string          `json:"name"`
+	Owner           string          `json:"owner"`
+	TrustScore      float64         `json:"trust_score"`
+	Status          string          `json:"status"`
+	Description     string          `json:"description"`
 	ServicesOffered json.RawMessage `json:"services_offered"`
-	Endpoints    json.RawMessage `json:"endpoints"`
-	Tags         []string `json:"tags"`
-	TotalActions int     `json:"total_actions"`
-	ApprovalRate float64 `json:"approval_rate"`
-	LastSeen     string  `json:"last_seen"`
+	Endpoints       json.RawMessage `json:"endpoints"`
+	Tags            []string        `json:"tags"`
+	TotalActions    int             `json:"total_actions"`
+	ApprovalRate    float64         `json:"approval_rate"`
+	LastSeen        string          `json:"last_seen"`
 }
 
 func AirportHeartbeatHandler(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +77,11 @@ func AirportHeartbeatHandler(w http.ResponseWriter, r *http.Request) {
 	agentID, err := uuid.Parse(hb.AgentID)
 	if err != nil {
 		http.Error(w, "invalid agent_id", http.StatusBadRequest)
+		return
+	}
+
+	if !canAccessAirportAgent(r.Context(), agentID) {
+		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
 
@@ -109,7 +115,7 @@ func AirportHeartbeatHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"agent_id": agentID.String(),
 		"status":   hb.Status,
-		"ok":      true,
+		"ok":       true,
 	})
 }
 
@@ -136,6 +142,11 @@ func AirportUpdateProfileHandler(w http.ResponseWriter, r *http.Request) {
 	agentID, err := uuid.Parse(agentIDStr)
 	if err != nil {
 		http.Error(w, "invalid agent_id", http.StatusBadRequest)
+		return
+	}
+
+	if !canAccessAirportAgent(r.Context(), agentID) {
+		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
 
@@ -185,8 +196,23 @@ func AirportUpdateProfileHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"agent_id": agentID.String(),
 		"listed":   listed,
-		"ok":      true,
+		"ok":       true,
 	})
+}
+
+func canAccessAirportAgent(ctx context.Context, agentID uuid.UUID) bool {
+	tenantID := auth.GetTenantID(ctx)
+	if tenantID == "" {
+		return true
+	}
+
+	var exists int
+	err := querier.QueryRow(ctx, `
+		SELECT 1 FROM agents
+		WHERE agent_id = $1
+		AND (tenant_id::text = $2 OR owner = $2)
+	`, agentID, tenantID).Scan(&exists)
+	return err == nil && exists == 1
 }
 
 func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
@@ -231,35 +257,35 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	args := []interface{}{}
 	argIdx := 1
-	conditions := []string{"ap.listed = true"}
+	conditions := []string{"listed = true"}
 	joinSkills := false
 
 	if req.MinTrust > 0 {
-		conditions = append(conditions, "a.trust_score >= $1")
+		conditions = append(conditions, "trust_score >= $1")
 		args = append(args, req.MinTrust)
 		argIdx++
 	}
 
 	if req.Owner != "" {
-		conditions = append(conditions, "a.owner = $"+itoa(argIdx))
+		conditions = append(conditions, "owner = $"+itoa(argIdx))
 		args = append(args, req.Owner)
 		argIdx++
 	}
 
 	if req.Status != "" {
-		conditions = append(conditions, "ah.status = $"+itoa(argIdx))
+		conditions = append(conditions, "status = $"+itoa(argIdx))
 		args = append(args, req.Status)
 		argIdx++
 	}
 
 	if req.Tag != "" {
-		conditions = append(conditions, "$"+itoa(argIdx)+" = ANY(ap.tags)")
+		conditions = append(conditions, "$"+itoa(argIdx)+" = ANY(tags)")
 		args = append(args, req.Tag)
 		argIdx++
 	}
 
 	if req.Capability != "" {
-		conditions = append(conditions, "$"+itoa(argIdx)+" = ANY(a.allowed_tools)")
+		conditions = append(conditions, "$"+itoa(argIdx)+" = ANY(allowed_tools)")
 		args = append(args, req.Capability)
 		argIdx++
 	}
@@ -299,9 +325,51 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN agent_profiles ap ON ap.agent_id = a.agent_id
 		LEFT JOIN agent_heartbeats ah ON ah.agent_id = a.agent_id
 	` + skillJoin +
-		" WHERE " + where +
+		" WHERE " + strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(where, "listed", "ap.listed"), "trust_score", "a.trust_score"), "owner", "a.owner"), "status", "ah.status"), "allowed_tools", "a.allowed_tools"), "tags", "ap.tags") +
 		" ORDER BY a.trust_score DESC " +
 		" LIMIT $" + itoa(argIdx) + " OFFSET $" + itoa(argIdx+1)
+
+	if !joinSkills {
+		query = `WITH airport_agents AS (
+			SELECT a.agent_id::text AS agent_id, a.name, a.owner, a.trust_score,
+				COALESCE(ap.description, '') AS description,
+				COALESCE(ap.services_offered, '[]'::jsonb) AS services_offered,
+				COALESCE(ap.endpoints, '{}'::jsonb) AS endpoints,
+				COALESCE(ap.tags, '{}') AS tags,
+				COALESCE(ap.total_actions, 0) AS total_actions,
+				COALESCE(ap.approval_rate, 1.0) AS approval_rate,
+				COALESCE(ah.last_heartbeat::text, '') AS last_seen,
+				COALESCE(ah.status, 'offline') AS status,
+				a.allowed_tools,
+				COALESCE(ap.listed, true) AS listed
+			FROM agents a
+			LEFT JOIN agent_profiles ap ON ap.agent_id = a.agent_id
+			LEFT JOIN agent_heartbeats ah ON ah.agent_id = a.agent_id
+			UNION ALL
+			SELECT fa.agent_id::text AS agent_id, fa.name, fa.owner, fa.trust_score,
+				COALESCE(fp.description, '') AS description,
+				COALESCE(fp.services_offered, '[]'::jsonb) AS services_offered,
+				COALESCE(fp.endpoints, '{}'::jsonb) AS endpoints,
+				COALESCE(fp.tags, '{}') AS tags,
+				0 AS total_actions,
+				1.0 AS approval_rate,
+				COALESCE(fh.last_heartbeat::text, '') AS last_seen,
+				COALESCE(fh.status, 'offline') AS status,
+				fa.allowed_tools,
+				COALESCE(fp.listed, true) AS listed
+			FROM federated_agents fa
+			LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
+			LEFT JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
+			WHERE fa.status = 'active'
+		)
+		SELECT agent_id, name, owner, trust_score, description, services_offered, endpoints,
+			COALESCE(array_to_json(tags)::text, '[]') AS tags,
+			total_actions, approval_rate, last_seen, status
+		FROM airport_agents
+		WHERE ` + where +
+			" ORDER BY trust_score DESC " +
+			" LIMIT $" + itoa(argIdx) + " OFFSET $" + itoa(argIdx+1)
+	}
 
 	args = append(args, req.Limit, req.Offset)
 
@@ -384,7 +452,23 @@ func AirportListOnlineHandler(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN agent_profiles ap ON ap.agent_id = a.agent_id
 		WHERE ah.status = 'online' AND ah.last_heartbeat > NOW() - INTERVAL '2 minutes'
 		AND COALESCE(ap.listed, true) = true
-		ORDER BY a.trust_score DESC
+		UNION ALL
+		SELECT fa.agent_id, fa.name, fa.owner, fa.trust_score,
+			COALESCE(fp.description, '') as description,
+			COALESCE(fp.services_offered, '[]'::jsonb) as services_offered,
+			COALESCE(fp.endpoints, '{}'::jsonb) as endpoints,
+			COALESCE(array_to_json(fp.tags)::text, '[]') as tags,
+			0 as total_actions,
+			1.0 as approval_rate,
+			fh.last_heartbeat::text as last_seen,
+			fh.status
+		FROM federated_agents fa
+		JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
+		LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
+		WHERE fa.status = 'active'
+		AND fh.status = 'online' AND fh.last_heartbeat > NOW() - INTERVAL '5 minutes'
+		AND COALESCE(fp.listed, true) = true
+		ORDER BY trust_score DESC
 		LIMIT 100
 	`)
 	if err != nil {
@@ -709,9 +793,9 @@ func AirportHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":         true,
-			"agent_id":   agentID,
-			"handshake":  "completed",
+			"ok":        true,
+			"agent_id":  agentID,
+			"handshake": "completed",
 			"peer": map[string]interface{}{
 				"agent_id":    hb.PeerID,
 				"name":        peerName,
@@ -737,9 +821,9 @@ func AirportHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 
 // AirportConnectRequest is the body for POST /v1/airport/connect
 type AirportConnectRequest struct {
-	AgentID  string `json:"agent_id"`
-	PeerID   string `json:"peer_id"`
-	Action   string `json:"action"`
+	AgentID string `json:"agent_id"`
+	PeerID  string `json:"peer_id"`
+	Action  string `json:"action"`
 }
 
 func AirportConnectHandler(w http.ResponseWriter, r *http.Request) {
@@ -767,11 +851,17 @@ func AirportConnectHandler(w http.ResponseWriter, r *http.Request) {
 		trustScore = 0
 	}
 
-	// Verify peer exists
+	// Verify peer exists in either local or federated airport tables.
 	var peerName string
 	peerErr := querier.QueryRow(r.Context(),
 		`SELECT name FROM agents WHERE agent_id = $1`, req.PeerID,
 	).Scan(&peerName)
+	peerIsLocal := peerErr == nil
+	if peerErr != nil {
+		peerErr = querier.QueryRow(r.Context(),
+			`SELECT name FROM federated_agents WHERE agent_id = $1`, req.PeerID,
+		).Scan(&peerName)
+	}
 
 	outcome := "success"
 	if peerErr != nil {
@@ -782,7 +872,8 @@ func AirportConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Heartbeat both sides
 	autoCreateHeartbeat(r.Context(), req.AgentID)
-	if peerErr == nil {
+	// Keep heartbeat writes scoped to local agents table.
+	if peerErr == nil && peerIsLocal {
 		autoCreateHeartbeat(r.Context(), req.PeerID)
 	}
 
@@ -813,5 +904,48 @@ func AirportHealthHandler(w http.ResponseWriter, r *http.Request) {
 		"status":         "healthy",
 		"online_agents":  onlineCount,
 		"total_profiles": totalProfiles,
+	})
+}
+
+func AirportStatsHandler(w http.ResponseWriter, r *http.Request) {
+	totalAgents := 0
+	onlineAgents := 0
+	federationAgents := 0
+	recentActivity := 0
+	gatewayCount := 0
+
+	querier.QueryRow(r.Context(), `SELECT COUNT(*) FROM agents`).Scan(&totalAgents)
+	querier.QueryRow(r.Context(), `
+		SELECT COUNT(*) FROM agent_heartbeats
+		WHERE status = 'online' AND last_heartbeat > NOW() - INTERVAL '2 minutes'
+	`).Scan(&onlineAgents)
+	querier.QueryRow(r.Context(), `SELECT COUNT(*) FROM federated_agents WHERE status = 'active'`).Scan(&federationAgents)
+
+	federatedOnline := 0
+	querier.QueryRow(r.Context(), `
+		SELECT COUNT(*) FROM federated_heartbeats
+		WHERE status = 'online' AND last_heartbeat > NOW() - INTERVAL '5 minutes'
+	`).Scan(&federatedOnline)
+	onlineAgents += federatedOnline
+
+	querier.QueryRow(r.Context(), `
+		SELECT COUNT(*) FROM airport_connections WHERE created_at > NOW() - INTERVAL '1 hour'
+	`).Scan(&recentActivity)
+	querier.QueryRow(r.Context(), `SELECT COUNT(*) FROM federation_peers WHERE status = 'active'`).Scan(&gatewayCount)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "healthy",
+		"agents": map[string]int{
+			"total":     totalAgents + federationAgents,
+			"local":     totalAgents,
+			"federated": federationAgents,
+			"online":    onlineAgents,
+		},
+		"recent_activity_1h": recentActivity,
+		"gateway": map[string]interface{}{
+			"health":       "healthy",
+			"active_peers": gatewayCount,
+		},
 	})
 }

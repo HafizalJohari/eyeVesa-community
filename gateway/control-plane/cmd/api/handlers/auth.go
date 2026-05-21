@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -28,6 +31,39 @@ func getJWTSecret() []byte {
 
 func generateAPIKey() string {
 	return auth.GenerateAPIKey()
+}
+
+func hashAPIKey(apiKey string) string {
+	sum := sha256.Sum256([]byte(apiKey))
+	return hex.EncodeToString(sum[:])
+}
+
+func createAPIKeyForTenant(ctx context.Context, name, tenantID string) (APIKeyResponse, error) {
+	apiKey := generateAPIKey()
+	keyID := uuid.New()
+
+	var createdAt time.Time
+	var tenantArg *string
+	if tenantID != "" {
+		tenantArg = &tenantID
+	}
+
+	err := querier.QueryRow(ctx,
+		`INSERT INTO api_keys (key_id, api_key, api_key_hash, name, tenant_id, is_active, created_at)
+		 VALUES ($1, $2, $3, $4, $5, true, NOW()) RETURNING created_at`,
+		keyID, hashAPIKey(apiKey), hashAPIKey(apiKey), name, tenantArg,
+	).Scan(&createdAt)
+	if err != nil {
+		return APIKeyResponse{}, err
+	}
+
+	return APIKeyResponse{
+		KeyID:     keyID.String(),
+		APIKey:    apiKey,
+		Name:      name,
+		TenantID:  tenantID,
+		CreatedAt: createdAt,
+	}, nil
 }
 
 func generateJWT(secret []byte, claims jwt.MapClaims) (string, error) {
@@ -60,34 +96,11 @@ func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := generateAPIKey()
-	keyID := uuid.New()
-
-	var tenantID *string
-	if req.TenantID != "" {
-		tenantID = &req.TenantID
-	}
-
-	var createdAt time.Time
-	err := querier.QueryRow(r.Context(),
-		`INSERT INTO api_keys (key_id, api_key, name, tenant_id, is_active, created_at)
-		 VALUES ($1, $2, $3, $4, true, NOW()) RETURNING created_at`,
-		keyID, apiKey, req.Name, tenantID,
-	).Scan(&createdAt)
+	resp, err := createAPIKeyForTenant(r.Context(), req.Name, req.TenantID)
 	if err != nil {
 		slog.Error("create api key failed", "error", err)
 		http.Error(w, "failed to create api key", http.StatusInternalServerError)
 		return
-	}
-
-	resp := APIKeyResponse{
-		KeyID:     keyID.String(),
-		APIKey:    apiKey,
-		Name:      req.Name,
-		CreatedAt: createdAt,
-	}
-	if tenantID != nil {
-		resp.TenantID = *tenantID
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -96,9 +109,15 @@ func CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListAPIKeys(w http.ResponseWriter, r *http.Request) {
-	rows, err := querier.Query(r.Context(),
-		`SELECT key_id, name, tenant_id, is_active, created_at FROM api_keys ORDER BY created_at DESC`,
-	)
+	tenantID := auth.GetTenantID(r.Context())
+	query := `SELECT key_id, name, tenant_id, is_active, created_at FROM api_keys`
+	args := []interface{}{}
+	if tenantID != "" {
+		query += ` WHERE tenant_id = $1`
+		args = append(args, tenantID)
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := querier.Query(r.Context(), query, args...)
 	if err != nil {
 		slog.Error("list api keys failed", "error", err)
 		http.Error(w, "failed to list api keys", http.StatusInternalServerError)
@@ -142,10 +161,14 @@ func RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := querier.Exec(r.Context(),
-		`UPDATE api_keys SET is_active = false WHERE key_id = $1`,
-		keyID,
-	)
+	tenantID := auth.GetTenantID(r.Context())
+	query := `UPDATE api_keys SET is_active = false WHERE key_id = $1`
+	args := []interface{}{keyID}
+	if tenantID != "" {
+		query += ` AND tenant_id = $2`
+		args = append(args, tenantID)
+	}
+	tag, err := querier.Exec(r.Context(), query, args...)
 	if err != nil {
 		slog.Error("revoke api key failed", "error", err)
 		http.Error(w, "failed to revoke api key", http.StatusInternalServerError)
@@ -317,9 +340,9 @@ func AgentLogin(w http.ResponseWriter, r *http.Request) {
 	tokenExpiresAt := time.Now().Add(24 * time.Hour)
 	token, err := generateJWT(secret, jwt.MapClaims{
 		"agent_id": agentID.String(),
-		"role":      "agent",
-		"exp":       tokenExpiresAt.Unix(),
-		"iat":       time.Now().Unix(),
+		"role":     "agent",
+		"exp":      tokenExpiresAt.Unix(),
+		"iat":      time.Now().Unix(),
 	})
 	if err != nil {
 		slog.Error("generate jwt failed", "error", err)

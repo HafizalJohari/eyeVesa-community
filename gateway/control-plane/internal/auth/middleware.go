@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"net/http"
@@ -31,10 +33,10 @@ func NewAuthMiddleware(db *pgxpool.Pool, jwtSecret string) *AuthMiddleware {
 
 func (a *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	if isPublicPath(r.Method, r.URL.Path) {
-		next.ServeHTTP(w, r)
-		return
-	}
+		if isPublicPath(r.Method, r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		if tenantID, ok := a.checkAPIKey(r); ok {
 			ctx := context.WithValue(r.Context(), tenantCtxKey{}, tenantID)
@@ -69,10 +71,8 @@ func isPublicPath(method, path string) bool {
 			return true
 		}
 	}
-	if strings.HasPrefix(path, "/v1/agents/register") ||
-		strings.HasPrefix(path, "/v1/resources/register") ||
+	if strings.HasPrefix(path, "/v1/resources/register") ||
 		strings.HasPrefix(path, "/v1/mcp") ||
-		strings.HasPrefix(path, "/v1/api-keys") ||
 		strings.HasPrefix(path, "/v1/auth/challenge") ||
 		strings.HasPrefix(path, "/v1/auth/login") {
 		return true
@@ -82,6 +82,7 @@ func isPublicPath(method, path string) bool {
 		if (path == "/v1/airport/health" && method == "GET") ||
 			(path == "/v1/airport/online" && method == "GET") ||
 			(path == "/v1/airport/agents" && method == "GET") ||
+			(path == "/v1/airport/stats" && method == "GET") ||
 			(path == "/v1/airport/handshake" && method == "POST") ||
 			(path == "/v1/airport/connect" && method == "POST") ||
 			(strings.HasPrefix(path, "/v1/airport/agents/") && method == "GET") {
@@ -96,13 +97,18 @@ func (a *AuthMiddleware) checkAPIKey(r *http.Request) (string, bool) {
 	if key == "" {
 		return "", false
 	}
+	if a.db == nil {
+		return "", false
+	}
 
-	var apiKey string
 	var tenantID *string
+	keyHash := hashAPIKey(key)
 	err := a.db.QueryRow(r.Context(),
-		`SELECT api_key, tenant_id FROM api_keys WHERE api_key = $1 AND is_active = TRUE`,
-		key,
-	).Scan(&apiKey, &tenantID)
+		`SELECT tenant_id FROM api_keys
+		 WHERE is_active = TRUE AND (api_key_hash = $1 OR api_key = $2)
+		 LIMIT 1`,
+		keyHash, key,
+	).Scan(&tenantID)
 	if err != nil {
 		return "", false
 	}
@@ -111,6 +117,11 @@ func (a *AuthMiddleware) checkAPIKey(r *http.Request) (string, bool) {
 		return *tenantID, true
 	}
 	return "", true
+}
+
+func hashAPIKey(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }
 
 func (a *AuthMiddleware) checkBearerToken(r *http.Request) (*JWTClaims, bool) {
@@ -265,10 +276,10 @@ type SAMLConfig struct {
 }
 
 type SAMLHandler struct {
-	config        *SAMLConfig
-	db            *pgxpool.Pool
-	secret        []byte
-	allowedHosts  []string
+	config       *SAMLConfig
+	db           *pgxpool.Pool
+	secret       []byte
+	allowedHosts []string
 }
 
 func NewSAMLHandler(config *SAMLConfig, db *pgxpool.Pool, jwtSecret string, allowedHosts []string) *SAMLHandler {

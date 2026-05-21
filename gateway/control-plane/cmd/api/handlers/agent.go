@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/ed25519"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/audit"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/auth"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/database"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/license"
@@ -35,6 +37,7 @@ type AgentResponse struct {
 	Owner      string    `json:"owner"`
 	Status     string    `json:"status"`
 	TrustScore float64   `json:"trust_score"`
+	APIKey     string    `json:"api_key,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -66,9 +69,19 @@ func SetPolicyEngine(pe *policy.PolicyEngine) {
 }
 
 func RegisterAgent(w http.ResponseWriter, r *http.Request) {
-	// Enforce license agent limit.
+	// Enforce agent limits.
+	//
+	// Community builds use the compiled license cap (typically 5) as a global ceiling.
+	// Pro builds can also apply per-tenant limits, but only if we have a tenant context.
 	lic := license.Get()
-	if lic.MaxAgents > 0 {
+	tenantID := auth.GetTenantID(r.Context())
+	if tenantID != "" && tenantService != nil {
+		allowed, current, max, err := tenantService.CheckAgentLimit(r.Context(), tenantID)
+		if err == nil && !allowed {
+			http.Error(w, fmt.Sprintf("agent limit reached for tenant (%d/%d)", current, max), http.StatusTooManyRequests)
+			return
+		}
+	} else if lic.MaxAgents > 0 {
 		var count int
 		if err := querier.QueryRow(r.Context(), `SELECT COUNT(*) FROM agents`).Scan(&count); err == nil && count >= lic.MaxAgents {
 			http.Error(w, "agent limit reached for your license tier", http.StatusTooManyRequests)
@@ -121,11 +134,20 @@ func RegisterAgent(w http.ResponseWriter, r *http.Request) {
 		delegationPolicy = "no_chain"
 	}
 
+	// Multi-tenant: when a tenant context exists (API key, JWT, or SSO), persist it on the agent.
+	// In community mode this will typically be empty and remain NULL.
+	var tenantUUID *uuid.UUID
+	if tenantID != "" {
+		if parsed, err := uuid.Parse(tenantID); err == nil {
+			tenantUUID = &parsed
+		}
+	}
+
 	var createdAt time.Time
 	err = querier.QueryRow(r.Context(),
-		`INSERT INTO agents (agent_id, name, owner, public_key, capabilities, allowed_tools, max_budget_usd, delegation_policy, behavioral_tags)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING created_at`,
-		agentID, req.Name, req.Owner, publicKeyBytes, capabilities, allowedTools,
+		`INSERT INTO agents (agent_id, tenant_id, name, owner, public_key, capabilities, allowed_tools, max_budget_usd, delegation_policy, behavioral_tags)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING created_at`,
+		agentID, tenantUUID, req.Name, req.Owner, publicKeyBytes, capabilities, allowedTools,
 		req.MaxBudgetUSD, delegationPolicy, behavioralTags,
 	).Scan(&createdAt)
 
@@ -150,6 +172,13 @@ func RegisterAgent(w http.ResponseWriter, r *http.Request) {
 	autoCreateHeartbeat(r.Context(), agentID.String())
 	autoCreateProfile(r.Context(), agentID.String(), req.Name, req.Owner)
 
+	apiKeyResp, err := createAPIKeyForTenant(r.Context(), "agent:"+req.Name, req.Owner)
+	if err != nil {
+		slog.Error("auto api key creation failed", "error", err)
+		http.Error(w, "agent registered but api key creation failed", http.StatusInternalServerError)
+		return
+	}
+
 	resp := AgentResponse{
 		AgentID:    agentID,
 		PublicKey:  req.PublicKey,
@@ -157,6 +186,7 @@ func RegisterAgent(w http.ResponseWriter, r *http.Request) {
 		Owner:      req.Owner,
 		Status:     "active",
 		TrustScore: 1.0,
+		APIKey:     apiKeyResp.APIKey,
 		CreatedAt:  createdAt,
 	}
 
@@ -175,10 +205,14 @@ func GetAgent(w http.ResponseWriter, r *http.Request) {
 	var name, owner, agentStatus string
 	var trustScore float64
 	var capabilities, allowedTools []string
-	err := querier.QueryRow(r.Context(),
-		`SELECT name, owner, trust_score, status, capabilities, allowed_tools FROM agents WHERE agent_id = $1`,
-		agentIDStr,
-	).Scan(&name, &owner, &trustScore, &agentStatus, &capabilities, &allowedTools)
+	tenantID := auth.GetTenantID(r.Context())
+	query := `SELECT name, owner, trust_score, status, capabilities, allowed_tools FROM agents WHERE agent_id = $1`
+	args := []interface{}{agentIDStr}
+	if tenantID != "" {
+		query += ` AND tenant_id::text = $2`
+		args = append(args, tenantID)
+	}
+	err := querier.QueryRow(r.Context(), query, args...).Scan(&name, &owner, &trustScore, &agentStatus, &capabilities, &allowedTools)
 
 	if err != nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
@@ -198,8 +232,15 @@ func GetAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListAgents(w http.ResponseWriter, r *http.Request) {
-	rows, err := querier.Query(r.Context(),
-		`SELECT agent_id, name, owner, trust_score, status FROM agents ORDER BY created_at DESC`)
+	tenantID := auth.GetTenantID(r.Context())
+	query := `SELECT agent_id, name, owner, trust_score, status FROM agents`
+	args := []interface{}{}
+	if tenantID != "" {
+		query += ` WHERE tenant_id::text = $1`
+		args = append(args, tenantID)
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := querier.Query(r.Context(), query, args...)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return

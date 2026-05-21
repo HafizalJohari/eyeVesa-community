@@ -7,12 +7,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/google/uuid"
 
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/database"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
@@ -42,6 +42,8 @@ func (r *mockRow) Scan(dest ...interface{}) error {
 				if sv, ok := v.([]string); ok {
 					*d = sv
 				}
+			case *time.Time:
+				*d = v.(time.Time)
 			}
 		}
 	}
@@ -151,6 +153,9 @@ func setupTestRouter(q *mockQuerier) http.Handler {
 		r.Get("/resources/{resourceID}", GetResource)
 		r.Get("/agents", ListAgents)
 		r.Get("/agents/{agentID}", GetAgent)
+		r.Get("/a2a/agents", ListA2AAgents)
+		r.Post("/a2a/tasks", CreateA2ATask)
+		r.Get("/a2a/tasks/{taskID}", GetA2ATask)
 		r.Post("/hitl/escalate", RequestEscalatedApproval)
 		r.Post("/hitl/{approvalID}/chain", ProcessChainDecision)
 		r.Get("/hitl/{approvalID}/chain", GetApprovalChain)
@@ -358,13 +363,14 @@ func TestRegisterAgentValidation(t *testing.T) {
 func TestRegisterAgentSuccess(t *testing.T) {
 	q := &mockQuerier{
 		queryRowFn: func(ctx context.Context, sql string, args ...interface{}) database.Row {
+			if strings.Contains(sql, "COUNT(*)") {
+				return &mockRow{vals: []interface{}{0}}
+			}
+			if strings.Contains(sql, "api_keys") {
+				return &mockRow{vals: []interface{}{time.Now()}}
+			}
 			return &mockRow{
 				vals: []interface{}{
-					uuid.New().String(),
-					"dGVzdA==",
-					"test-agent",
-					"test-team",
-					1.0,
 					time.Now(),
 				},
 			}

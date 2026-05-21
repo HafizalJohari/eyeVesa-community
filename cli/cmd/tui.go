@@ -143,6 +143,16 @@ type registerErrMsg struct {
 	err error
 }
 
+type hitlApprovedMsg struct {
+	id string
+}
+type hitlDeniedMsg struct {
+	id string
+}
+type hitlActionErrMsg struct {
+	err error
+}
+
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -376,6 +386,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case registerErrMsg:
 		m.err = msg.err
 		m.currentView = viewAgents
+
+	case hitlApprovedMsg:
+		m.loading = false
+		m.statusMsg = fmt.Sprintf("Approved %s", msg.id)
+		m.selectedIdx = 0
+		return m, m.loadHITL
+
+	case hitlDeniedMsg:
+		m.loading = false
+		m.statusMsg = fmt.Sprintf("Denied %s", msg.id)
+		m.selectedIdx = 0
+		return m, m.loadHITL
+
+	case hitlActionErrMsg:
+		m.loading = false
+		m.err = msg.err
 	}
 
 	return m, nil
@@ -501,14 +527,42 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "a":
 		if m.currentView == viewHITL && len(m.hitlPending) > 0 && m.selectedIdx < len(m.hitlPending) {
-			m.statusMsg = ""
-			m.err = nil
+			approvalID, _ := m.hitlPending[m.selectedIdx]["id"].(string)
+			if approvalID == "" {
+				approvalID, _ = m.hitlPending[m.selectedIdx]["approval_id"].(string)
+			}
+			if approvalID != "" {
+				m.loading = true
+				m.statusMsg = "Approving..."
+				m.err = nil
+				return m, func() tea.Msg {
+					_, err := m.client.ApproveHILT(approvalID, "tui")
+					if err != nil {
+						return hitlActionErrMsg{err: err}
+					}
+					return hitlApprovedMsg{id: approvalID}
+				}
+			}
 		}
 
 	case "d":
 		if m.currentView == viewHITL && len(m.hitlPending) > 0 && m.selectedIdx < len(m.hitlPending) {
-			m.statusMsg = ""
-			m.err = nil
+			approvalID, _ := m.hitlPending[m.selectedIdx]["id"].(string)
+			if approvalID == "" {
+				approvalID, _ = m.hitlPending[m.selectedIdx]["approval_id"].(string)
+			}
+			if approvalID != "" {
+				m.loading = true
+				m.statusMsg = "Denying..."
+				m.err = nil
+				return m, func() tea.Msg {
+					_, err := m.client.DenyHILT(approvalID, "tui")
+					if err != nil {
+						return hitlActionErrMsg{err: err}
+					}
+					return hitlDeniedMsg{id: approvalID}
+				}
+			}
 		}
 	}
 	return m, nil
@@ -595,6 +649,13 @@ func parseList(s string) []string {
 		}
 	}
 	return result
+}
+
+func truncateID(id string, maxLen int) string {
+	if len(id) > maxLen {
+		return id[:maxLen] + "..."
+	}
+	return id
 }
 
 func toMapSlice(raw interface{}) []map[string]interface{} {
@@ -1147,7 +1208,8 @@ func (m model) renderHITL() string {
 		status, _ := approval["status"].(string)
 		created, _ := approval["created_at"].(string)
 
-		line := fmt.Sprintf("%s%-12s %-20s %-10s %s", cursor, agentID[:8]+"...", action, status, created)
+		shortAgentID := truncateID(agentID, 8)
+		line := fmt.Sprintf("%s%-12s %-20s %-10s %s", cursor, shortAgentID, action, status, created)
 		if i == m.selectedIdx {
 			b.WriteString(selectedStyle.Render(line))
 		} else {

@@ -22,15 +22,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	pb "github.com/hafizaljohari/eyeVesa/proto/agentid"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/cmd/api/handlers"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/audit"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/auth"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/behavior"
 	gwcrypto "github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/database"
-	grpcserver "github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/grpcserver"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/delegation"
+	grpcserver "github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/grpcserver"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/health"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/hitl"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/identity"
@@ -38,11 +37,12 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/llm"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/metrics"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/migrate"
-	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ptv"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ptv"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/ratelimit"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/tenant"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/tx"
+	pb "github.com/hafizaljohari/eyeVesa/proto/agentid"
 )
 
 func main() {
@@ -174,6 +174,10 @@ func main() {
 
 	authEnabled := os.Getenv("AUTH_ENABLED") != "false"
 	if !authEnabled {
+		if isProductionEnv() {
+			slog.Error("authentication cannot be disabled in production")
+			os.Exit(1)
+		}
 		slog.Warn("authentication is DISABLED — this is insecure and should only be used in development")
 	}
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -185,6 +189,10 @@ func main() {
 	if authEnabled {
 		authMiddleware = auth.NewAuthMiddleware(db.Pool, jwtSecret)
 		slog.Info("authentication middleware enabled")
+	}
+	requireAdmin := func(next http.Handler) http.Handler { return next }
+	if authMiddleware != nil {
+		requireAdmin = authMiddleware.RequireRole("admin")
 	}
 
 	go func() {
@@ -257,7 +265,7 @@ func main() {
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(metrics.Middleware)
 	r.Use(license.Middleware)
-	r.Use(maxBodySize(1<<20))
+	r.Use(maxBodySize(1 << 20))
 
 	if authEnabled && authMiddleware != nil {
 		r.Use(authMiddleware.Middleware)
@@ -292,19 +300,19 @@ func main() {
 	r.Get("/identity", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
-			"spiffe_id":   svid.SpiffeID,
+			"spiffe_id":    svid.SpiffeID,
 			"trust_domain": svid.TrustDomain,
-			"expires_at":  svid.ExpiresAt.Format(time.RFC3339),
+			"expires_at":   svid.ExpiresAt.Format(time.RFC3339),
 		})
 	})
 
 	r.Route("/v1", func(r chi.Router) {
-		r.Post("/api-keys", handlers.CreateAPIKey)
+		r.With(requireAdmin).Post("/api-keys", handlers.CreateAPIKey)
 		r.Post("/auth/challenge", handlers.AuthChallenge)
 		r.Post("/auth/login", handlers.AgentLogin)
 
 		r.Get("/api-keys", handlers.ListAPIKeys)
-		r.Delete("/api-keys/{keyID}", handlers.RevokeAPIKey)
+		r.With(requireAdmin).Delete("/api-keys/{keyID}", handlers.RevokeAPIKey)
 
 		r.Post("/agents/register", handlers.RegisterAgent)
 		r.Get("/agents", handlers.ListAgents)
@@ -346,9 +354,9 @@ func main() {
 		r.Get("/behavior/{agentID}/similar", license.Require(license.FeatureAnomalyDetect, handlers.GetSimilarAgents))
 
 		// Phase 3: Multi-tenant
-		r.Post("/tenants", license.Require(license.FeatureMultiTenant, handlers.CreateTenant))
-		r.Get("/tenants", license.Require(license.FeatureMultiTenant, handlers.ListTenants))
-		r.Get("/tenants/{tenantID}", license.Require(license.FeatureMultiTenant, handlers.GetTenant))
+		r.With(requireAdmin).Post("/tenants", license.Require(license.FeatureMultiTenant, handlers.CreateTenant))
+		r.With(requireAdmin).Get("/tenants", license.Require(license.FeatureMultiTenant, handlers.ListTenants))
+		r.With(requireAdmin).Get("/tenants/{tenantID}", license.Require(license.FeatureMultiTenant, handlers.GetTenant))
 
 		// Phase 3: Budget metering
 		r.Get("/budget/check", license.Require(license.FeatureBudget, handlers.CheckBudget))
@@ -358,7 +366,7 @@ func main() {
 		r.Post("/push/register", license.Require(license.FeaturePushNotify, handlers.RegisterPushToken))
 		r.Get("/push/tokens", license.Require(license.FeaturePushNotify, handlers.GetPushTokens))
 		r.Delete("/push/tokens/{tokenID}", license.Require(license.FeaturePushNotify, handlers.DeactivatePushToken))
-		
+
 		// Phase 3: Audit log retrieval
 		r.Get("/audit", handlers.GetAuditLog)
 
@@ -415,7 +423,7 @@ func main() {
 		r.Post("/tx/receipt/verify", handlers.VerifyTransactionReceipt)
 
 		// Phase 8: Key Rotation
-		r.Post("/keys/rotate", handlers.RotateKey)
+		r.With(requireAdmin).Post("/keys/rotate", handlers.RotateKey)
 		r.Get("/keys/status", handlers.GetKeyRotationStatus)
 		r.Post("/keys/clear-previous", handlers.ClearPreviousKey)
 
@@ -431,6 +439,11 @@ func main() {
 		r.Post("/federation/peers/{gatewayID}/suspend", handlers.SuspendFederationPeerHandler)
 		r.Get("/federation/health", handlers.FederationHealthHandler)
 
+		// A2A protocol adapter (POC)
+		r.Get("/a2a/agents", handlers.ListA2AAgents)
+		r.Post("/a2a/tasks", handlers.CreateA2ATask)
+		r.Get("/a2a/tasks/{taskID}", handlers.GetA2ATask)
+
 		// Airport: Where agents meet
 		r.Post("/airport/handshake", handlers.AirportHandshakeHandler)
 		r.Post("/airport/connect", handlers.AirportConnectHandler)
@@ -441,6 +454,7 @@ func main() {
 		r.Put("/airport/agents/{agentID}", handlers.AirportUpdateProfileHandler)
 		r.Get("/airport/connections", handlers.AirportConnectionsHandler)
 		r.Get("/airport/health", handlers.AirportHealthHandler)
+		r.Get("/airport/stats", handlers.AirportStatsHandler)
 	})
 
 	handlers.StartHeartbeatCleanup(context.Background(), 2*time.Minute)
@@ -609,4 +623,15 @@ func maxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func isProductionEnv() bool {
+	env := os.Getenv("APP_ENV")
+	if env == "" {
+		env = os.Getenv("ENVIRONMENT")
+	}
+	if env == "" {
+		env = os.Getenv("GO_ENV")
+	}
+	return env == "production" || env == "prod"
 }

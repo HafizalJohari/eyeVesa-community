@@ -8,11 +8,15 @@ This project follows Semantic Versioning.
 ## [Unreleased]
 
 ### Added
-- Added this changelog as the release history source of truth.
-- Added an Astro Starlight documentation site under `docs/` with overview, quickstart, architecture, Airport, CLI, and expanded SDK documentation pages.
+- Added A2A adapter POC endpoints: `GET /v1/a2a/agents`, `POST /v1/a2a/tasks`, and `GET /v1/a2a/tasks/{taskID}` for interoperability scaffolding.
+- Added in-memory A2A task lifecycle service and dedicated handler tests covering discovery, task creation, and task retrieval.
+- Added a framework integration kit for Hermes, OpenClaw, and other agentic runtimes covering registration, Airport discovery, authorization, A2A handoff, and monetization positioning.
 
 ### Changed
-- No changes yet.
+- Protected agent registration and airport heartbeat behind authenticated requests.
+- Wired control-plane router to expose A2A adapter routes alongside existing Airport/federation surfaces.
+- Restricted tenant list/detail routes to admin JWTs.
+- Updated `eyevesa connect` to use configured credentials for secure agent registration.
 
 ### Deprecated
 - Nothing deprecated.
@@ -21,10 +25,42 @@ This project follows Semantic Versioning.
 - Nothing removed.
 
 ### Fixed
-- Nothing fixed yet.
+- Persisted `tenant_id` on agent registration when tenant context is present.
+- Enforced per-tenant agent caps during agent registration (falling back to the license cap when no tenant context is available).
 
 ### Security
-- No security updates yet.
+- Added tenant/owner checks before airport heartbeat and profile update writes.
+- Reused existing API key/JWT middleware for A2A routes to keep auth boundaries consistent in the adapter layer.
+- Blocked `AUTH_ENABLED=false` when the runtime environment is production.
+
+## [0.1.1] - 2026-05-20
+
+### Added
+- Added automatic API key creation in agent registration responses.
+- Added `eyevesa connect` for register, save API key, and heartbeat onboarding.
+- Added public `GET /v1/airport/stats` for landing page health metrics.
+- Added this changelog as the release history source of truth.
+- Added an Astro Starlight documentation site under `docs/` with overview, quickstart, architecture, Airport, CLI, and expanded SDK documentation pages.
+
+### Changed
+- Airport listing and online endpoints now include federated agents from `federated_heartbeats`.
+- API key migrations now repair `api_keys.tenant_id` to `TEXT` and add hash lookup support.
+
+### Deprecated
+- Nothing deprecated.
+
+### Removed
+- Nothing removed.
+
+### Fixed
+- Fixed community heartbeat onboarding by making `POST /v1/airport/heartbeat` public.
+- Fixed production API key creation against the new text tenant schema.
+
+### Security
+- Restricted API key creation/revocation, key rotation, and tenant creation to admin JWTs.
+- Stored new API keys as SHA-256 hashes and kept legacy plaintext lookup compatibility.
+- Wrapped authorize trust-score updates in a row-locking transaction.
+- Added tenant filtering to agent, resource, and API-key query paths when tenant context is present.
 
 ## [0.1.0] - 2026-05-19
 

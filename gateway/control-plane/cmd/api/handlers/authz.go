@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/audit"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
@@ -14,16 +16,16 @@ import (
 
 type AuthorizeRequest struct {
 	AgentID    string                 `json:"agent_id"`
-	ResourceID string                `json:"resource_id"`
+	ResourceID string                 `json:"resource_id"`
 	Action     string                 `json:"action"`
 	Params     map[string]interface{} `json:"params"`
 }
 
 type AuthorizeResponse struct {
 	Allowed       bool     `json:"allowed"`
-	RequiresHITL bool     `json:"requires_hitl"`
-	Reason       string   `json:"reason"`
-	TrustDelta   float64  `json:"trust_delta"`
+	RequiresHITL  bool     `json:"requires_hitl"`
+	Reason        string   `json:"reason"`
+	TrustDelta    float64  `json:"trust_delta"`
 	MissingSkills []string `json:"missing_skills,omitempty"`
 }
 
@@ -131,15 +133,10 @@ func Authorize(w http.ResponseWriter, r *http.Request) {
 		newTrustScore = 1
 	}
 
-	querier.Exec(r.Context(),
-		`UPDATE agents SET trust_score = $1, updated_at = NOW() WHERE agent_id = $2`,
-		newTrustScore, req.AgentID,
-	)
-
-	querier.Exec(r.Context(),
-		`INSERT INTO trust_events (agent_id, event_type, trust_delta, trust_score_after, reason) VALUES ($1, $2, $3, $4, $5)`,
-		req.AgentID, "authorize", decision.TrustDelta, newTrustScore, decision.Reason,
-	)
+	if err := recordTrustDelta(r, req.AgentID, decision.TrustDelta, decision.Reason, &trustScore, &newTrustScore); err != nil {
+		http.Error(w, "failed to update trust score", http.StatusInternalServerError)
+		return
+	}
 
 	action := "authorize"
 	outcome := "denied"
@@ -161,14 +158,66 @@ func Authorize(w http.ResponseWriter, r *http.Request) {
 
 	resp := AuthorizeResponse{
 		Allowed:       decision.Allowed,
-		RequiresHITL: decision.RequiresHITL,
-		Reason:       decision.Reason,
-		TrustDelta:   decision.TrustDelta,
+		RequiresHITL:  decision.RequiresHITL,
+		Reason:        decision.Reason,
+		TrustDelta:    decision.TrustDelta,
 		MissingSkills: decision.MissingSkills,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func recordTrustDelta(r *http.Request, agentID string, delta float64, reason string, trustScore, newTrustScore *float64) error {
+	if db == nil || db.Pool == nil {
+		_, _ = querier.Exec(r.Context(),
+			`UPDATE agents SET trust_score = $1, updated_at = NOW() WHERE agent_id = $2`,
+			*newTrustScore, agentID,
+		)
+		_, _ = querier.Exec(r.Context(),
+			`INSERT INTO trust_events (agent_id, event_type, trust_delta, trust_score_after, reason) VALUES ($1, $2, $3, $4, $5)`,
+			agentID, "authorize", delta, *newTrustScore, reason,
+		)
+		return nil
+	}
+
+	tx, err := db.Pool.BeginTx(r.Context(), pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(r.Context())
+
+	err = tx.QueryRow(r.Context(),
+		`SELECT trust_score FROM agents WHERE agent_id = $1 AND status = 'active' FOR UPDATE`,
+		agentID,
+	).Scan(trustScore)
+	if err != nil {
+		return err
+	}
+
+	*newTrustScore = *trustScore + delta
+	if *newTrustScore < 0 {
+		*newTrustScore = 0
+	}
+	if *newTrustScore > 1 {
+		*newTrustScore = 1
+	}
+
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE agents SET trust_score = $1, updated_at = NOW() WHERE agent_id = $2`,
+		*newTrustScore, agentID,
+	); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(r.Context(),
+		`INSERT INTO trust_events (agent_id, event_type, trust_delta, trust_score_after, reason) VALUES ($1, $2, $3, $4, $5)`,
+		agentID, "authorize", delta, *newTrustScore, reason,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit(r.Context())
 }
 
 func VerifySignature(w http.ResponseWriter, r *http.Request) {
@@ -207,9 +256,9 @@ func VerifySignature(w http.ResponseWriter, r *http.Request) {
 	valid := crypto.VerifySignature(pubKeyBytes, []byte(req.Message), sig)
 
 	w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"agent_id": req.AgentID,
-			"valid":    valid,
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"agent_id": req.AgentID,
+		"valid":    valid,
 	})
 }
 
@@ -285,19 +334,19 @@ func GetAuditLog(w http.ResponseWriter, r *http.Request) {
 		}
 
 		entries = append(entries, map[string]interface{}{
-			"log_id":            logID,
-			"agent_id":          agID,
-			"resource_id":       resID,
-			"action":            action,
-			"method":            method,
-			"params":            params,
-			"result":            result,
-			"result_status":     status,
+			"log_id":             logID,
+			"agent_id":           agID,
+			"resource_id":        resID,
+			"action":             action,
+			"method":             method,
+			"params":             params,
+			"result":             result,
+			"result_status":      status,
 			"trust_score_before": trustBefore,
 			"trust_score_after":  trustAfter,
-			"session_id":        sid,
-			"signature":         sig,
-			"created_at":        createdAt.Format(time.RFC3339),
+			"session_id":         sid,
+			"signature":          sig,
+			"created_at":         createdAt.Format(time.RFC3339),
 		})
 	}
 

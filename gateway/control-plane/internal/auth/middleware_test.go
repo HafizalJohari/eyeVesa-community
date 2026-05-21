@@ -40,8 +40,8 @@ func TestParseJWTValid(t *testing.T) {
 	secret := GenerateJWTSecret()
 	token := buildJWTToken(&JWTClaims{
 		TenantID:  "test-tenant",
-		Email:    "test@example.com",
-		Role:     "admin",
+		Email:     "test@example.com",
+		Role:      "admin",
 		ExpiresAt: 9999999999,
 		IssuedAt:  1000000000,
 	}, secret)
@@ -107,10 +107,10 @@ func TestIsPublicPath(t *testing.T) {
 		{"GET", "/identity", true},
 		{"GET", "/ready", true},
 		{"GET", "/metrics", true},
-		{"POST", "/v1/agents/register", true},
+		{"POST", "/v1/agents/register", false},
 		{"POST", "/v1/resources/register", true},
 		{"POST", "/v1/mcp", true},
-		{"GET", "/v1/api-keys", true},
+		{"GET", "/v1/api-keys", false},
 		{"POST", "/v1/auth/challenge", true},
 		{"POST", "/v1/auth/login", true},
 		{"POST", "/v1/authorize", false},
@@ -121,6 +121,7 @@ func TestIsPublicPath(t *testing.T) {
 		{"GET", "/v1/airport/agents", true},
 		{"GET", "/v1/airport/agents/uuid-123", true},
 		{"POST", "/v1/airport/heartbeat", false},
+		{"GET", "/v1/airport/stats", true},
 		{"PUT", "/v1/airport/agents/uuid-123", false},
 		{"GET", "/v1/airport/connections", false},
 	}
@@ -138,13 +139,25 @@ func TestMiddleware_PublicPath(t *testing.T) {
 		called = true
 	}))
 
-	for _, path := range []string{"/health", "/identity", "/v1/auth/challenge", "/v1/auth/login", "/v1/agents/register", "/v1/resources/register", "/v1/mcp", "/v1/api-keys"} {
+	publicPaths := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/health"},
+		{http.MethodGet, "/identity"},
+		{http.MethodPost, "/v1/auth/challenge"},
+		{http.MethodPost, "/v1/auth/login"},
+		{http.MethodPost, "/v1/resources/register"},
+		{http.MethodPost, "/v1/mcp"},
+		{http.MethodGet, "/v1/airport/stats"},
+	}
+	for _, tt := range publicPaths {
 		called = false
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequest(tt.method, tt.path, nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		if !called {
-			t.Errorf("public path %s should pass through", path)
+			t.Errorf("public path %s %s should pass through", tt.method, tt.path)
 		}
 	}
 }
@@ -174,8 +187,8 @@ func TestMiddleware_BearerToken(t *testing.T) {
 
 	token := buildJWTToken(&JWTClaims{
 		TenantID:  "t1",
-		Email:    "u@test.com",
-		Role:     "admin",
+		Email:     "u@test.com",
+		Role:      "admin",
 		ExpiresAt: time.Now().Add(time.Hour).Unix(),
 		IssuedAt:  time.Now().Unix(),
 	}, []byte(secret))
@@ -202,8 +215,8 @@ func TestMiddleware_BearerToken_InjectsContext(t *testing.T) {
 
 	token := buildJWTToken(&JWTClaims{
 		TenantID:  "tenant-42",
-		Email:    "admin@example.com",
-		Role:     "admin",
+		Email:     "admin@example.com",
+		Role:      "admin",
 		ExpiresAt: time.Now().Add(time.Hour).Unix(),
 		IssuedAt:  time.Now().Unix(),
 	}, []byte(secret))
@@ -235,8 +248,7 @@ func TestMiddleware_ProtectedPaths_RequireAuth(t *testing.T) {
 		"/v1/delegate",
 		"/v1/agents",
 		"/v1/hitl/request",
-		"/v1/airport/agents",
-		"/v1/airport/heartbeat",
+		"/v1/api-keys",
 	}
 
 	for _, path := range protectedPaths {
@@ -298,7 +310,7 @@ func TestMiddleware_SSO(t *testing.T) {
 
 	token := buildJWTToken(&JWTClaims{
 		TenantID:  "tenant-abc",
-		Role:     "approver",
+		Role:      "approver",
 		ExpiresAt: time.Now().Add(time.Hour).Unix(),
 		IssuedAt:  time.Now().Unix(),
 	}, []byte(secret))

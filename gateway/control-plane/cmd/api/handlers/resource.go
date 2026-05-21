@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/audit"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/auth"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/license"
 )
 
@@ -123,10 +124,14 @@ func GetResource(w http.ResponseWriter, r *http.Request) {
 
 	var name, resourceType, endpoint, status string
 	var riskLevel string
-	err := querier.QueryRow(r.Context(),
-		`SELECT name, resource_type, endpoint, risk_level, status FROM resources WHERE resource_id = $1`,
-		resourceIDStr,
-	).Scan(&name, &resourceType, &endpoint, &riskLevel, &status)
+	tenantID := auth.GetTenantID(r.Context())
+	query := `SELECT name, resource_type, endpoint, risk_level, status FROM resources WHERE resource_id = $1`
+	args := []interface{}{resourceIDStr}
+	if tenantID != "" {
+		query += ` AND tenant_id::text = $2`
+		args = append(args, tenantID)
+	}
+	err := querier.QueryRow(r.Context(), query, args...).Scan(&name, &resourceType, &endpoint, &riskLevel, &status)
 
 	if err != nil {
 		http.Error(w, "resource not found", http.StatusNotFound)
@@ -145,8 +150,15 @@ func GetResource(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListResources(w http.ResponseWriter, r *http.Request) {
-	rows, err := querier.Query(r.Context(),
-		`SELECT resource_id, name, resource_type, endpoint, risk_level, status FROM resources ORDER BY created_at DESC`)
+	tenantID := auth.GetTenantID(r.Context())
+	query := `SELECT resource_id, name, resource_type, endpoint, risk_level, status FROM resources`
+	args := []interface{}{}
+	if tenantID != "" {
+		query += ` WHERE tenant_id::text = $1`
+		args = append(args, tenantID)
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := querier.Query(r.Context(), query, args...)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
