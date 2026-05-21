@@ -844,52 +844,6 @@ eyeVesa can be deployed to GCP using **Cloud Run** + **Cloud SQL** with VPC-inte
 | Secret Manager | DB password, JWT secret, Ed25519 key | Auto-populated by deploy script |
 | VPC + Connector | Private networking | Cloud Run ↔ Cloud SQL |
 
-#### Cloud Build
-
-```bash
-gcloud builds submit --config cloudbuild.yaml \
-  --substitutions=_REGION=asia-southeast1,_REPO=eyevesa,_TAG=latest \
-  --project=YOUR_PROJECT_ID
-```
-
-See `cloudbuild.yaml` at the repository root for the multi-step build configuration.
-
-#### Quick Deploy
-
-```bash
-# 1. Prerequisites
-gcloud auth login
-gcloud config set project YOUR_PROJECT_ID
-
-# 2. Initialize (creates artifact registry, secrets, deploy/scripts/.env.gcp)
-bash deploy/scripts/deploy-gcp.sh init
-
-# 3. Review and update deploy/scripts/.env.gcp
-
-# 4. Build and push Docker images
-bash deploy/scripts/deploy-gcp.sh build
-
-# 5. Plan infrastructure
-bash deploy/scripts/deploy-gcp.sh plan
-
-# 6. Deploy infrastructure
-bash deploy/scripts/deploy-gcp.sh apply
-
-# 7. Run database migrations
-bash deploy/scripts/deploy-gcp.sh migrate
-
-# 8. Register a test agent
-bash deploy/scripts/deploy-gcp.sh register
-
-# 9. Check status
-bash deploy/scripts/deploy-gcp.sh status
-```
-
-Terraform config: `deploy/terraform/gcp.tf`
-Deploy script: `deploy/scripts/deploy-gcp.sh`
-Env template: `deploy/terraform/env.gcp.example`
-
-Production deploy env files, Terraform state, and Terraform plans are intentionally ignored and must not be committed. Keep live values in a password manager, Secret Manager, or a private Terraform backend.
 
 ## Development Status
 
