@@ -855,10 +855,6 @@ Production deploy env files, Terraform state, and Terraform plans are intentiona
 - SDK HITL approval query methods
 - SDK PTV attestation/bind methods
 
-## Learning
-
-See [LEARNING_ROADMAP.md](./LEARNING_ROADMAP.md) for a structured 12-week plan covering Go, Rust, PostgreSQL/pgvector, MCP, SPIRE, OPA, HITL, audit, and Docker/K8s.
-
 ## License
 
 Proprietary
