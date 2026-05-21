@@ -1,7 +1,0 @@
-project_id         = "eyevesa"
-region             = "asia-southeast1"
-environment        = "production"
-domain             = "gateway.eyevesa.ai"
-db_password        = "wBJAHMHjh7iPtylBCdHzqmc32z1aKhMP"
-jwt_secret         = "9CnUEAXwBhxQibM8bQDUAvqDRGj3ytVOPcZNjS3cRJLhQctIt8cWwE7I9Ydg0afV"
-gateway_ed25519_key = "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUJ0THVPK2xkdURQVkFlOG4zNmJtOXhTK2J2YVU0SDJ5U05LUEpRMG5pRkwKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo="
