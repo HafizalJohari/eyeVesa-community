@@ -10,6 +10,8 @@
 
 Connects AI agents to enterprise resources with cryptographic identity, policy-based authorization, and non-repudiable audit trails.
 
+New to eyeVesa or AI-agent infrastructure? Start with the plain-language [Beginner Guide](docs/beginner-guide.md).
+
 ## Community Quickstart
 
 Run a local eyeVesa sandbox with Docker. This does not connect to the official International Airport or any GCP production resources.

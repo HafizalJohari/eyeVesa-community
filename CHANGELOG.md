@@ -12,6 +12,7 @@ This project follows Semantic Versioning.
 - Added in-memory A2A task lifecycle service and dedicated handler tests covering discovery, task creation, and task retrieval.
 - Added a framework integration kit for Hermes, OpenClaw, and other agentic runtimes covering registration, Airport discovery, authorization, A2A handoff, and monetization positioning.
 - Added a Community release workflow note and Terraform GCS backend example for clean public publishing without private history.
+- Added a plain-language beginner guide for non-technical readers and new community users.
 
 ### Changed
 - Protected agent registration and airport heartbeat behind authenticated requests.
