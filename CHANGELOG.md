@@ -34,6 +34,7 @@ This project follows Semantic Versioning.
 
 ### Removed
 - Removed committed GCP deploy env, Terraform variable, Terraform state, and local session transcript artifacts from the tracked tree.
+- Removed the old docs site, static `site/` assets, and extra technical/public-noisy guides from the community repo to keep onboarding focused.
 
 ### Fixed
 - Persisted `tenant_id` on agent registration when tenant context is present.

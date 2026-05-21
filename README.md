@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="site/logo.svg" alt="eyeVesa" width="320">
-</p>
-
 <h1 align="center">eyeVesa</h1>
 
 <p align="center">
@@ -14,7 +10,6 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-2f80ed"></a>
-  <a href="docs/beginner-guide.md"><img alt="Beginner friendly" src="https://img.shields.io/badge/start-Beginner%20Guide-22c55e"></a>
   <a href="#community-quickstart"><img alt="Docker quickstart" src="https://img.shields.io/badge/run-Docker%20Quickstart-f97316"></a>
   <a href="#agent-native-setup"><img alt="Agent native setup" src="https://img.shields.io/badge/install-Agent%20Native-14b8a6"></a>
   <a href="#airport"><img alt="Airport discovery" src="https://img.shields.io/badge/agent%20discovery-Airport-8b5cf6"></a>
@@ -24,8 +19,6 @@
 ---
 
 eyeVesa connects AI agents to tools, resources, and other agents with cryptographic identity, policy-based authorization, and non-repudiable audit trails.
-
-New to eyeVesa or AI-agent infrastructure? Start with the plain-language [Beginner Guide](docs/beginner-guide.md).
 
 <table>
   <tr>
@@ -48,7 +41,6 @@ New to eyeVesa or AI-agent infrastructure? Start with the plain-language [Beginn
 
 | If you are... | Read this |
 |---|---|
-| New to the project | [Beginner Guide](docs/beginner-guide.md) |
 | Trying it locally | [Community Quickstart](#community-quickstart) |
 | Asking an AI agent to install it | [Agent-Native Setup](#agent-native-setup) |
 | Building an integration | [Agent Integrations](#agent-integrations) |
@@ -200,8 +192,6 @@ function_tools = openai_int.get_function_tools()       # OpenAI function format
 all_tools = openai_int.get_computer_and_function_tools()  # computer + functions
 result = await openai_int.handle_function_call("eyevesa_read", {"resource_id": "res-001"})
 ```
-
-See [docs/integrations/](docs/integrations/) for detailed guides.
 
 ## Airport
 
