@@ -24,6 +24,7 @@ This project follows Semantic Versioning.
 - Clarified the README community quickstart, local sandbox behavior, production API-key flow, and International Airport invite boundary.
 - Removed the README link to the missing learning roadmap.
 - Clarified that the repository code is Apache 2.0 licensed while hosted services and credentials remain separate.
+- Refreshed the README opening with badges, clearer navigation, and visual feature cards for community readers.
 
 ### Deprecated
 - Nothing deprecated.

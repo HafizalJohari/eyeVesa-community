@@ -4,13 +4,54 @@
 
 <h1 align="center">eyeVesa</h1>
 
-<p align="center"><em>Identity and trust layer for the agentic economy. Know Your Agent.</em></p>
+<p align="center">
+  <strong>Identity, authorization, discovery, and audit trails for AI agents.</strong>
+</p>
+
+<p align="center">
+  <em>Know Your Agent. Control what it can do. Prove what happened.</em>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-2f80ed"></a>
+  <a href="docs/beginner-guide.md"><img alt="Beginner friendly" src="https://img.shields.io/badge/start-Beginner%20Guide-22c55e"></a>
+  <a href="#community-quickstart"><img alt="Docker quickstart" src="https://img.shields.io/badge/run-Docker%20Quickstart-f97316"></a>
+  <a href="#airport"><img alt="Airport discovery" src="https://img.shields.io/badge/agent%20discovery-Airport-8b5cf6"></a>
+  <a href="#auth-middleware"><img alt="Auth modes" src="https://img.shields.io/badge/auth-local%20%7C%20production-0f172a"></a>
+</p>
 
 ---
 
-Connects AI agents to enterprise resources with cryptographic identity, policy-based authorization, and non-repudiable audit trails.
+eyeVesa connects AI agents to tools, resources, and other agents with cryptographic identity, policy-based authorization, and non-repudiable audit trails.
 
 New to eyeVesa or AI-agent infrastructure? Start with the plain-language [Beginner Guide](docs/beginner-guide.md).
+
+<table>
+  <tr>
+    <td width="33%">
+      <strong>For new users</strong><br>
+      Run a local sandbox, learn what the Airport is, and see how agent audit trails work.
+    </td>
+    <td width="33%">
+      <strong>For developers</strong><br>
+      Use SDKs, MCP, OPA policies, and the gateway/control-plane stack to build agent systems.
+    </td>
+    <td width="33%">
+      <strong>For operators</strong><br>
+      Keep production credentials, International Airport access, and GCP deployment under your control.
+    </td>
+  </tr>
+</table>
+
+## Start Here
+
+| If you are... | Read this |
+|---|---|
+| New to the project | [Beginner Guide](docs/beginner-guide.md) |
+| Trying it locally | [Community Quickstart](#community-quickstart) |
+| Building an integration | [Agent Integrations](#agent-integrations) |
+| Learning agent discovery | [Airport](#airport) |
+| Setting up auth | [API Keys](#api-keys) and [Auth Middleware](#auth-middleware) |
 
 ## Community Quickstart
 
@@ -47,17 +88,38 @@ Agent (SDK) ──mTLS──▶ Gateway Core ──gRPC──▶ Control Plane �
 
 ## Key Features
 
-- **Ed25519 Identity**: Every agent receives a keypair on registration; signatures verified on each action
-- **MCP Compatibility**: Model Context Protocol (JSON-RPC 2.0) for agent-resource communication
-- **Policy Engine**: Embedded OPA/Rego authorization with local fallback; defines allowed tools, never-events, and budget limits
-- **PTV (Prove-Transform-Verify)**: Hardware-rooted identity attestation with TPM simulation, identity binding, and verification
-- **Trust Scoring**: Session-aware dynamic trust scores that adjust per-action based on policy decisions
-- **Human-in-the-Loop (HITL)**: High-risk actions require human approval with FaceID/password, with expiry and escalation
-- **Non-repudiable Audit**: Every action logged with Ed25519 signature; integrity verification built in
-- **Agent Delegation**: Scoped agent-to-agent delegation with depth limits (max 3), chain-of-custody, and revocation
-- **SPIRE/SPIFFE**: Workload identity with mTLS for service communication (local dev fallback available)
-- **mTLS/TLS**: Rust proxy supports plaintext, TLS, and mTLS modes via `GATEWAY_MODE` env var
-- **Airport**: Agent discovery layer with heartbeat tracking, searchable profiles, online presence, and connection logging
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Identity</strong><br>
+      Ed25519 agent identity, signatures, JWT/API-key auth, and optional SPIRE/SPIFFE workload identity.
+    </td>
+    <td width="50%">
+      <strong>Authorization</strong><br>
+      OPA/Rego policy decisions, scoped delegation, trust scoring, and budget-aware action checks.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Airport</strong><br>
+      Agent discovery with searchable profiles, online presence, heartbeat tracking, and connection logs.
+    </td>
+    <td width="50%">
+      <strong>Audit</strong><br>
+      Non-repudiable audit records with signed actions, trust deltas, sessions, and reviewable history.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>MCP Gateway</strong><br>
+      Model Context Protocol support through a Rust gateway and Go control plane.
+    </td>
+    <td width="50%">
+      <strong>Human Approval</strong><br>
+      HITL workflows for risky actions, approval chains, notifications, expiry, and escalation.
+    </td>
+  </tr>
+</table>
 
 ## Packages
 
