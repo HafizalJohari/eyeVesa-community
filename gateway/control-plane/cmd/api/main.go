@@ -125,6 +125,7 @@ func main() {
 	escalationService := hitl.NewEscalationService(db.Pool)
 	llmService := llm.NewLLMService(nil)
 	embeddingService := behavior.NewEmbeddingService(db.Pool, llmService)
+	behaviorOptimizer := behavior.NewBehaviorOptimizer(db.Pool, embeddingService)
 	tenantService := tenant.NewTenantService(db)
 	pushService := hitl.NewPushService(db.Pool)
 	spireService := identity.NewSpireService(db.Pool)
@@ -246,6 +247,7 @@ func main() {
 	handlers.SetEscalationService(escalationService)
 	handlers.SetLLMService(llmService)
 	handlers.SetEmbeddingService(embeddingService)
+	handlers.SetBehaviorOptimizer(behaviorOptimizer)
 	handlers.SetTenantService(tenantService)
 	handlers.SetPushService(pushService)
 	handlers.SetSpireService(spireService)
@@ -459,6 +461,29 @@ func main() {
 
 	handlers.StartHeartbeatCleanup(context.Background(), 2*time.Minute)
 	federationService.StartHeartbeatCleanup(context.Background(), 5*time.Minute)
+
+	autogenWorker := policy.NewPolicyAutogenWorker(db.Pool, policyDir)
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				slog.Info("running self-improving policy compilation loop")
+				if err := autogenWorker.RefinePolicies(ctx); err != nil {
+					slog.Error("self-improving policy optimization failed", "error", err)
+					continue
+				}
+				if err := policyEngine.Reload(policyDir); err != nil {
+					slog.Error("self-improving policy reload rejected generated policy", "error", err)
+					continue
+				}
+				slog.Info("self-improving policy loop completed", "path", filepath.Join(policyDir, "autogen_compiled.rego"))
+			}
+		}
+	}()
 
 	var httpSrv *http.Server
 	go func() {
