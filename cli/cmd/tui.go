@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/api"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/hafizaljohari/eyeVesa/cli/internal/api"
 	"github.com/spf13/cobra"
 )
 
@@ -136,8 +136,8 @@ type apiKeyCreateErrMsg struct {
 }
 
 type agentRegisteredMsg struct {
-	id    string
-	name  string
+	id   string
+	name string
 }
 type registerErrMsg struct {
 	err error
@@ -256,12 +256,12 @@ func initialModel(client *api.Client) model {
 	akInputs[1].Width = 40
 
 	return model{
-		client:      client,
-		currentView: viewDashboard,
-		spinner:     s,
-		loading:     true,
-		table:       t,
-		formInputs:  inputs,
+		client:       client,
+		currentView:  viewDashboard,
+		spinner:      s,
+		loading:      true,
+		table:        t,
+		formInputs:   inputs,
 		apiKeyInputs: akInputs,
 	}
 }
@@ -326,6 +326,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.refreshCurrentView
 
 	case apiKeyCreateErrMsg:
+		m.loading = false
 		m.err = msg.err
 		m.currentView = viewAPIKeys
 
@@ -344,7 +345,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.err = msg.err
 		} else {
-			m.agents = msg.agents
+			m.agents = deduplicateAgents(msg.agents)
 		}
 
 	case resourcesLoadedMsg:
@@ -384,6 +385,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.refreshCurrentView
 
 	case registerErrMsg:
+		m.loading = false
 		m.err = msg.err
 		m.currentView = viewAgents
 
@@ -410,8 +412,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
-		m.loading = true
-		return m, nil
+		return m, tea.Quit
 
 	case "tab":
 		m.currentView = (m.currentView + 1) % 8
@@ -487,6 +488,7 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.statusMsg = ""
 		m.err = nil
+		return m, m.loadAllData
 
 	case "n":
 		if m.currentView == viewAgents {
@@ -656,6 +658,28 @@ func truncateID(id string, maxLen int) string {
 		return id[:maxLen] + "..."
 	}
 	return id
+}
+
+func deduplicateAgents(agents []map[string]interface{}) []map[string]interface{} {
+	seen := make(map[string]bool)
+	out := make([]map[string]interface{}, 0, len(agents))
+	for _, a := range agents {
+		key := ""
+		if id, ok := a["agent_id"].(string); ok && id != "" {
+			key = id
+		} else {
+			name, _ := a["name"].(string)
+			owner, _ := a["owner"].(string)
+			status, _ := a["status"].(string)
+			key = name + "|" + owner + "|" + status
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, a)
+	}
+	return out
 }
 
 func toMapSlice(raw interface{}) []map[string]interface{} {

@@ -9,7 +9,7 @@ import (
 var txCmd = &cobra.Command{
 	Use:   "tx",
 	Short: "Transaction protocol operations",
-	Long:  `Manage capability tokens, verify transactions, and issue receipts.
+	Long: `Manage capability tokens, verify transactions, and issue receipts.
 
 The transaction protocol enables authenticated, non-repudiable interactions
 between AI agents and enterprise resources via gateway-signed capability tokens.`,
@@ -102,8 +102,8 @@ Examples:
 }
 
 var txRevokedCmd = &cobra.Command{
-	Use:   "revoked",
-	Short: "List revoked tokens",
+	Use:     "revoked",
+	Short:   "List revoked tokens",
 	Aliases: []string{"ls-revoked"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()

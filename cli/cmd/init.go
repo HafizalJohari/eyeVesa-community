@@ -4,26 +4,26 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hafizaljohari/eyeVesa/cli/internal/config"
-	"github.com/hafizaljohari/eyeVesa/cli/internal/crypto"
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/config"
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/crypto"
 	"github.com/spf13/cobra"
 )
 
 var (
-	initName            string
-	initOwner           string
-	initCapabilities    []string
-	initAllowedTools    []string
-	initMaxBudget       float64
+	initName             string
+	initOwner            string
+	initCapabilities     []string
+	initAllowedTools     []string
+	initMaxBudget        float64
 	initDelegationPolicy string
-	initBehavioralTags  []string
-	initGateway         string
+	initBehavioralTags   []string
+	initGateway          string
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Register a new agent and save configuration",
-	Long: `Register a new agent with the AgentID Gateway, generate an Ed25519
+	Long: `Register a new agent with the eyeVesa Gateway, generate an Ed25519
 keypair, and save the configuration to ~/.eyevesa/.
 
 Examples:
@@ -98,7 +98,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		AgentName:       initName,
 		Owner:           initOwner,
 		KeyPath:         keyPath,
-		TimeoutSecs:    30,
+		TimeoutSecs:     30,
 	}
 	if err := cfg.Save(cfgPath); err != nil {
 		return fmt.Errorf("save config: %w", err)

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hafizaljohari/eyeVesa/cli/internal/config"
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 

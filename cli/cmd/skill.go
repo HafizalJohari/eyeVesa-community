@@ -13,8 +13,8 @@ var skillsCmd = &cobra.Command{
 }
 
 var skillsListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all skills",
+	Use:     "list",
+	Short:   "List all skills",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()
@@ -112,8 +112,8 @@ var skillsDeleteCmd = &cobra.Command{
 }
 
 var (
-	assignAgentID    string
-	assignSkillID    string
+	assignAgentID     string
+	assignSkillID     string
 	assignProficiency int
 )
 
@@ -137,11 +137,11 @@ Examples:
 }
 
 var (
-	endorseAgentID    string
-	endorseSkillID    string
-	endorserType      string
-	endorserID        string
-	endorseComment    string
+	endorseAgentID string
+	endorseSkillID string
+	endorserType   string
+	endorserID     string
+	endorseComment string
 )
 
 var skillsEndorseCmd = &cobra.Command{
@@ -165,9 +165,9 @@ Examples:
 }
 
 var (
-	skillVerifyAgentID  string
-	skillVerifySkillID  string
-	skillVerifyBy       string
+	skillVerifyAgentID string
+	skillVerifySkillID string
+	skillVerifyBy      string
 )
 
 var skillsVerifyCmd = &cobra.Command{
@@ -293,9 +293,9 @@ func init() {
 	_ = skillsEndorseCmd.MarkFlagRequired("skill-id")
 	_ = skillsEndorseCmd.MarkFlagRequired("endorser-id")
 
-skillsVerifyCmd.Flags().StringVar(&skillVerifyAgentID, "agent-id", "", "Agent ID (required)")
-skillsVerifyCmd.Flags().StringVar(&skillVerifySkillID, "skill-id", "", "Skill ID (required)")
-skillsVerifyCmd.Flags().StringVar(&skillVerifyBy, "verified-by", "admin", "Verifier ID")
+	skillsVerifyCmd.Flags().StringVar(&skillVerifyAgentID, "agent-id", "", "Agent ID (required)")
+	skillsVerifyCmd.Flags().StringVar(&skillVerifySkillID, "skill-id", "", "Skill ID (required)")
+	skillsVerifyCmd.Flags().StringVar(&skillVerifyBy, "verified-by", "admin", "Verifier ID")
 	_ = skillsVerifyCmd.MarkFlagRequired("agent-id")
 	_ = skillsVerifyCmd.MarkFlagRequired("skill-id")
 

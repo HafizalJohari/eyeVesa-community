@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use crate::proxy::forward::control_plane_http_base;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GatewayIdentity {
     pub spiffe_id: String,
@@ -7,9 +9,14 @@ pub struct GatewayIdentity {
     pub expires_at: String,
 }
 
-pub async fn fetch_identity(control_plane_http: &str, backend_tls_enabled: bool) -> Result<GatewayIdentity, Box<dyn std::error::Error + Send + Sync>> {
-    let scheme = if backend_tls_enabled { "https" } else { "http" };
-    let url = format!("{}://{}/identity", scheme, control_plane_http);
+pub async fn fetch_identity(
+    control_plane_http: &str,
+    backend_tls_enabled: bool,
+) -> Result<GatewayIdentity, Box<dyn std::error::Error + Send + Sync>> {
+    let url = format!(
+        "{}/identity",
+        control_plane_http_base(control_plane_http, backend_tls_enabled)
+    );
     let client = reqwest::Client::new();
     let resp = client.get(&url).send().await?;
 

@@ -144,6 +144,9 @@ func Authorize(w http.ResponseWriter, r *http.Request) {
 		outcome = "allowed"
 	}
 	logAirportConnection(r.Context(), req.AgentID, req.ResourceID, action, outcome, trustScore)
+	if decision.Allowed && behaviorOptimizer != nil {
+		_, _ = behaviorOptimizer.AnalyzeAnomalies(r.Context(), req.AgentID, req.Action, req.Params)
+	}
 
 	auditEntry := audit.AuditEntry{
 		AgentID:     req.AgentID,

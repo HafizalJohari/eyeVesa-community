@@ -33,8 +33,8 @@ var tenantsCreateCmd = &cobra.Command{
 }
 
 var tenantsListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all tenants",
+	Use:     "list",
+	Short:   "List all tenants",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()

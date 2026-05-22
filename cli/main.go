@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/hafizaljohari/eyeVesa/cli/cmd"
+	"github.com/HafizalJohari/eyeVesa-community/cli/cmd"
 )
 
 func main() {

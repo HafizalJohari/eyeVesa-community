@@ -20,6 +20,7 @@ import (
 var escalationService *hitl.EscalationService
 var llmService *llm.LLMService
 var embeddingService *behavior.EmbeddingService
+var behaviorOptimizer *behavior.BehaviorOptimizer
 var tenantService *tenant.TenantService
 var pushService *hitl.PushService
 
@@ -31,6 +32,9 @@ func SetLLMService(s *llm.LLMService) {
 }
 func SetEmbeddingService(s *behavior.EmbeddingService) {
 	embeddingService = s
+}
+func SetBehaviorOptimizer(s *behavior.BehaviorOptimizer) {
+	behaviorOptimizer = s
 }
 func SetTenantService(s *tenant.TenantService) {
 	tenantService = s
@@ -71,7 +75,7 @@ func RequestEscalatedApproval(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"approval_id": resp.ApprovalID,
 			"status":      "auto_allowed",
-			"message":      "action auto-allowed by policy",
+			"message":     "action auto-allowed by policy",
 		})
 	} else {
 		w.WriteHeader(http.StatusCreated)
@@ -193,13 +197,13 @@ func GenerateHITLSummary(w http.ResponseWriter, r *http.Request) {
 	).Scan(&hitlApproval.Action, &hitlApproval.ResourceID, &hitlApproval.RiskLevel, &hitlApproval.Params)
 
 	req := llm.HITLSummaryRequest{
-		AgentID:     approvalID,
-		AgentName:   agent.Name,
-		TrustScore:  agent.TrustScore,
-		Action:      hitlApproval.Action,
-		ResourceID:  hitlApproval.ResourceID,
-		RiskLevel:   hitlApproval.RiskLevel,
-		Params:      hitlApproval.Params,
+		AgentID:    approvalID,
+		AgentName:  agent.Name,
+		TrustScore: agent.TrustScore,
+		Action:     hitlApproval.Action,
+		ResourceID: hitlApproval.ResourceID,
+		RiskLevel:  hitlApproval.RiskLevel,
+		Params:     hitlApproval.Params,
 	}
 
 	summary, err := llmService.GenerateHITLSummary(r.Context(), req)
@@ -273,10 +277,10 @@ func GenerateAuditNarrative(w http.ResponseWriter, r *http.Request) {
 	}
 
 	llmReq := llm.AuditNarrativeRequest{
-		AgentID:     req.AgentID,
-		AgentName:   agentName,
-		PeriodEnd:   time.Now(),
-		Events:      events,
+		AgentID:   req.AgentID,
+		AgentName: agentName,
+		PeriodEnd: time.Now(),
+		Events:    events,
 	}
 	llmReq.PeriodStart = time.Now().AddDate(0, 0, -req.Days)
 
@@ -364,9 +368,9 @@ func DetectBehavioralAnomalies(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"agent_id":   agentID,
-		"anomalies":  anomalies,
-		"threshold":  threshold,
+		"agent_id":  agentID,
+		"anomalies": anomalies,
+		"threshold": threshold,
 	})
 }
 
@@ -528,10 +532,10 @@ func CheckBudget(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"agent_id":       agentID,
-		"allowed":        allowed,
+		"agent_id":         agentID,
+		"allowed":          allowed,
 		"remaining_budget": remaining,
-		"estimated_cost": estimatedCost,
+		"estimated_cost":   estimatedCost,
 	})
 }
 
@@ -647,7 +651,7 @@ func DeactivatePushToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "deactivated",
+		"status":   "deactivated",
 		"token_id": tokenID,
 	})
 }

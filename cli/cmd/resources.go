@@ -13,8 +13,8 @@ var resourcesCmd = &cobra.Command{
 }
 
 var resourcesListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all resources",
+	Use:     "list",
+	Short:   "List all resources",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()
@@ -43,20 +43,20 @@ var resourcesGetCmd = &cobra.Command{
 }
 
 var (
-	resourceName          string
-	resourceType          string
-	resourceEndpoint      string
-	resourceAuthMethod    string
-	resourceRiskLevel     string
-	resourceDataSens      string
-	resourceRateLimit     int
-	resourceCapabilities  string
+	resourceName         string
+	resourceType         string
+	resourceEndpoint     string
+	resourceAuthMethod   string
+	resourceRiskLevel    string
+	resourceDataSens     string
+	resourceRateLimit    int
+	resourceCapabilities string
 )
 
 var resourcesRegisterCmd = &cobra.Command{
 	Use:   "register",
 	Short: "Register a new resource",
-	Long: `Register a new enterprise resource with the AgentID Gateway.
+	Long: `Register a new enterprise resource with the eyeVesa Gateway.
 
 Examples:
   eyevesa resources register --name k8s-api --type mcp_server --endpoint https://k8s-adapter:8443

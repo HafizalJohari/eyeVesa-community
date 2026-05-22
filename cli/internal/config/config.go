@@ -54,7 +54,7 @@ func Load(path string) (*Config, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return &Config{
 			GatewayEndpoint: "http://localhost:8080",
-			TimeoutSecs:    30,
+			TimeoutSecs:     30,
 		}, nil
 	}
 

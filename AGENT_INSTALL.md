@@ -56,7 +56,9 @@ Run these checks:
 
 ```bash
 curl -fsS http://localhost:8080/health
+curl -fsS http://localhost:9443/health
 curl -fsS http://localhost:8080/v1/airport/health
+eyevesa doctor --gateway http://localhost:8080
 ```
 
 Expected success signals:
@@ -64,7 +66,9 @@ Expected success signals:
 - `./start.sh` completes without fatal errors.
 - Docker containers are running.
 - `http://localhost:8080/health` responds successfully.
+- `http://localhost:9443/health` responds successfully.
 - `http://localhost:8080/v1/airport/health` responds successfully.
+- `eyevesa doctor --gateway http://localhost:8080` can reach the local gateway.
 - The user can access the local services listed below.
 
 ## Report Back To The User
@@ -78,7 +82,9 @@ Control plane: http://localhost:8080
 Gateway proxy: http://localhost:9443
 OPA policy server: http://localhost:8181
 Health: http://localhost:8080/health
+Gateway health: http://localhost:9443/health
 Airport health: http://localhost:8080/v1/airport/health
+CLI doctor: eyevesa doctor --gateway http://localhost:8080
 
 This is a local sandbox only. It is not connected to the official International Airport.
 ```

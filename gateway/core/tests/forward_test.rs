@@ -1,8 +1,9 @@
-use agentid_core::proxy::ProxyState;
+use agentid_core::proxy::forward::control_plane_http_base;
 use agentid_core::proxy::server;
+use agentid_core::proxy::ProxyState;
 use agentid_core::tls::BackendTlsConfig;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -11,7 +12,12 @@ fn make_state(mock_server: &MockServer) -> Arc<ProxyState> {
     Arc::new(ProxyState {
         control_plane: Arc::new(Mutex::new(None)),
         control_plane_addr: "http://localhost:9999".to_string(),
-        control_plane_http_addr: Arc::new(tokio::sync::RwLock::new(mock_server.uri().replace("http://", "").replace("https://", ""))),
+        control_plane_http_addr: Arc::new(tokio::sync::RwLock::new(
+            mock_server
+                .uri()
+                .replace("http://", "")
+                .replace("https://", ""),
+        )),
         central_airport_url: None,
         http_client: reqwest::Client::builder()
             .no_proxy()
@@ -25,6 +31,24 @@ fn make_state(mock_server: &MockServer) -> Arc<ProxyState> {
             server_name: String::new(),
         },
     })
+}
+
+#[test]
+fn test_control_plane_http_base_accepts_full_https_url() {
+    let base = control_plane_http_base("https://gateway-control.example.run.app/", false);
+    assert_eq!(base, "https://gateway-control.example.run.app");
+}
+
+#[test]
+fn test_control_plane_http_base_adds_scheme_for_host() {
+    assert_eq!(
+        control_plane_http_base("gateway-control.example.run.app", false),
+        "http://gateway-control.example.run.app"
+    );
+    assert_eq!(
+        control_plane_http_base("gateway-control.example.run.app", true),
+        "https://gateway-control.example.run.app"
+    );
 }
 
 async fn start_proxy(state: Arc<ProxyState>) -> std::net::SocketAddr {
@@ -94,7 +118,10 @@ async fn test_forward_post_ptv_attest() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://127.0.0.1:{}/v1/ptv/attest", proxy_addr.port()))
+        .post(format!(
+            "http://127.0.0.1:{}/v1/ptv/attest",
+            proxy_addr.port()
+        ))
         .json(&serde_json::json!({"agent_id": "test"}))
         .send()
         .await
@@ -121,7 +148,10 @@ async fn test_forward_post_hitl_approve() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://127.0.0.1:{}/v1/hitl/approve", proxy_addr.port()))
+        .post(format!(
+            "http://127.0.0.1:{}/v1/hitl/approve",
+            proxy_addr.port()
+        ))
         .json(&serde_json::json!({"approval_id": "abc"}))
         .send()
         .await

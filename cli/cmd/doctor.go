@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hafizaljohari/eyeVesa/cli/internal/config"
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -34,8 +34,11 @@ the gateway, database, and policy engine.`,
 		// Check keypair
 		cfg, err := config.Load(cfgPath)
 		if err != nil {
-			fmt.Printf("  Config load:     ✗ (%v)\n", err)
-			ok = false
+			fmt.Printf("  Config load:     (using defaults: %v)\n", err)
+			cfg = &config.Config{
+				GatewayEndpoint: "http://localhost:8080",
+				TimeoutSecs:     30,
+			}
 		} else {
 			fmt.Printf("  Config load:     ✓\n")
 			fmt.Printf("  Gateway:         %s\n", cfg.GatewayEndpoint)

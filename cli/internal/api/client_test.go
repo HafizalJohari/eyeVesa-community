@@ -76,9 +76,9 @@ func TestClientPost(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"allowed":       true,
-				"requires_hitl":  false,
+				"requires_hitl": false,
 				"reason":        "auto-approved",
-				"trust_delta":    0.1,
+				"trust_delta":   0.1,
 			})
 			return
 		}
@@ -179,9 +179,9 @@ func TestClientAuthorize(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"allowed":       true,
-			"requires_hitl":  false,
+			"requires_hitl": false,
 			"reason":        "allowed by policy",
-			"trust_delta":    0.05,
+			"trust_delta":   0.05,
 		})
 	}))
 	defer srv.Close()

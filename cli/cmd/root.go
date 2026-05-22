@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hafizaljohari/eyeVesa/cli/internal/api"
-	"github.com/hafizaljohari/eyeVesa/cli/internal/config"
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/api"
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -27,13 +27,13 @@ func init() {
 
 var rootCmd = &cobra.Command{
 	Use:   "eyevesa",
-	Short: "AgentID Gateway CLI — identity and trust layer for AI agents",
-	Long: `eyevesa is the CLI for the AgentID Gateway.
+	Short: "eyeVesa CLI - identity and trust layer for AI agents",
+	Long: `eyevesa is the CLI for the eyeVesa Gateway.
 
 It provides commands to register agents, manage resources, authorize
 actions, inspect trust scores, manage skills and endorsements, handle
 multi-tenant isolation, approve HITL requests, enforce budget limits,
-manage SPIRE identities, and audit activity — all with cryptographic
+manage SPIRE identities, and audit activity - all with cryptographic
 identity and non-repudiable logs.`,
 	SilenceUsage: true,
 }
@@ -41,7 +41,6 @@ identity and non-repudiable logs.`,
 func Execute() error {
 	return rootCmd.Execute()
 }
-
 
 func getClient() *api.Client {
 	cfgPath := cfgFile
@@ -54,7 +53,7 @@ func getClient() *api.Client {
 		fmt.Fprintf(os.Stderr, "Warning: could not load config: %v\n", err)
 		appCfg = &config.Config{
 			GatewayEndpoint: "http://localhost:8080",
-			TimeoutSecs:    30,
+			TimeoutSecs:     30,
 		}
 	}
 

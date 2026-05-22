@@ -65,7 +65,7 @@ cd eyevesa-community
 ./start.sh
 ```
 
-The quickstart starts local PostgreSQL, OPA, the Go control plane, and the Rust gateway. Local development runs with `AUTH_ENABLED=false`, so API keys are not required for basic testing.
+The quickstart starts local PostgreSQL, OPA, the Go control plane, the Rust gateway, and installs the real `eyevesa` CLI to `~/.local/bin/eyevesa` when Go is available. Local development runs with `AUTH_ENABLED=false`, so API keys are not required for basic testing.
 
 | Local endpoint | Purpose |
 |---|---|
@@ -73,7 +73,16 @@ The quickstart starts local PostgreSQL, OPA, the Go control plane, and the Rust 
 | `http://localhost:9443` | Rust gateway proxy |
 | `http://localhost:8181` | OPA policy server |
 
-To connect to the official International Airport, you need an invite or API key from the operator. Public code access is not Airport access.
+Verify the local path:
+
+```bash
+which eyevesa
+eyevesa --version
+eyevesa --help
+eyevesa doctor --gateway http://localhost:8080
+```
+
+The community quickstart is local-only. Official International Airport access is advanced/operator-managed and not required for community testing.
 
 ## Agent-Native Setup
 
@@ -293,27 +302,22 @@ The `eyevesa` CLI provides a terminal UI and commands for agent management, auth
 Install the latest CLI from `main`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/HafizalJohari/eyeVesa-community/main/scripts/install.sh | bash
 ```
 
 Install from a specific release tag:
 
 ```bash
-VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh | bash
+VERSION=v0.1.1 curl -fsSL https://raw.githubusercontent.com/HafizalJohari/eyeVesa-community/main/scripts/install.sh | bash
 ```
 
 Install via Bun:
 
 ```bash
-bunx --bun bash -c "$(curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh)"
+bunx --bun bash -c "$(curl -fsSL https://raw.githubusercontent.com/HafizalJohari/eyeVesa-community/main/scripts/install.sh)"
 ```
 
-Install via Homebrew tap:
-
-```bash
-brew tap Hafizaljohari/eyevesa https://github.com/Hafizaljohari/eyeVesa
-brew install eyevesa
-```
+Homebrew tap: coming soon for the community repo. Until release checksums are published, use the curl installer or build from `cli/`.
 
 Run via Docker:
 
@@ -829,6 +833,10 @@ cd gateway/control-plane && go build -o eyevesa-control cmd/api/main.go
 cd gateway/core && cargo build --release
 cd adapter/resource-adapter-go && go build -o eyevesa-adapter ./cmd/
 ```
+
+### Advanced / Not Required for Community Quickstart
+
+The local community sandbox does not require production credentials, GCP access, production JWTs, or International Airport invites. The deployment notes below are for operators who intentionally run their own environment.
 
 ### Google Cloud Platform (Cloud Run)
 

@@ -152,21 +152,21 @@ build() {
     info "Building gateway-control..."
     docker build -t "${REGISTRY_URL}/gateway-control:latest" \
         -f "$PROJECT_ROOT/gateway/control-plane/Dockerfile" \
-        "$PROJECT_ROOT/gateway/control-plane"
+        "$PROJECT_ROOT"
     docker push "${REGISTRY_URL}/gateway-control:latest"
 
     # Build gateway-core (Rust)
     info "Building gateway-core..."
     docker build -t "${REGISTRY_URL}/gateway-core:latest" \
         -f "$PROJECT_ROOT/gateway/core/Dockerfile" \
-        "$PROJECT_ROOT/gateway/core"
+        "$PROJECT_ROOT"
     docker push "${REGISTRY_URL}/gateway-core:latest"
 
     # Build resource-adapter (Go)
     info "Building resource-adapter..."
     docker build -t "${REGISTRY_URL}/resource-adapter:latest" \
         -f "$PROJECT_ROOT/adapter/resource-adapter-go/Dockerfile" \
-        "$PROJECT_ROOT/adapter/resource-adapter-go"
+        "$PROJECT_ROOT"
     docker push "${REGISTRY_URL}/resource-adapter:latest"
 
     info "All images pushed successfully."

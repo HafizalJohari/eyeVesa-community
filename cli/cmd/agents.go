@@ -13,8 +13,8 @@ var agentsCmd = &cobra.Command{
 }
 
 var agentsListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all agents",
+	Use:     "list",
+	Short:   "List all agents",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()

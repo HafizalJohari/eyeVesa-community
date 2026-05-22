@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	clientcrypto "github.com/hafizaljohari/eyeVesa/cli/internal/crypto"
+	clientcrypto "github.com/HafizalJohari/eyeVesa-community/cli/internal/crypto"
 )
 
 type Client struct {
@@ -139,14 +139,14 @@ func (c *Client) ListAgents() (map[string]interface{}, error) {
 
 func (c *Client) RegisterResource(name, resourceType, endpoint, authMethod, riskLevel, dataSensitivity string, rateLimit int, capabilities interface{}) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"name":                name,
-		"type":               resourceType,
-		"endpoint":           endpoint,
-		"auth_method":        authMethod,
-		"risk_level":         riskLevel,
-		"data_sensitivity":   dataSensitivity,
+		"name":                 name,
+		"type":                 resourceType,
+		"endpoint":             endpoint,
+		"auth_method":          authMethod,
+		"risk_level":           riskLevel,
+		"data_sensitivity":     dataSensitivity,
 		"rate_limit_per_agent": rateLimit,
-		"capabilities":       capabilities,
+		"capabilities":         capabilities,
 	}
 	return c.Post("/v1/resources/register", body)
 }
@@ -327,11 +327,11 @@ func (c *Client) EscalateHITL(agentID, action, resourceID, riskLevel, reason str
 
 func (c *Client) AttestPTV(agentID, platform, firmwareVersion string, tpmPublicKey []byte, runtimeHash []byte) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"agent_id":        agentID,
-		"platform":        platform,
+		"agent_id":         agentID,
+		"platform":         platform,
 		"firmware_version": firmwareVersion,
-		"tpm_public_key":  tpmPublicKey,
-		"runtime_hash":    runtimeHash,
+		"tpm_public_key":   tpmPublicKey,
+		"runtime_hash":     runtimeHash,
 	}
 	return c.Post("/v1/ptv/attest", body)
 }
@@ -350,10 +350,10 @@ func (c *Client) CheckBudget(agentID string) (map[string]interface{}, error) {
 
 func (c *Client) RecordSpend(agentID string, amount float64, currency, category string) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"agent_id":  agentID,
-		"amount":    amount,
-		"currency":  currency,
-		"category":  category,
+		"agent_id": agentID,
+		"amount":   amount,
+		"currency": currency,
+		"category": category,
 	}
 	return c.Post("/v1/budget/spend", body)
 }
@@ -410,12 +410,12 @@ func (c *Client) MCPCallTool(agentID, toolName string, arguments map[string]inte
 
 func (c *Client) CreateTrustBundle(trustDomain, bundleData, bundleType, source, endpointURL string, isFederated bool) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"trust_domain":  trustDomain,
-		"bundle_data":   bundleData,
-		"bundle_type":   bundleType,
-		"source":        source,
-		"endpoint_url":  endpointURL,
-		"is_federated":  isFederated,
+		"trust_domain": trustDomain,
+		"bundle_data":  bundleData,
+		"bundle_type":  bundleType,
+		"source":       source,
+		"endpoint_url": endpointURL,
+		"is_federated": isFederated,
 	}
 	return c.Post("/v1/spire/bundles", body)
 }
@@ -449,10 +449,10 @@ func (c *Client) DeleteTrustBundle(trustDomain string) (map[string]interface{}, 
 
 func (c *Client) FetchBundleFromEndpoint(endpointURL, trustDomain string, save, isFederated bool) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"endpoint_url":  endpointURL,
-		"trust_domain":  trustDomain,
-		"save":          save,
-		"is_federated":  isFederated,
+		"endpoint_url": endpointURL,
+		"trust_domain": trustDomain,
+		"save":         save,
+		"is_federated": isFederated,
 	}
 	return c.Post("/v1/spire/bundles/fetch", body)
 }
@@ -499,7 +499,7 @@ func (c *Client) Put(path string, body interface{}) (map[string]interface{}, err
 
 func (c *Client) CreateSkill(name, description, category, riskLevel string, requiredTrustMin float64, requiredProficiency int) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"name":                  name,
+		"name":                 name,
 		"description":          description,
 		"category":             category,
 		"risk_level":           riskLevel,

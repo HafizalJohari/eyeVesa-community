@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	pushAgentID string
-	pushToken   string
+	pushAgentID  string
+	pushToken    string
 	pushPlatform string
 )
 
@@ -34,8 +34,8 @@ var pushRegisterCmd = &cobra.Command{
 }
 
 var pushListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List registered push tokens",
+	Use:     "list",
+	Short:   "List registered push tokens",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()

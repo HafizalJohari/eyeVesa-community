@@ -7,12 +7,12 @@ import (
 )
 
 var (
-	hitlApprover    string
-	hitlAgentID     string
-	hitlAction      string
-	hitlResourceID  string
-	hitlRiskLevel   string
-	hitlReason      string
+	hitlApprover   string
+	hitlAgentID    string
+	hitlAction     string
+	hitlResourceID string
+	hitlRiskLevel  string
+	hitlReason     string
 )
 
 var hitlCmd = &cobra.Command{
@@ -22,8 +22,8 @@ var hitlCmd = &cobra.Command{
 }
 
 var hitlListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List pending HITL approvals",
+	Use:     "list",
+	Short:   "List pending HITL approvals",
 	Aliases: []string{"ls", "pending"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()

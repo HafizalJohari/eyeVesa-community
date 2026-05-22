@@ -86,9 +86,9 @@ func runUpdate() error {
 		return fmt.Errorf("cannot get binary path: %w", err)
 	}
 
-	ldflags := fmt.Sprintf("-X github.com/hafizaljohari/eyeVesa/cli/cmd.version=%s", commit)
+	ldflags := fmt.Sprintf("-X github.com/HafizalJohari/eyeVesa-community/cli/cmd.version=%s", commit)
 	if runtime.GOOS == "windows" {
-		ldflags = fmt.Sprintf("-X github.com/hafizaljohari/eyeVesa/cli/cmd.version=%s", commit)
+		ldflags = fmt.Sprintf("-X github.com/HafizalJohari/eyeVesa-community/cli/cmd.version=%s", commit)
 	}
 
 	build := exec.Command("go", "build", "-ldflags", ldflags, "-o", bin, ".")

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hafizaljohari/eyeVesa/cli/internal/config"
-	"github.com/hafizaljohari/eyeVesa/cli/internal/crypto"
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/config"
+	"github.com/HafizalJohari/eyeVesa-community/cli/internal/crypto"
 	"github.com/spf13/cobra"
 )
 

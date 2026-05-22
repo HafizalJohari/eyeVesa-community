@@ -5,24 +5,24 @@ import (
 )
 
 var (
-	spireTrustDomain  string
-	spireBundleData   string
-	spireBundleType   string
-	spireSource       string
-	spireEndpointURL  string
-	spireIsFederated  bool
+	spireTrustDomain   string
+	spireBundleData    string
+	spireBundleType    string
+	spireSource        string
+	spireEndpointURL   string
+	spireIsFederated   bool
 	spireFederatedOnly bool
-	spireSpiffeID     string
-	spireAgentID     string
-	spireSelectors    []string
-	spireParentID     string
-	spireAutoRegister bool
+	spireSpiffeID      string
+	spireAgentID       string
+	spireSelectors     []string
+	spireParentID      string
+	spireAutoRegister  bool
 )
 
 var spireCmd = &cobra.Command{
 	Use:   "spire",
 	Short: "SPIRE identity and trust bundle management",
-	Long:  "Manage SPIRE trust bundles, workload registrations, and federation for the AgentID Gateway.",
+	Long:  "Manage SPIRE trust bundles, workload registrations, and federation for the eyeVesa Gateway.",
 }
 
 var spireBundleCreateCmd = &cobra.Command{

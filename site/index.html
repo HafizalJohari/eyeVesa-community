@@ -162,6 +162,7 @@
                 <ul class="dropdown-menu">
                     <li class="dropdown-item"><a href="#quickstart">Quick Start</a></li>
                     <li class="dropdown-item"><a href="#install">Installation</a></li>
+                    <li class="dropdown-item"><a href="#agent-native-setup">Agent-Native Setup</a></li>
                     <li class="dropdown-item"><a href="#sdk">SDK References</a></li>
                     <li class="dropdown-item"><a href="#hermes">Hermes Agent</a></li>
                 </ul>
@@ -537,6 +538,44 @@ brew install eyevesa</pre>
 docker run --rm eyevesa-cli --help</pre>
             <a href="javascript:void(0)" onclick="copyCode('install-docker')" class="copy-btn">[Copy]</a>
         </div>
+    </section>
+
+    <hr>
+
+    <section id="agent-native-setup">
+        <a name="agent-native-setup"></a>
+        <h2>Agent-Native Setup</h2>
+        <p>You can let your AI agent (like Hermes, OpenClaw, Claude, Codex, or any terminal-capable assistant) install and verify eyeVesa for you.</p>
+
+        <div style="background: rgba(20, 20, 30, 0.6); border: 1px dashed var(--accent-blue); padding: 18px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin-top:0; color: var(--accent-blue); font-weight: bold;">[Copy-Paste Prompt for your AI Agent]</p>
+            <p>Give your AI agent this prompt to initiate the setup:</p>
+            <div class="code-block">
+                <pre id="agent-prompt" style="color: var(--accent-blue); border-color: rgba(96, 165, 250, 0.35);">Install and run eyeVesa from https://github.com/HafizalJohari/eyeVesa-community.git.
+Use the local community sandbox only. Do not request production credentials.
+Clone the repo, run ./start.sh, verify health endpoints, and report the local URLs back to me.</pre>
+                <a href="javascript:void(0)" onclick="copyCode('agent-prompt')" class="copy-btn" style="border-color: rgba(96, 165, 250, 0.5);">[Copy]</a>
+            </div>
+            <p style="font-size: 11px; color: #888; margin-bottom: 0;">* This runs entirely in local sandbox mode. Your agent should follow the <a href="https://github.com/HafizalJohari/eyeVesa-community/blob/main/AGENT_INSTALL.md" target="_blank" rel="noopener">AGENT_INSTALL.md</a> guide which is safe by default.</p>
+        </div>
+
+        <h3>Expected Local URLs</h3>
+        <p>Once the agent succeeds, it should verify and report these endpoints:</p>
+        <table border="1" cellpadding="8" cellspacing="0" width="100%">
+            <tr bgcolor="#333"><th>Local URL</th><th>What it is</th><th>Health Endpoint</th></tr>
+            <tr><td><a href="http://localhost:8080" target="_blank">http://localhost:8080</a></td><td>Control-plane API</td><td><a href="http://localhost:8080/health" target="_blank">/health</a></td></tr>
+            <tr><td><a href="http://localhost:9443" target="_blank">http://localhost:9443</a></td><td>Gateway proxy</td><td><a href="http://localhost:9443/health" target="_blank">/health</a></td></tr>
+            <tr><td><a href="http://localhost:8181" target="_blank">http://localhost:8181</a></td><td>OPA policy server</td><td><a href="http://localhost:8181/v1/data/agentid/authz/allow" target="_blank">/v1/data/agentid/authz/allow</a></td></tr>
+        </table>
+
+        <h3>Safety Boundaries Enforced</h3>
+        <p>The agent is trained to operate with absolute safety. During local community installation, it is instructed to:</p>
+        <ul>
+            <li>Never ask for GCP/AWS credentials or Terraform state files.</li>
+            <li>Never connect to the production environment or the official International Airport.</li>
+            <li>Keep database, JWT secrets, and gateway private keys local-only (never commit them to git).</li>
+        </ul>
+        <p>For more details, see the complete <a href="https://github.com/HafizalJohari/eyeVesa-community/blob/main/AGENT_INSTALL.md" target="_blank" rel="noopener">Agent-Native Install Guide</a> on GitHub.</p>
     </section>
 
     <hr>

@@ -11,8 +11,8 @@ var airportCmd = &cobra.Command{
 }
 
 var airportSearchCmd = &cobra.Command{
-	Use:   "search",
-	Short: "Search for agents at the airport",
+	Use:     "search",
+	Short:   "Search for agents at the airport",
 	Aliases: []string{"find"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()
@@ -48,8 +48,8 @@ var airportSearchCmd = &cobra.Command{
 }
 
 var airportOnlineCmd = &cobra.Command{
-	Use:   "online",
-	Short: "List agents currently online at the airport",
+	Use:     "online",
+	Short:   "List agents currently online at the airport",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()

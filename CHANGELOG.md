@@ -8,6 +8,8 @@ This project follows Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added the control-plane self-improving loop: successful authorizations now feed behavioral baselines, behavioral drift records anomalies and trust markdowns, and a detached OPA autogen worker compiles learned allow rules into `autogen_compiled.rego`.
+- Added `scripts/reset-local.sh` and `scripts/smoke-test.sh` for repeatable community sandbox cleanup and verification.
 - Added A2A adapter POC endpoints: `GET /v1/a2a/agents`, `POST /v1/a2a/tasks`, and `GET /v1/a2a/tasks/{taskID}` for interoperability scaffolding.
 - Added in-memory A2A task lifecycle service and dedicated handler tests covering discovery, task creation, and task retrieval.
 - Added a framework integration kit for Hermes, OpenClaw, and other agentic runtimes covering registration, Airport discovery, authorization, A2A handoff, and monetization positioning.
@@ -16,6 +18,10 @@ This project follows Semantic Versioning.
 - Added agent-native onboarding docs so Hermes, OpenClaw, Claude, Codex, and similar agents can install and verify the local community sandbox.
 
 ### Changed
+- Changed the CLI module path and imports to `github.com/HafizalJohari/eyeVesa-community/cli` for standalone community builds.
+- Updated `./start.sh` to build and install the real `eyevesa` CLI to `~/.local/bin/eyevesa`, show the resolved command path, and include CLI doctor verification in the success screen.
+- Updated community install docs and installer defaults to use the `HafizalJohari/eyeVesa-community` repository and lowercase `eyevesa-community` folder examples.
+- Hardened the GCP deployment defaults for International Airport by using production-sized regional Cloud SQL settings, private Cloud SQL networking by default, and Secret Manager-backed `DATABASE_URL`/`JWT_SECRET` injection.
 - Protected agent registration and airport heartbeat behind authenticated requests.
 - Wired control-plane router to expose A2A adapter routes alongside existing Airport/federation surfaces.
 - Restricted tenant list/detail routes to admin JWTs.
@@ -36,12 +42,18 @@ This project follows Semantic Versioning.
 - Removed committed GCP deploy env, Terraform variable, Terraform state, and local session transcript artifacts from the tracked tree.
 
 ### Fixed
+- Fixed stale AgentID Gateway CLI branding in user-facing CLI help text.
+- Fixed installer handling for stale Hermes/profile-wrapper `eyevesa` commands by backing up and replacing the wrapper with the eyeVesa CLI.
+- Fixed `deploy-gcp.sh build` Docker contexts so local GCP image builds match the root-context Dockerfiles used by Cloud Build.
+- Fixed gateway-core forwarding to accept full HTTPS Cloud Run control-plane URLs instead of forcing an `http://` scheme when backend TLS is disabled.
 - Persisted `tenant_id` on agent registration when tenant context is present.
 - Enforced per-tenant agent caps during agent registration (falling back to the license cap when no tenant context is available).
 - Fixed `./start.sh` startup in non-interactive agent shells where `TERM` may be unset.
 - Updated `./start.sh` to wait on the Compose `postgres` service instead of a fixed global container name.
 
 ### Security
+- Restricted autonomous policy generation to detached, validated Rego output and blocked never-event actions such as schema, cluster, policy override, and secret access from promotion.
+- Disabled Cloud SQL public IPv4 by default and enabled Cloud SQL deletion protection in the GCP Terraform path.
 - Added tenant/owner checks before airport heartbeat and profile update writes.
 - Reused existing API key/JWT middleware for A2A routes to keep auth boundaries consistent in the adapter layer.
 - Blocked `AUTH_ENABLED=false` when the runtime environment is production.

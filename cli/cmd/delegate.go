@@ -56,10 +56,10 @@ var delegateValidateCmd = &cobra.Command{
 }
 
 var delegateListCmd = &cobra.Command{
-	Use:   "list [agent-id]",
-	Short: "List delegations for an agent",
+	Use:     "list [agent-id]",
+	Short:   "List delegations for an agent",
 	Aliases: []string{"ls"},
-	Args:  cobra.ExactArgs(1),
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()
 		result, err := client.ListDelegations(args[0])

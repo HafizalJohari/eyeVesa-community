@@ -3,6 +3,16 @@ use hyper::body::Incoming;
 use hyper::{Request, Response};
 use std::sync::Arc;
 
+pub fn control_plane_http_base(control_plane_http_addr: &str, backend_tls_enabled: bool) -> String {
+    let addr = control_plane_http_addr.trim_end_matches('/');
+    if addr.starts_with("http://") || addr.starts_with("https://") {
+        return addr.to_string();
+    }
+
+    let scheme = if backend_tls_enabled { "https" } else { "http" };
+    format!("{}://{}", scheme, addr)
+}
+
 pub async fn forward_to_control_plane(
     req: Request<Incoming>,
     state: Arc<ProxyState>,
@@ -13,9 +23,12 @@ pub async fn forward_to_control_plane(
     let bytes = crate::proxy::collect_body(body).await?;
 
     let client = &state.http_client;
-    let scheme = if state.backend_tls.enabled { "https" } else { "http" };
     let cp_addr = state.control_plane_http_addr.read().await.clone();
-    let url = format!("{}://{}{}", scheme, cp_addr, path);
+    let url = format!(
+        "{}{}",
+        control_plane_http_base(&cp_addr, state.backend_tls.enabled),
+        path
+    );
 
     let mut builder = match method.as_str() {
         "GET" => client.get(&url),
@@ -42,10 +55,16 @@ pub async fn forward_to_control_plane(
         builder = builder.body(bytes);
     }
 
-    let resp = builder.send().await.map_err(|e| format!("forward error: {}", e))?;
+    let resp = builder
+        .send()
+        .await
+        .map_err(|e| format!("forward error: {}", e))?;
     let status = resp.status();
     let resp_ct = resp.headers().get("content-type").cloned();
-    let body_text = resp.text().await.map_err(|e| format!("forward body error: {}", e))?;
+    let body_text = resp
+        .text()
+        .await
+        .map_err(|e| format!("forward body error: {}", e))?;
 
     let mut response_builder = Response::builder().status(status.as_u16());
     if let Some(ct) = resp_ct {
@@ -75,7 +94,12 @@ pub async fn forward_to_central_airport(
         }
     };
 
-    let url = format!("{}/v1/federation/{}", central_url.trim_end_matches('/'), path.strip_prefix("/v1/federation/international/").unwrap_or(&path));
+    let url = format!(
+        "{}/v1/federation/{}",
+        central_url.trim_end_matches('/'),
+        path.strip_prefix("/v1/federation/international/")
+            .unwrap_or(&path)
+    );
     let client = &state.http_client;
 
     let mut builder = match method.as_str() {
@@ -103,10 +127,16 @@ pub async fn forward_to_central_airport(
         builder = builder.body(bytes);
     }
 
-    let resp = builder.send().await.map_err(|e| format!("central airport forward error: {}", e))?;
+    let resp = builder
+        .send()
+        .await
+        .map_err(|e| format!("central airport forward error: {}", e))?;
     let status = resp.status();
     let resp_ct = resp.headers().get("content-type").cloned();
-    let body_text = resp.text().await.map_err(|e| format!("central airport body error: {}", e))?;
+    let body_text = resp
+        .text()
+        .await
+        .map_err(|e| format!("central airport body error: {}", e))?;
 
     let mut response_builder = Response::builder().status(status.as_u16());
     if let Some(ct) = resp_ct {

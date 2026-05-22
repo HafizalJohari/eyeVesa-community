@@ -18,6 +18,14 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -67,6 +75,30 @@ variable "gateway_ed25519_key" {
   sensitive   = true
 }
 
+variable "db_tier" {
+  description = "Cloud SQL machine tier"
+  type        = string
+  default     = "db-custom-1-3840"
+}
+
+variable "db_availability_type" {
+  description = "Cloud SQL availability type"
+  type        = string
+  default     = "REGIONAL"
+}
+
+variable "db_deletion_protection" {
+  description = "Protect Cloud SQL from accidental deletion"
+  type        = bool
+  default     = true
+}
+
+variable "enable_cloud_sql_public_ip" {
+  description = "Enable public IPv4 on Cloud SQL. Keep false for production."
+  type        = bool
+  default     = false
+}
+
 # ──────────────────────────────────────────────────────────────────
 # VPC + Networking
 # ──────────────────────────────────────────────────────────────────
@@ -107,9 +139,9 @@ resource "google_compute_subnetwork" "eyevesa" {
 }
 
 resource "google_compute_global_address" "eyevesa" {
-  name          = "eyevesa-${var.environment}"
-  address_type  = "EXTERNAL"
-  ip_version    = "IPV4"
+  name         = "eyevesa-${var.environment}"
+  address_type = "EXTERNAL"
+  ip_version   = "IPV4"
 }
 
 # VPC connector for Cloud Run -> Cloud SQL
@@ -134,20 +166,16 @@ resource "google_sql_database_instance" "eyevesa" {
   depends_on = [google_service_networking_connection.private_service_access]
 
   settings {
-    tier = "db-f1-micro"
+    tier = var.db_tier
 
-    disk_size       = 10
-    disk_type       = "PD_SSD"
-    pricing_plan    = "PER_USE"
-    availability_type = "ZONAL"
+    disk_size         = 10
+    disk_type         = "PD_SSD"
+    pricing_plan      = "PER_USE"
+    availability_type = var.db_availability_type
 
     ip_configuration {
-      ipv4_enabled    = true
+      ipv4_enabled    = var.enable_cloud_sql_public_ip
       private_network = google_compute_network.eyevesa.id
-      authorized_networks {
-        name  = "external-access"
-        value = "180.74.224.195/32"
-      }
     }
 
     database_flags {
@@ -156,7 +184,7 @@ resource "google_sql_database_instance" "eyevesa" {
     }
   }
 
-  deletion_protection = false
+  deletion_protection = var.db_deletion_protection
 }
 
 resource "random_id" "db_name" {
@@ -209,6 +237,18 @@ resource "google_secret_manager_secret_version" "db_password" {
   secret_data = var.db_password
 }
 
+resource "google_secret_manager_secret" "database_url" {
+  secret_id = "eyevesa-database-url-${var.environment}"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "database_url" {
+  secret      = google_secret_manager_secret.database_url.id
+  secret_data = "postgres://agentid:${var.db_password}@/${google_sql_database_instance.eyevesa.name}?host=/cloudsql/${google_sql_database_instance.eyevesa.connection_name}&dbname=agentid&sslmode=disable"
+}
+
 resource "google_secret_manager_secret" "jwt_secret" {
   secret_id = "eyevesa-jwt-secret-${var.environment}"
   replication {
@@ -245,6 +285,33 @@ resource "google_artifact_registry_repository" "eyevesa" {
 }
 
 # ──────────────────────────────────────────────────────────────────
+# Service Accounts
+# ──────────────────────────────────────────────────────────────────
+
+resource "google_service_account" "gateway_control" {
+  account_id   = "eyevesa-control-${var.environment}"
+  display_name = "eyeVesa gateway-control ${var.environment}"
+}
+
+resource "google_secret_manager_secret_iam_member" "gateway_control_database_url" {
+  secret_id = google_secret_manager_secret.database_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gateway_control.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "gateway_control_jwt_secret" {
+  secret_id = google_secret_manager_secret.jwt_secret.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gateway_control.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "gateway_control_gateway_key" {
+  secret_id = google_secret_manager_secret.gateway_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gateway_control.email}"
+}
+
+# ──────────────────────────────────────────────────────────────────
 # Cloud Run — gateway-control (Go)
 # ──────────────────────────────────────────────────────────────────
 
@@ -262,6 +329,8 @@ resource "google_cloud_run_v2_service" "gateway_control" {
   location = var.region
 
   template {
+    service_account = google_service_account.gateway_control.email
+
     containers {
       name  = "gateway-control"
       image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.eyevesa.repository_id}/gateway-control:latest"
@@ -280,16 +349,26 @@ resource "google_cloud_run_v2_service" "gateway_control" {
       }
 
       env {
-        name  = "DATABASE_URL"
-        value = "postgres://agentid:${var.db_password}@/${google_sql_database_instance.eyevesa.name}?host=/cloudsql/${google_sql_database_instance.eyevesa.connection_name}&dbname=agentid&sslmode=disable"
+        name = "DATABASE_URL"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.database_url.secret_id
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "AUTH_ENABLED"
         value = "true"
       }
       env {
-        name  = "JWT_SECRET"
-        value = var.jwt_secret
+        name = "JWT_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.jwt_secret.secret_id
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "OPA_ENDPOINT"
@@ -334,16 +413,25 @@ resource "google_cloud_run_v2_service" "gateway_control" {
       secret {
         secret       = google_secret_manager_secret.gateway_key.secret_id
         default_mode = 256
+        items {
+          version = "latest"
+          path    = "gateway-ed25519-key"
+        }
       }
     }
   }
 
-  depends_on = [google_sql_database_instance.eyevesa]
+  depends_on = [
+    google_sql_database_instance.eyevesa,
+    google_secret_manager_secret_iam_member.gateway_control_database_url,
+    google_secret_manager_secret_iam_member.gateway_control_jwt_secret,
+    google_secret_manager_secret_iam_member.gateway_control_gateway_key,
+  ]
 }
 
 resource "google_cloud_run_service_iam_policy" "gateway_control_invoker" {
-  service    = google_cloud_run_v2_service.gateway_control.name
-  location   = var.region
+  service     = google_cloud_run_v2_service.gateway_control.name
+  location    = var.region
   policy_data = data.google_iam_policy.cloudrun_invoker.policy_data
 }
 
@@ -383,11 +471,11 @@ resource "google_cloud_run_v2_service" "gateway_core" {
 
       env {
         name  = "CONTROL_PLANE_ADDR"
-        value = "${google_cloud_run_v2_service.gateway_control.uri}"
+        value = google_cloud_run_v2_service.gateway_control.uri
       }
       env {
         name  = "CONTROL_PLANE_HTTP_ADDR"
-        value = trimprefix(google_cloud_run_v2_service.gateway_control.uri, "https://")
+        value = google_cloud_run_v2_service.gateway_control.uri
       }
       env {
         name  = "GATEWAY_MODE"
@@ -407,8 +495,8 @@ resource "google_cloud_run_v2_service" "gateway_core" {
 }
 
 resource "google_cloud_run_service_iam_policy" "gateway_core_invoker" {
-  service    = google_cloud_run_v2_service.gateway_core.name
-  location   = var.region
+  service     = google_cloud_run_v2_service.gateway_core.name
+  location    = var.region
   policy_data = data.google_iam_policy.cloudrun_invoker.policy_data
 }
 

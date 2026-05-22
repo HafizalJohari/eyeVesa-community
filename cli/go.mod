@@ -1,4 +1,4 @@
-module github.com/hafizaljohari/eyeVesa/cli
+module github.com/HafizalJohari/eyeVesa-community/cli
 
 go 1.24.2
 
