@@ -38,14 +38,14 @@ If Docker is not running, ask the user to start Docker Desktop or the Docker dae
 
 ```bash
 git clone https://github.com/HafizalJohari/eyeVesa-community.git
-cd eyeVesa-community
+cd eyevesa-community
 ./start.sh
 ```
 
 If the repo already exists:
 
 ```bash
-cd eyeVesa-community
+cd eyevesa-community
 git pull --ff-only
 ./start.sh
 ```

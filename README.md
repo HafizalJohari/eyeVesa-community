@@ -61,7 +61,7 @@ Run a local eyeVesa sandbox with Docker. This does not connect to the official I
 
 ```bash
 git clone https://github.com/HafizalJohari/eyeVesa-community.git
-cd eyeVesa-community
+cd eyevesa-community
 ./start.sh
 ```
 
