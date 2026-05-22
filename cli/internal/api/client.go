@@ -137,6 +137,10 @@ func (c *Client) ListAgents() (map[string]interface{}, error) {
 	return c.Get("/v1/agents")
 }
 
+func (c *Client) DeleteAgent(agentID string) (map[string]interface{}, error) {
+	return c.Delete("/v1/agents/" + agentID)
+}
+
 func (c *Client) RegisterResource(name, resourceType, endpoint, authMethod, riskLevel, dataSensitivity string, rateLimit int, capabilities interface{}) (map[string]interface{}, error) {
 	body := map[string]interface{}{
 		"name":                name,

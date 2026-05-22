@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -62,9 +63,40 @@ var agentsTrustCmd = &cobra.Command{
 	},
 }
 
+var skipDeleteConfirmation bool
+
+var agentsDeleteCmd = &cobra.Command{
+	Use:   "delete [agent-id]",
+	Short: "Delete an agent",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		agentID := args[0]
+		if !skipDeleteConfirmation {
+			fmt.Printf("Delete agent %s? Type 'yes' to confirm: ", agentID)
+			var confirm string
+			if _, err := fmt.Scanln(&confirm); err != nil {
+				return fmt.Errorf("confirmation failed: %w", err)
+			}
+			if strings.ToLower(strings.TrimSpace(confirm)) != "yes" {
+				return fmt.Errorf("delete cancelled")
+			}
+		}
+
+		client := getClient()
+		result, err := client.DeleteAgent(agentID)
+		if err != nil {
+			return err
+		}
+		printResult(result)
+		return nil
+	},
+}
+
 func init() {
 	agentsCmd.AddCommand(agentsListCmd)
 	agentsCmd.AddCommand(agentsGetCmd)
 	agentsCmd.AddCommand(agentsTrustCmd)
+	agentsDeleteCmd.Flags().BoolVarP(&skipDeleteConfirmation, "yes", "y", false, "skip confirmation prompt")
+	agentsCmd.AddCommand(agentsDeleteCmd)
 	addCoreCommand(agentsCmd)
 }

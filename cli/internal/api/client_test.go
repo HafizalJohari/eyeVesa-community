@@ -99,6 +99,32 @@ func TestClientPost(t *testing.T) {
 	}
 }
 
+func TestClientDeleteAgent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			t.Errorf("method = %q, want DELETE", r.Method)
+		}
+		if r.URL.Path != "/v1/agents/agent-123" {
+			t.Errorf("path = %q, want /v1/agents/agent-123", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"deleted":  true,
+			"agent_id": "agent-123",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	result, err := c.DeleteAgent("agent-123")
+	if err != nil {
+		t.Fatalf("DeleteAgent() error: %v", err)
+	}
+	if deleted, _ := result["deleted"].(bool); !deleted {
+		t.Error("DeleteAgent() result deleted = false, want true")
+	}
+}
+
 func TestClientAPIKeyHeader(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-API-Key") != "test-key-123" {

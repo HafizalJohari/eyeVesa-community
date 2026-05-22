@@ -8,6 +8,10 @@ This project follows Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `eyevesa agents delete <agent-id>` with interactive confirmation and `--yes` bypass flag.
+- Added merchant-as-agent role support with new merchant profile and trust tables (`merchant_profiles`, `merchant_trust_state`, `merchant_trust_events`) and agent `roles`.
+- Added merchant endpoints: `POST /v1/merchants`, `GET /v1/merchants`, `GET /v1/merchants/{merchantID}`, and `GET /v1/merchants/{merchantID}/trust`.
+- Added merchant trust ingestion endpoints: `POST /v1/merchant-trust/events/outcome` and `POST /v1/merchant-trust/events/feedback`.
 - Added the control-plane self-improving loop: successful authorizations now feed behavioral baselines, behavioral drift records anomalies and trust markdowns, and a detached OPA autogen worker compiles learned allow rules into `autogen_compiled.rego`.
 - Added `scripts/reset-local.sh` and `scripts/smoke-test.sh` for repeatable community sandbox cleanup and verification.
 - Added A2A adapter POC endpoints: `GET /v1/a2a/agents`, `POST /v1/a2a/tasks`, and `GET /v1/a2a/tasks/{taskID}` for interoperability scaffolding.
@@ -21,6 +25,7 @@ This project follows Semantic Versioning.
 - Added grouped CLI help sections so beginner, core, operator, and advanced commands are easier to scan.
 
 ### Changed
+- Extended Airport search to support merchant-focused marketplace filters and ranking (`kind=merchant`, `min_merchant_trust`, `merchant_confidence`, `merchant_category`, `merchant_verification`).
 - Changed the CLI module path and imports to `github.com/HafizalJohari/eyeVesa-community/cli` for standalone community builds.
 - Updated `./start.sh` to build and install the real `eyevesa` CLI to `~/.local/bin/eyevesa`, show the resolved command path, and include CLI doctor verification in the success screen.
 - Updated community install docs and installer defaults to use the `HafizalJohari/eyeVesa-community` repository and lowercase `eyevesa-community` folder examples.
@@ -57,6 +62,7 @@ This project follows Semantic Versioning.
 - Fixed `eyevesa init` so returned registration API keys are saved to config when present, and fixed config saving for JWT-only auth.
 
 ### Security
+- Added marketplace guardrails in merchant trust state (`risk_flags`, `hitl_only`, `suspended`) so low-confidence or low-trust merchants can be rate-limited before checkout.
 - Restricted autonomous policy generation to detached, validated Rego output and blocked never-event actions such as schema, cluster, policy override, and secret access from promotion.
 - Disabled Cloud SQL public IPv4 by default and enabled Cloud SQL deletion protection in the GCP Terraform path.
 - Added tenant/owner checks before airport heartbeat and profile update writes.
