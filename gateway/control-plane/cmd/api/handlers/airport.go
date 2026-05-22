@@ -30,14 +30,19 @@ type AirportProfileUpdate struct {
 }
 
 type AirportSearchRequest struct {
+	Kind              string  `json:"kind"`
 	Capability     string  `json:"capability"`
 	Skill          string  `json:"skill"`
 	MinTrust       float64 `json:"min_trust"`
+	MinMerchantTrust float64 `json:"min_merchant_trust"`
 	MinProficiency int     `json:"min_proficiency"`
 	Verified       *bool   `json:"verified"`
 	Status         string  `json:"status"`
 	Tag            string  `json:"tag"`
 	Owner          string  `json:"owner"`
+	MerchantCategory string `json:"merchant_category"`
+	MerchantVerification string `json:"merchant_verification"`
+	MerchantConfidenceMin float64 `json:"merchant_confidence"`
 	Limit          int     `json:"limit"`
 	Offset         int     `json:"offset"`
 }
@@ -218,6 +223,7 @@ func canAccessAirportAgent(ctx context.Context, agentID uuid.UUID) bool {
 func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 	var req AirportSearchRequest
 	req.Capability = r.URL.Query().Get("capability")
+	req.Kind = r.URL.Query().Get("kind")
 	req.Skill = r.URL.Query().Get("skill")
 	req.Status = r.URL.Query().Get("status")
 	req.Tag = r.URL.Query().Get("tag")
@@ -226,6 +232,18 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 	if v := r.URL.Query().Get("min_trust"); v != "" {
 		if f, err := parseFloat(v); err == nil {
 			req.MinTrust = f
+		}
+	}
+	if v := r.URL.Query().Get("min_merchant_trust"); v != "" {
+		if f, err := parseFloat(v); err == nil {
+			req.MinMerchantTrust = f
+		}
+	}
+	req.MerchantCategory = r.URL.Query().Get("merchant_category")
+	req.MerchantVerification = r.URL.Query().Get("merchant_verification")
+	if v := r.URL.Query().Get("merchant_confidence"); v != "" {
+		if f, err := parseFloat(v); err == nil {
+			req.MerchantConfidenceMin = f
 		}
 	}
 	if v := r.URL.Query().Get("min_proficiency"); v != "" {
@@ -320,10 +338,17 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 		COALESCE(ap.total_actions, 0) as total_actions,
 		COALESCE(ap.approval_rate, 1.0) as approval_rate,
 		COALESCE(ah.last_heartbeat::text, '') as last_seen,
-		COALESCE(ah.status, 'offline') as status
+		COALESCE(ah.status, 'offline') as status,
+		COALESCE(array_to_json(a.roles)::text, '[]') as roles,
+		COALESCE(mts.trust_score, 0.5) as merchant_trust_score,
+		COALESCE(mts.confidence, 0.1) as merchant_confidence,
+		COALESCE(array_to_json(mp.categories)::text, '[]') as merchant_categories,
+		COALESCE(mp.verification_tier, 'unverified') as merchant_verification_tier
 		FROM agents a
 		LEFT JOIN agent_profiles ap ON ap.agent_id = a.agent_id
 		LEFT JOIN agent_heartbeats ah ON ah.agent_id = a.agent_id
+		LEFT JOIN merchant_profiles mp ON mp.merchant_id = a.agent_id
+		LEFT JOIN merchant_trust_state mts ON mts.merchant_id = a.agent_id
 	` + skillJoin +
 		" WHERE " + strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(where, "listed", "ap.listed"), "trust_score", "a.trust_score"), "owner", "a.owner"), "status", "ah.status"), "allowed_tools", "a.allowed_tools"), "tags", "ap.tags") +
 		" ORDER BY a.trust_score DESC " +
@@ -341,10 +366,17 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 				COALESCE(ah.last_heartbeat::text, '') AS last_seen,
 				COALESCE(ah.status, 'offline') AS status,
 				a.allowed_tools,
-				COALESCE(ap.listed, true) AS listed
+				COALESCE(ap.listed, true) AS listed,
+				a.roles,
+				COALESCE(mts.trust_score, 0.5) AS merchant_trust_score,
+				COALESCE(mts.confidence, 0.1) AS merchant_confidence,
+				COALESCE(mp.categories, '{}') AS merchant_categories,
+				COALESCE(mp.verification_tier, 'unverified') AS merchant_verification_tier
 			FROM agents a
 			LEFT JOIN agent_profiles ap ON ap.agent_id = a.agent_id
 			LEFT JOIN agent_heartbeats ah ON ah.agent_id = a.agent_id
+			LEFT JOIN merchant_profiles mp ON mp.merchant_id = a.agent_id
+			LEFT JOIN merchant_trust_state mts ON mts.merchant_id = a.agent_id
 			UNION ALL
 			SELECT fa.agent_id::text AS agent_id, fa.name, fa.owner, fa.trust_score,
 				COALESCE(fp.description, '') AS description,
@@ -356,7 +388,12 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 				COALESCE(fh.last_heartbeat::text, '') AS last_seen,
 				COALESCE(fh.status, 'offline') AS status,
 				fa.allowed_tools,
-				COALESCE(fp.listed, true) AS listed
+				COALESCE(fp.listed, true) AS listed,
+				'{}'::text[] AS roles,
+				0.5 AS merchant_trust_score,
+				0.1 AS merchant_confidence,
+				'{}'::text[] AS merchant_categories,
+				'unverified'::text AS merchant_verification_tier
 			FROM federated_agents fa
 			LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
 			LEFT JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
@@ -364,10 +401,28 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		SELECT agent_id, name, owner, trust_score, description, services_offered, endpoints,
 			COALESCE(array_to_json(tags)::text, '[]') AS tags,
-			total_actions, approval_rate, last_seen, status
+			total_actions, approval_rate, last_seen, status,
+			roles, merchant_trust_score, merchant_confidence,
+			COALESCE(array_to_json(merchant_categories)::text, '[]') AS merchant_categories,
+			merchant_verification_tier
 		FROM airport_agents
-		WHERE ` + where +
-			" ORDER BY trust_score DESC " +
+		WHERE ` + where
+		if req.Kind == "merchant" {
+			query += " AND 'merchant' = ANY(roles)"
+		}
+		if req.MinMerchantTrust > 0 {
+			query += " AND merchant_trust_score >= " + fmt.Sprintf("%f", req.MinMerchantTrust)
+		}
+		if req.MerchantConfidenceMin > 0 {
+			query += " AND merchant_confidence >= " + fmt.Sprintf("%f", req.MerchantConfidenceMin)
+		}
+		if req.MerchantCategory != "" {
+			query += " AND '" + strings.ReplaceAll(req.MerchantCategory, "'", "''") + "' = ANY(merchant_categories)"
+		}
+		if req.MerchantVerification != "" {
+			query += " AND merchant_verification_tier = '" + strings.ReplaceAll(req.MerchantVerification, "'", "''") + "'"
+		}
+		query += " ORDER BY CASE WHEN 'merchant' = ANY(roles) THEN merchant_trust_score ELSE trust_score END DESC " +
 			" LIMIT $" + itoa(argIdx) + " OFFSET $" + itoa(argIdx+1)
 	}
 
@@ -384,8 +439,9 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 	agents := []AirportAgent{}
 	for rows.Next() {
 		var a AirportAgent
-		var lastSeen, status, tagsArr *string
+		var lastSeen, status, tagsArr, rolesArr, merchantCategoriesArr, merchantVerification *string
 		var trustScore, approvalRate *float64
+		var merchantTrust, merchantConfidence *float64
 		var totalActions *int
 
 		err := rows.Scan(
@@ -393,6 +449,7 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 			&a.Description, &a.ServicesOffered, &a.Endpoints,
 			&tagsArr, &totalActions, &approvalRate,
 			&lastSeen, &status,
+			&rolesArr, &merchantTrust, &merchantConfidence, &merchantCategoriesArr, &merchantVerification,
 		)
 		if err != nil {
 			continue
@@ -422,6 +479,31 @@ func AirportSearchHandler(w http.ResponseWriter, r *http.Request) {
 					a.Tags = []string{}
 				}
 			}
+		}
+		_ = rolesArr
+		if merchantTrust != nil {
+			if a.Endpoints == nil {
+				a.Endpoints = json.RawMessage(`{}`)
+			}
+		}
+		if merchantCategoriesArr != nil || merchantVerification != nil || merchantConfidence != nil || merchantTrust != nil {
+			extra := map[string]interface{}{}
+			if merchantTrust != nil {
+				extra["merchant_trust_score"] = *merchantTrust
+			}
+			if merchantConfidence != nil {
+				extra["merchant_confidence"] = *merchantConfidence
+			}
+			if merchantVerification != nil {
+				extra["merchant_verification_tier"] = *merchantVerification
+			}
+			if merchantCategoriesArr != nil {
+				var cats []string
+				_ = json.Unmarshal([]byte(*merchantCategoriesArr), &cats)
+				extra["merchant_categories"] = cats
+			}
+			raw, _ := json.Marshal(extra)
+			a.Endpoints = raw
 		}
 
 		agents = append(agents, a)

@@ -268,3 +268,52 @@ func ListAgents(w http.ResponseWriter, r *http.Request) {
 		"agents": agents,
 	})
 }
+
+func DeleteAgent(w http.ResponseWriter, r *http.Request) {
+	agentIDStr := chi.URLParam(r, "agentID")
+	if agentIDStr == "" {
+		http.Error(w, "agent_id required", http.StatusBadRequest)
+		return
+	}
+
+	agentID, err := uuid.Parse(agentIDStr)
+	if err != nil {
+		http.Error(w, "invalid agent_id format", http.StatusBadRequest)
+		return
+	}
+
+	// Check for tenant context if multi-tenancy is enabled
+	tenantID := auth.GetTenantID(r.Context())
+	query := `DELETE FROM agents WHERE agent_id = $1`
+	args := []interface{}{agentID}
+	if tenantID != "" {
+		query += ` AND tenant_id::text = $2`
+		args = append(args, tenantID)
+	}
+
+	cmdTag, err := querier.Exec(r.Context(), query, args...)
+	if err != nil {
+		slog.Error("delete agent failed", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if cmdTag.RowsAffected == 0 {
+		http.Error(w, "agent not found or not authorized to delete", http.StatusNotFound)
+		return
+	}
+
+	if auditLogger != nil && gatewayPrivateKey != nil {
+		auditEntry := audit.AuditEntry{
+			AgentID:     agentID.String(),
+			Action:      "agent.delete",
+			Method:      "HTTP",
+			Status:      "success",
+			TrustBefore: 0.0, // Trust score before deletion is irrelevant or 0
+			TrustAfter:  0.0, // Agent is deleted
+		}
+		auditLogger.Log(r.Context(), auditEntry, gatewayPrivateKey)
+	}
+
+	w.WriteHeader(http.StatusNoContent) // 204 No Content for successful deletion
+}

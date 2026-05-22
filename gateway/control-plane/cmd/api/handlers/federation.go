@@ -293,3 +293,24 @@ func FederationHealthHandler(w http.ResponseWriter, r *http.Request) {
 		"online_federated_agents": len(online),
 	})
 }
+
+func SyncFederatedMerchantTrust(w http.ResponseWriter, r *http.Request) {
+	var req identity.FederatedMerchantTrustSync
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.MerchantID == "" || req.GatewayID == "" {
+		http.Error(w, "merchant_id and gateway_id are required", http.StatusBadRequest)
+		return
+	}
+	if err := federationService.SyncMerchantTrust(r.Context(), req); err != nil {
+		slog.Error("sync federated merchant trust failed", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}

@@ -35,6 +35,7 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/identity"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/license"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/llm"
+	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/merchanttrust"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/metrics"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/migrate"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
@@ -139,6 +140,7 @@ func main() {
 	}
 	tokenService := tx.NewTokenService(privKey, pubKey, txTokenExpiry)
 	revocationStore := tx.NewRevocationStore(&database.PoolQuerier{Pool: db.Pool})
+	merchantTrustService := merchanttrust.NewService(&database.PoolQuerier{Pool: db.Pool})
 
 	webhookNotifier := hitl.NewWebhookNotifier()
 	escalationService.RegisterNotifier(hitl.ChannelWebhook, webhookNotifier)
@@ -254,6 +256,7 @@ func main() {
 	handlers.SetIdentityProvider(identityProvider)
 	handlers.SetTokenService(tokenService)
 	handlers.SetRevocationStore(revocationStore)
+	handlers.SetMerchantTrustService(merchantTrustService)
 	handlers.SetKeyRotationService(keyRotationService)
 	handlers.SetJWTSecret(jwtSecret)
 	handlers.SetFederationService(federationService)
@@ -319,6 +322,7 @@ func main() {
 		r.Post("/agents/register", handlers.RegisterAgent)
 		r.Get("/agents", handlers.ListAgents)
 		r.Get("/agents/{agentID}", handlers.GetAgent)
+		r.With(requireAdmin).Delete("/agents/{agentID}", handlers.DeleteAgent)
 
 		r.Post("/resources/register", handlers.RegisterResource)
 		r.Get("/resources", handlers.ListResources)
@@ -434,6 +438,7 @@ func main() {
 		r.Get("/federation/peers", handlers.ListFederationPeers)
 		r.Get("/federation/peers/{gatewayID}", handlers.GetFederationPeer)
 		r.Post("/federation/agents/sync", handlers.SyncFederatedAgent)
+		r.Post("/federation/merchant-trust/sync", handlers.SyncFederatedMerchantTrust)
 		r.Post("/federation/heartbeat", handlers.FederatedHeartbeatHandler)
 		r.Get("/federation/agents", handlers.SearchFederatedAgentsHandler)
 		r.Get("/federation/online", handlers.ListFederatedOnlineHandler)
@@ -453,6 +458,12 @@ func main() {
 		r.Get("/airport/agents", handlers.AirportSearchHandler)
 		r.Get("/airport/online", handlers.AirportListOnlineHandler)
 		r.Get("/airport/agents/{agentID}", handlers.AirportGetProfileHandler)
+		r.With(requireAdmin).Post("/merchants", handlers.CreateMerchantProfile)
+		r.With(requireAdmin).Get("/merchants", handlers.ListMerchants)
+		r.With(requireAdmin).Get("/merchants/{merchantID}", handlers.GetMerchant)
+		r.Get("/merchants/{merchantID}/trust", handlers.GetMerchantTrust)
+		r.Post("/merchant-trust/events/outcome", handlers.IngestMerchantOutcomeEvent)
+		r.Post("/merchant-trust/events/feedback", handlers.IngestMerchantFeedbackEvent)
 		r.Put("/airport/agents/{agentID}", handlers.AirportUpdateProfileHandler)
 		r.Get("/airport/connections", handlers.AirportConnectionsHandler)
 		r.Get("/airport/health", handlers.AirportHealthHandler)

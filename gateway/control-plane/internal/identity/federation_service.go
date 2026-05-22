@@ -45,6 +45,29 @@ type FederatedAgent struct {
 	Tags               []string `json:"tags,omitempty"`
 	HeartbeatStatus    string   `json:"heartbeat_status,omitempty"`
 	LastHeartbeat      string   `json:"last_heartbeat,omitempty"`
+	MerchantTrustScore float64  `json:"merchant_trust_score,omitempty"`
+	MerchantConfidence float64  `json:"merchant_confidence,omitempty"`
+	MerchantVerificationTier string `json:"merchant_verification_tier,omitempty"`
+	MerchantRiskFlags []string `json:"merchant_risk_flags,omitempty"`
+	MerchantHITLOnly bool `json:"merchant_hitl_only,omitempty"`
+	MerchantSuspended bool `json:"merchant_suspended,omitempty"`
+}
+
+type FederatedMerchantTrustSync struct {
+	MerchantID       string                 `json:"merchant_id"`
+	GatewayID        string                 `json:"gateway_id"`
+	TrustScore       float64                `json:"trust_score"`
+	Confidence       float64                `json:"confidence"`
+	VerificationTier string                 `json:"verification_tier"`
+	RiskFlags        []string               `json:"risk_flags"`
+	HITLOnly         bool                   `json:"hitl_only"`
+	Suspended        bool                   `json:"suspended"`
+	OrderCount       int                    `json:"order_count"`
+	OrderID          string                 `json:"order_id"`
+	OutcomeStatus    string                 `json:"outcome_status"`
+	DisputeRef       string                 `json:"dispute_ref"`
+	ReceiptSignature string                 `json:"receipt_signature"`
+	Metadata         map[string]interface{} `json:"metadata"`
 }
 
 type AgentPassport struct {
@@ -336,6 +359,66 @@ func (fs *FederationService) SyncAgent(ctx context.Context, passport AgentPasspo
 	}, nil
 }
 
+func (fs *FederationService) SyncMerchantTrust(ctx context.Context, in FederatedMerchantTrustSync) error {
+	if in.MerchantID == "" || in.GatewayID == "" {
+		return fmt.Errorf("merchant_id and gateway_id are required")
+	}
+	if in.TrustScore < 0 || in.TrustScore > 1 {
+		return fmt.Errorf("trust_score must be in range 0..1")
+	}
+	if in.Confidence < 0 || in.Confidence > 1 {
+		return fmt.Errorf("confidence must be in range 0..1")
+	}
+	peer, err := fs.GetPeer(ctx, in.GatewayID)
+	if err != nil {
+		return fmt.Errorf("unknown gateway: %w", err)
+	}
+	if peer.Status != "active" {
+		return fmt.Errorf("gateway is not active")
+	}
+	if in.VerificationTier == "" {
+		in.VerificationTier = "unverified"
+	}
+	if in.RiskFlags == nil {
+		in.RiskFlags = []string{}
+	}
+	if in.OrderCount < 0 {
+		in.OrderCount = 0
+	}
+
+	_, err = fs.querier.Exec(ctx, `
+		INSERT INTO federated_merchant_trust
+			(merchant_id, gateway_id, trust_score, confidence, verification_tier, risk_flags, hitl_only, suspended, order_count, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+		ON CONFLICT (merchant_id) DO UPDATE
+		SET gateway_id = EXCLUDED.gateway_id,
+			trust_score = EXCLUDED.trust_score,
+			confidence = EXCLUDED.confidence,
+			verification_tier = EXCLUDED.verification_tier,
+			risk_flags = EXCLUDED.risk_flags,
+			hitl_only = EXCLUDED.hitl_only,
+			suspended = EXCLUDED.suspended,
+			order_count = EXCLUDED.order_count,
+			updated_at = NOW()
+	`, in.MerchantID, in.GatewayID, in.TrustScore, in.Confidence, in.VerificationTier, in.RiskFlags, in.HITLOnly, in.Suspended, in.OrderCount)
+	if err != nil {
+		return fmt.Errorf("upsert federated merchant trust failed: %w", err)
+	}
+
+	if in.OrderID != "" && in.OutcomeStatus != "" && in.ReceiptSignature != "" {
+		_, err = fs.querier.Exec(ctx, `
+			INSERT INTO federated_merchant_trust_events
+				(merchant_id, gateway_id, order_id, outcome_status, dispute_ref, receipt_signature, metadata)
+			VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::jsonb, '{}'::jsonb))
+			ON CONFLICT DO NOTHING
+		`, in.MerchantID, in.GatewayID, in.OrderID, in.OutcomeStatus, in.DisputeRef, in.ReceiptSignature, in.Metadata)
+		if err != nil {
+			return fmt.Errorf("insert federated merchant trust event failed: %w", err)
+		}
+	}
+	return nil
+}
+
 func (fs *FederationService) FederatedHeartbeat(ctx context.Context, agentID, gatewayID, status string, metadata json.RawMessage) error {
 	validStatuses := map[string]bool{"online": true, "offline": true, "busy": true, "idle": true}
 	if !validStatuses[status] {
@@ -416,10 +499,17 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 		COALESCE(fp.description, '') as description,
 		COALESCE(array_to_json(fp.tags)::text, '[]') as tags,
 		COALESCE(fh.status, 'offline') as heartbeat_status,
-		COALESCE(fh.last_heartbeat::text, '') as last_heartbeat
+		COALESCE(fh.last_heartbeat::text, '') as last_heartbeat,
+		COALESCE(fmt.trust_score, 0.5) as merchant_trust_score,
+		COALESCE(fmt.confidence, 0.1) as merchant_confidence,
+		COALESCE(fmt.verification_tier, 'unverified') as merchant_verification_tier,
+		COALESCE(array_to_json(fmt.risk_flags)::text, '[]') as merchant_risk_flags,
+		COALESCE(fmt.hitl_only, false) as merchant_hitl_only,
+		COALESCE(fmt.suspended, false) as merchant_suspended
 		FROM federated_agents fa
 		LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
 		LEFT JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
+		LEFT JOIN federated_merchant_trust fmt ON fmt.merchant_id = fa.agent_id
 		WHERE %s
 		ORDER BY fa.trust_score DESC
 		LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
@@ -436,13 +526,14 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 	for rows.Next() {
 		var a FederatedAgent
 		var pubKeyBytes []byte
-		var capsStr, toolsStr, tagsStr string
+		var capsStr, toolsStr, tagsStr, riskFlagsStr string
 
 		err := rows.Scan(&a.AgentID, &a.GatewayID, &a.Name, &a.Owner, &pubKeyBytes,
 			&a.TrustScore, &capsStr, &toolsStr,
 			&a.PassportIssuedAt, &a.Scope, &a.Status,
 			&a.Description, &tagsStr,
 			&a.HeartbeatStatus, &a.LastHeartbeat,
+			&a.MerchantTrustScore, &a.MerchantConfidence, &a.MerchantVerificationTier, &riskFlagsStr, &a.MerchantHITLOnly, &a.MerchantSuspended,
 		)
 		if err != nil {
 			slog.Error("scan federated agent failed", "error", err)
@@ -453,6 +544,7 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 		json.Unmarshal([]byte(capsStr), &a.Capabilities)
 		json.Unmarshal([]byte(toolsStr), &a.AllowedTools)
 		json.Unmarshal([]byte(tagsStr), &a.Tags)
+		json.Unmarshal([]byte(riskFlagsStr), &a.MerchantRiskFlags)
 
 		if a.Capabilities == nil {
 			a.Capabilities = []string{}
@@ -462,6 +554,9 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 		}
 		if a.Tags == nil {
 			a.Tags = []string{}
+		}
+		if a.MerchantRiskFlags == nil {
+			a.MerchantRiskFlags = []string{}
 		}
 
 		agents = append(agents, a)
@@ -482,10 +577,17 @@ func (fs *FederationService) ListFederatedOnline(ctx context.Context, scope stri
 		COALESCE(fp.description, '') as description,
 		COALESCE(array_to_json(fp.tags)::text, '[]') as tags,
 		fh.status as heartbeat_status,
-		fh.last_heartbeat::text as last_heartbeat
+		fh.last_heartbeat::text as last_heartbeat,
+		COALESCE(fmt.trust_score, 0.5) as merchant_trust_score,
+		COALESCE(fmt.confidence, 0.1) as merchant_confidence,
+		COALESCE(fmt.verification_tier, 'unverified') as merchant_verification_tier,
+		COALESCE(array_to_json(fmt.risk_flags)::text, '[]') as merchant_risk_flags,
+		COALESCE(fmt.hitl_only, false) as merchant_hitl_only,
+		COALESCE(fmt.suspended, false) as merchant_suspended
 		FROM federated_agents fa
 		JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
 		LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
+		LEFT JOIN federated_merchant_trust fmt ON fmt.merchant_id = fa.agent_id
 		WHERE fh.status = 'online' AND fh.last_heartbeat > NOW() - INTERVAL '5 minutes'
 		AND fa.status = 'active' AND COALESCE(fp.listed, true) = true`
 	args := []interface{}{}
@@ -506,13 +608,14 @@ func (fs *FederationService) ListFederatedOnline(ctx context.Context, scope stri
 	for rows.Next() {
 		var a FederatedAgent
 		var pubKeyBytes []byte
-		var capsStr, toolsStr, tagsStr string
+		var capsStr, toolsStr, tagsStr, riskFlagsStr string
 
 		err := rows.Scan(&a.AgentID, &a.GatewayID, &a.Name, &a.Owner, &pubKeyBytes,
 			&a.TrustScore, &capsStr, &toolsStr,
 			&a.PassportIssuedAt, &a.Scope, &a.Status,
 			&a.Description, &tagsStr,
 			&a.HeartbeatStatus, &a.LastHeartbeat,
+			&a.MerchantTrustScore, &a.MerchantConfidence, &a.MerchantVerificationTier, &riskFlagsStr, &a.MerchantHITLOnly, &a.MerchantSuspended,
 		)
 		if err != nil {
 			continue
@@ -522,6 +625,7 @@ func (fs *FederationService) ListFederatedOnline(ctx context.Context, scope stri
 		json.Unmarshal([]byte(capsStr), &a.Capabilities)
 		json.Unmarshal([]byte(toolsStr), &a.AllowedTools)
 		json.Unmarshal([]byte(tagsStr), &a.Tags)
+		json.Unmarshal([]byte(riskFlagsStr), &a.MerchantRiskFlags)
 
 		if a.Capabilities == nil {
 			a.Capabilities = []string{}
@@ -531,6 +635,9 @@ func (fs *FederationService) ListFederatedOnline(ctx context.Context, scope stri
 		}
 		if a.Tags == nil {
 			a.Tags = []string{}
+		}
+		if a.MerchantRiskFlags == nil {
+			a.MerchantRiskFlags = []string{}
 		}
 
 		agents = append(agents, a)
@@ -546,7 +653,7 @@ func (fs *FederationService) ListFederatedOnline(ctx context.Context, scope stri
 func (fs *FederationService) GetFederatedAgent(ctx context.Context, agentID string) (*FederatedAgent, error) {
 	var a FederatedAgent
 	var pubKeyBytes []byte
-	var capsStr, toolsStr, tagsStr string
+	var capsStr, toolsStr, tagsStr, riskFlagsStr string
 
 	err := fs.querier.QueryRow(ctx,
 		`SELECT fa.agent_id, fa.gateway_id, fa.name, fa.owner, fa.public_key,
@@ -556,10 +663,17 @@ func (fs *FederationService) GetFederatedAgent(ctx context.Context, agentID stri
 		COALESCE(fp.description, '') as description,
 		COALESCE(array_to_json(fp.tags)::text, '[]') as tags,
 		COALESCE(fh.status, 'offline') as heartbeat_status,
-		COALESCE(fh.last_heartbeat::text, '') as last_heartbeat
+		COALESCE(fh.last_heartbeat::text, '') as last_heartbeat,
+		COALESCE(fmt.trust_score, 0.5) as merchant_trust_score,
+		COALESCE(fmt.confidence, 0.1) as merchant_confidence,
+		COALESCE(fmt.verification_tier, 'unverified') as merchant_verification_tier,
+		COALESCE(array_to_json(fmt.risk_flags)::text, '[]') as merchant_risk_flags,
+		COALESCE(fmt.hitl_only, false) as merchant_hitl_only,
+		COALESCE(fmt.suspended, false) as merchant_suspended
 		FROM federated_agents fa
 		LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
 		LEFT JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
+		LEFT JOIN federated_merchant_trust fmt ON fmt.merchant_id = fa.agent_id
 		WHERE fa.agent_id = $1`,
 		agentID,
 	).Scan(&a.AgentID, &a.GatewayID, &a.Name, &a.Owner, &pubKeyBytes,
@@ -567,6 +681,7 @@ func (fs *FederationService) GetFederatedAgent(ctx context.Context, agentID stri
 		&a.PassportIssuedAt, &a.Scope, &a.Status,
 		&a.Description, &tagsStr,
 		&a.HeartbeatStatus, &a.LastHeartbeat,
+		&a.MerchantTrustScore, &a.MerchantConfidence, &a.MerchantVerificationTier, &riskFlagsStr, &a.MerchantHITLOnly, &a.MerchantSuspended,
 	)
 
 	if err != nil {
@@ -577,6 +692,7 @@ func (fs *FederationService) GetFederatedAgent(ctx context.Context, agentID stri
 	json.Unmarshal([]byte(capsStr), &a.Capabilities)
 	json.Unmarshal([]byte(toolsStr), &a.AllowedTools)
 	json.Unmarshal([]byte(tagsStr), &a.Tags)
+	json.Unmarshal([]byte(riskFlagsStr), &a.MerchantRiskFlags)
 
 	if a.Capabilities == nil {
 		a.Capabilities = []string{}
@@ -586,6 +702,9 @@ func (fs *FederationService) GetFederatedAgent(ctx context.Context, agentID stri
 	}
 	if a.Tags == nil {
 		a.Tags = []string{}
+	}
+	if a.MerchantRiskFlags == nil {
+		a.MerchantRiskFlags = []string{}
 	}
 
 	return &a, nil
