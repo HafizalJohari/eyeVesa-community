@@ -84,5 +84,5 @@ func init() {
 	mcpCmd.AddCommand(mcpInitCmd)
 	mcpCmd.AddCommand(mcpToolsCmd)
 	mcpCmd.AddCommand(mcpCallCmd)
-	rootCmd.AddCommand(mcpCmd)
+	addAdvancedCommand(mcpCmd)
 }

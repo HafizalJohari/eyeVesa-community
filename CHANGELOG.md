@@ -16,6 +16,9 @@ This project follows Semantic Versioning.
 - Added a Community release workflow note and Terraform GCS backend example for clean public publishing without private history.
 - Added a plain-language beginner guide for non-technical readers and new community users.
 - Added agent-native onboarding docs so Hermes, OpenClaw, Claude, Codex, and similar agents can install and verify the local community sandbox.
+- Added a codebase-backed user flow guide covering platform setup, credential bootstrap, agent registration, Airport discovery, authorization, HITL, A2A, and audit review.
+- Added a CLI `quickstart` guide command and `config set` command so first-time users can discover the correct setup path and save gateway credentials without editing TOML manually.
+- Added grouped CLI help sections so beginner, core, operator, and advanced commands are easier to scan.
 
 ### Changed
 - Changed the CLI module path and imports to `github.com/HafizalJohari/eyeVesa-community/cli` for standalone community builds.
@@ -34,6 +37,7 @@ This project follows Semantic Versioning.
 - Refreshed the README opening with badges, clearer navigation, and visual feature cards for community readers.
 - Updated the README and beginner guide to explain the local-only AI-agent installation flow.
 - Made Docker Compose services project-scoped so separate checkouts do not fight over fixed container names.
+- Clarified CLI root help, doctor guidance, connect examples, and init positioning around the current credential-first onboarding flow.
 
 ### Deprecated
 - Nothing deprecated.
@@ -50,6 +54,7 @@ This project follows Semantic Versioning.
 - Enforced per-tenant agent caps during agent registration (falling back to the license cap when no tenant context is available).
 - Fixed `./start.sh` startup in non-interactive agent shells where `TERM` may be unset.
 - Updated `./start.sh` to wait on the Compose `postgres` service instead of a fixed global container name.
+- Fixed `eyevesa init` so returned registration API keys are saved to config when present, and fixed config saving for JWT-only auth.
 
 ### Security
 - Restricted autonomous policy generation to detached, validated Rego output and blocked never-event actions such as schema, cluster, policy override, and secret access from promotion.

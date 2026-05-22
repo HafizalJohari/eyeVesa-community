@@ -31,5 +31,5 @@ var readyCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(readyCmd)
+	addOperateCommand(readyCmd)
 }

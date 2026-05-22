@@ -63,5 +63,5 @@ Examples:
 }
 
 func init() {
-	rootCmd.AddCommand(discoverCmd)
+	addCoreCommand(discoverCmd)
 }

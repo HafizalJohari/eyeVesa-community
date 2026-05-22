@@ -15,6 +15,7 @@ export default defineConfig({
           items: [
             { label: 'Overview', slug: 'overview' },
             { label: 'Quickstart', slug: 'guides/quickstart' },
+            { label: 'User Flow', slug: 'guides/user-flow' },
             { label: 'Architecture', slug: 'guides/architecture' },
           ],
         },

@@ -35,5 +35,5 @@ func init() {
 	auditCmd.Flags().IntVar(&auditLimit, "limit", 10, "Number of entries to return")
 	auditCmd.Flags().IntVar(&auditOffset, "offset", 0, "Offset for pagination")
 
-	rootCmd.AddCommand(auditCmd)
+	addOperateCommand(auditCmd)
 }

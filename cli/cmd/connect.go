@@ -11,6 +11,15 @@ import (
 var connectCmd = &cobra.Command{
 	Use:   "connect",
 	Short: "Register an agent and keep it online at the Airport",
+	Long: `Register an agent, save its returned API key to ~/.eyevesa/config.toml,
+and send Airport heartbeats so the agent is discoverable.
+
+Before running connect in production, configure an API key or JWT:
+  eyevesa config set --api-key <eyevesa_api_key>
+
+Examples:
+  eyevesa connect --name research-agent --owner community --once
+  eyevesa connect --name ops-agent --owner org:acme --interval 1m`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, _ := cmd.Flags().GetString("name")
 		owner, _ := cmd.Flags().GetString("owner")
@@ -38,7 +47,7 @@ var connectCmd = &cobra.Command{
 		client := getClient()
 		client.BaseURL = endpoint
 		if client.APIKey == "" && client.JWTToken == "" {
-			return fmt.Errorf("connect now requires an existing API key or JWT in config; create or configure one before registering an agent")
+			return fmt.Errorf("connect requires an API key or JWT first; run 'eyevesa config set --api-key <key>' or 'eyevesa quickstart'")
 		}
 
 		result, err := client.RegisterAgent(name, owner, nil, nil, 0, "", nil)
@@ -72,6 +81,7 @@ var connectCmd = &cobra.Command{
 		printSuccess("agent registered and API key saved")
 		printKeyValue("Agent ID", agentID)
 		printKeyValue("Gateway", endpoint)
+		printKeyValue("Config", cfgPath)
 
 		sendHeartbeat := func() error {
 			_, err := client.AirportHeartbeat(agentID, status)
@@ -105,5 +115,5 @@ func init() {
 	connectCmd.Flags().String("status", "online", "Heartbeat status")
 	connectCmd.Flags().Duration("interval", 30*time.Second, "Heartbeat interval")
 	connectCmd.Flags().Bool("once", false, "Send one heartbeat and exit")
-	rootCmd.AddCommand(connectCmd)
+	addStartCommand(connectCmd)
 }

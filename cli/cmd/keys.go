@@ -59,5 +59,5 @@ func init() {
 	keysCmd.AddCommand(keysRotateCmd)
 	keysCmd.AddCommand(keysStatusCmd)
 	keysCmd.AddCommand(keysClearPreviousCmd)
-	rootCmd.AddCommand(keysCmd)
+	addAdvancedCommand(keysCmd)
 }

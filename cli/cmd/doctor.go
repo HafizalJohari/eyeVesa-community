@@ -39,11 +39,19 @@ the gateway, database, and policy engine.`,
 		} else {
 			fmt.Printf("  Config load:     ✓\n")
 			fmt.Printf("  Gateway:         %s\n", cfg.GatewayEndpoint)
+			fmt.Printf("  Credential:      ")
+			if cfg.APIKey != "" {
+				fmt.Println("API key ✓")
+			} else if cfg.JWTToken != "" {
+				fmt.Println("JWT token ✓")
+			} else {
+				fmt.Println("not set (run 'eyevesa config set --api-key <key>')")
+			}
 			fmt.Printf("  Agent ID:        %s ", cfg.AgentID)
 			if cfg.AgentID != "" {
 				fmt.Println("✓")
 			} else {
-				fmt.Println("(not set, run 'eyevesa init')")
+				fmt.Println("(not set, run 'eyevesa connect --name my-agent --owner community --once')")
 			}
 
 			if cfg.KeyPath != "" {
@@ -82,12 +90,12 @@ the gateway, database, and policy engine.`,
 		if ok {
 			printSuccess("All checks passed")
 		} else {
-			printError("Some checks failed. Run 'eyevesa init' to configure.")
+			printError("Some checks failed. Run 'eyevesa quickstart' for the recommended next step.")
 		}
 		return nil
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(doctorCmd)
+	addStartCommand(doctorCmd)
 }

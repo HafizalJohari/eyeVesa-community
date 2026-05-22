@@ -13,8 +13,8 @@ var resourcesCmd = &cobra.Command{
 }
 
 var resourcesListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all resources",
+	Use:     "list",
+	Short:   "List all resources",
 	Aliases: []string{"ls"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := getClient()
@@ -43,14 +43,14 @@ var resourcesGetCmd = &cobra.Command{
 }
 
 var (
-	resourceName          string
-	resourceType          string
-	resourceEndpoint      string
-	resourceAuthMethod    string
-	resourceRiskLevel     string
-	resourceDataSens      string
-	resourceRateLimit     int
-	resourceCapabilities  string
+	resourceName         string
+	resourceType         string
+	resourceEndpoint     string
+	resourceAuthMethod   string
+	resourceRiskLevel    string
+	resourceDataSens     string
+	resourceRateLimit    int
+	resourceCapabilities string
 )
 
 var resourcesRegisterCmd = &cobra.Command{
@@ -108,5 +108,5 @@ func init() {
 	resourcesCmd.AddCommand(resourcesListCmd)
 	resourcesCmd.AddCommand(resourcesGetCmd)
 	resourcesCmd.AddCommand(resourcesRegisterCmd)
-	rootCmd.AddCommand(resourcesCmd)
+	addCoreCommand(resourcesCmd)
 }

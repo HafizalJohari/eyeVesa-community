@@ -20,6 +20,12 @@ var (
 func init() {
 	rootCmd.Version = version
 	rootCmd.SetVersionTemplate("eyevesa {{.Version}}\n")
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "start", Title: "Start Here"},
+		&cobra.Group{ID: "core", Title: "Core Workflow"},
+		&cobra.Group{ID: "operate", Title: "Operate And Inspect"},
+		&cobra.Group{ID: "advanced", Title: "Advanced"},
+	)
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default ~/.eyevesa/config.toml)")
 	rootCmd.PersistentFlags().StringVarP(&gatewayAddr, "gateway", "g", "", "gateway endpoint (default http://localhost:8080)")
 	rootCmd.PersistentFlags().StringVarP(&outputFmt, "output", "o", "text", "output format: text, json")
@@ -27,21 +33,51 @@ func init() {
 
 var rootCmd = &cobra.Command{
 	Use:   "eyevesa",
-	Short: "AgentID Gateway CLI — identity and trust layer for AI agents",
-	Long: `eyevesa is the CLI for the AgentID Gateway.
+	Short: "eyeVesa CLI - identity, trust, and Airport discovery for AI agents",
+	Long: `eyevesa is the command-line companion for eyeVesa.
 
-It provides commands to register agents, manage resources, authorize
-actions, inspect trust scores, manage skills and endorsements, handle
-multi-tenant isolation, approve HITL requests, enforce budget limits,
-manage SPIRE identities, and audit activity — all with cryptographic
-identity and non-repudiable logs.`,
+New user path:
+  eyevesa quickstart
+  eyevesa doctor
+  eyevesa config set --gateway http://localhost:8080 --api-key <key>
+  eyevesa connect --name my-agent --owner community --once
+  eyevesa airport online
+
+Daily commands:
+  eyevesa doctor              Check local setup and gateway connectivity
+  eyevesa connect             Register an agent and send Airport heartbeat
+  eyevesa airport search      Find discoverable agents
+  eyevesa authorize           Check whether an agent action is allowed
+  eyevesa tui                 Open the interactive terminal dashboard
+
+Advanced areas include resources, delegation, HITL approvals, skills,
+transactions, tenants, key rotation, SPIRE, MCP, PTV, and audit trails.`,
 	SilenceUsage: true,
+}
+
+func addStartCommand(cmd *cobra.Command) {
+	cmd.GroupID = "start"
+	rootCmd.AddCommand(cmd)
+}
+
+func addCoreCommand(cmd *cobra.Command) {
+	cmd.GroupID = "core"
+	rootCmd.AddCommand(cmd)
+}
+
+func addOperateCommand(cmd *cobra.Command) {
+	cmd.GroupID = "operate"
+	rootCmd.AddCommand(cmd)
+}
+
+func addAdvancedCommand(cmd *cobra.Command) {
+	cmd.GroupID = "advanced"
+	rootCmd.AddCommand(cmd)
 }
 
 func Execute() error {
 	return rootCmd.Execute()
 }
-
 
 func getClient() *api.Client {
 	cfgPath := cfgFile
@@ -54,7 +90,7 @@ func getClient() *api.Client {
 		fmt.Fprintf(os.Stderr, "Warning: could not load config: %v\n", err)
 		appCfg = &config.Config{
 			GatewayEndpoint: "http://localhost:8080",
-			TimeoutSecs:    30,
+			TimeoutSecs:     30,
 		}
 	}
 

@@ -61,5 +61,5 @@ func init() {
 
 	budgetCmd.AddCommand(budgetCheckCmd)
 	budgetCmd.AddCommand(budgetSpendCmd)
-	rootCmd.AddCommand(budgetCmd)
+	addAdvancedCommand(budgetCmd)
 }

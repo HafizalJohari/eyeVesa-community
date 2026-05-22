@@ -10,21 +10,28 @@ import (
 )
 
 var (
-	initName            string
-	initOwner           string
-	initCapabilities    []string
-	initAllowedTools    []string
-	initMaxBudget       float64
+	initName             string
+	initOwner            string
+	initCapabilities     []string
+	initAllowedTools     []string
+	initMaxBudget        float64
 	initDelegationPolicy string
-	initBehavioralTags  []string
-	initGateway         string
+	initBehavioralTags   []string
+	initGateway          string
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Register a new agent and save configuration",
-	Long: `Register a new agent with the AgentID Gateway, generate an Ed25519
-keypair, and save the configuration to ~/.eyevesa/.
+	Short: "Register a new agent with a local signing key",
+	Long: `Register a new agent, generate an Ed25519 keypair, and save the
+configuration to ~/.eyevesa/.
+
+For most new users, prefer:
+  eyevesa quickstart
+  eyevesa connect --name my-agent --owner community --once
+
+Use init when you specifically need a local signing key for challenge-response
+login or SDK flows.
 
 Examples:
   eyevesa init --name hermes-ops --owner org:devops
@@ -45,7 +52,7 @@ func init() {
 	_ = initCmd.MarkFlagRequired("name")
 	_ = initCmd.MarkFlagRequired("owner")
 
-	rootCmd.AddCommand(initCmd)
+	addStartCommand(initCmd)
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -75,6 +82,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	agentID, _ := result["agent_id"].(string)
 	publicKeyB64, _ := result["public_key"].(string)
 	status, _ := result["status"].(string)
+	apiKey, _ := result["api_key"].(string)
 	trustScore := result["trust_score"]
 
 	keyPair := client.GetGeneratedKeyPair()
@@ -98,7 +106,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		AgentName:       initName,
 		Owner:           initOwner,
 		KeyPath:         keyPath,
-		TimeoutSecs:    30,
+		TimeoutSecs:     30,
+		APIKey:          apiKey,
 	}
 	if err := cfg.Save(cfgPath); err != nil {
 		return fmt.Errorf("save config: %w", err)
@@ -109,6 +118,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 	printKeyValue("Public key", publicKeyB64)
 	printKeyValue("Status", status)
 	fmt.Printf("  %-20s %.4f\n", "Trust score:", trustScore)
+	if apiKey != "" {
+		printKeyValue("API key", "saved")
+	}
 	printSuccess(fmt.Sprintf("Keypair saved to %s", keyPath))
 	printSuccess(fmt.Sprintf("Config saved to %s", cfgPath))
 

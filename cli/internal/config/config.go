@@ -54,7 +54,7 @@ func Load(path string) (*Config, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return &Config{
 			GatewayEndpoint: "http://localhost:8080",
-			TimeoutSecs:    30,
+			TimeoutSecs:     30,
 		}, nil
 	}
 
@@ -133,9 +133,11 @@ func formatTOML(cfg *Config) ([]byte, error) {
 	b = append(b, "timeout_secs = "+itoa(cfg.TimeoutSecs)+"\n"...)
 	b = append(b, "\n[identity]\n"...)
 	b = append(b, "key_path = "+quote(cfg.KeyPath)+"\n"...)
-	if cfg.APIKey != "" {
+	if cfg.APIKey != "" || cfg.JWTToken != "" {
 		b = append(b, "\n[auth]\n"...)
-		b = append(b, "api_key = "+quote(cfg.APIKey)+"\n"...)
+		if cfg.APIKey != "" {
+			b = append(b, "api_key = "+quote(cfg.APIKey)+"\n"...)
+		}
 		if cfg.JWTToken != "" {
 			b = append(b, "jwt_token = "+quote(cfg.JWTToken)+"\n"...)
 		}

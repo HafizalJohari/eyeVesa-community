@@ -36,7 +36,7 @@ Navigate using:
 }
 
 func init() {
-	rootCmd.AddCommand(tuiCmd)
+	addStartCommand(tuiCmd)
 }
 
 type view int
@@ -136,8 +136,8 @@ type apiKeyCreateErrMsg struct {
 }
 
 type agentRegisteredMsg struct {
-	id    string
-	name  string
+	id   string
+	name string
 }
 type registerErrMsg struct {
 	err error
@@ -256,12 +256,12 @@ func initialModel(client *api.Client) model {
 	akInputs[1].Width = 40
 
 	return model{
-		client:      client,
-		currentView: viewDashboard,
-		spinner:     s,
-		loading:     true,
-		table:       t,
-		formInputs:  inputs,
+		client:       client,
+		currentView:  viewDashboard,
+		spinner:      s,
+		loading:      true,
+		table:        t,
+		formInputs:   inputs,
 		apiKeyInputs: akInputs,
 	}
 }

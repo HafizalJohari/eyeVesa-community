@@ -14,8 +14,8 @@ var (
 )
 
 var authorizeCmd = &cobra.Command{
-	Use:   "authorize",
-	Short: "Authorize an agent action",
+	Use:     "authorize",
+	Short:   "Authorize an agent action",
 	Aliases: []string{"auth"},
 	Long: `Check whether an agent is authorized to perform an action.
 
@@ -65,5 +65,5 @@ func init() {
 	_ = authorizeCmd.MarkFlagRequired("agent-id")
 	_ = authorizeCmd.MarkFlagRequired("action")
 
-	rootCmd.AddCommand(authorizeCmd)
+	addCoreCommand(authorizeCmd)
 }

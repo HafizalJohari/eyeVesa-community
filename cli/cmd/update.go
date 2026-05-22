@@ -26,7 +26,7 @@ looking for the go.mod file. Use --repo to point to a specific clone.`,
 }
 
 func init() {
-	rootCmd.AddCommand(updateCmd)
+	addOperateCommand(updateCmd)
 	updateCmd.Flags().StringVarP(&updateRepo, "repo", "r", "", "path to eyeVesa repo (auto-detected from binary)")
 }
 

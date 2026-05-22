@@ -5,11 +5,11 @@ import (
 )
 
 var (
-	ptvAgentID        string
-	ptvPlatform       string
-	ptvFirmware       string
-	ptvRuntimeHash    string
-	ptvBindingID      string
+	ptvAgentID     string
+	ptvPlatform    string
+	ptvFirmware    string
+	ptvRuntimeHash string
+	ptvBindingID   string
 )
 
 var ptvCmd = &cobra.Command{
@@ -58,5 +58,5 @@ func init() {
 
 	ptvCmd.AddCommand(ptvAttestCmd)
 	ptvCmd.AddCommand(ptvVerifyCmd)
-	rootCmd.AddCommand(ptvCmd)
+	addAdvancedCommand(ptvCmd)
 }

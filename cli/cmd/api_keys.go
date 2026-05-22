@@ -71,5 +71,5 @@ func init() {
 	apiKeysCmd.AddCommand(apiKeysCreateCmd)
 	apiKeysCmd.AddCommand(apiKeysListCmd)
 	apiKeysCmd.AddCommand(apiKeysRevokeCmd)
-	rootCmd.AddCommand(apiKeysCmd)
+	addOperateCommand(apiKeysCmd)
 }

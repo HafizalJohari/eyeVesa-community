@@ -5,18 +5,18 @@ import (
 )
 
 var (
-	spireTrustDomain  string
-	spireBundleData   string
-	spireBundleType   string
-	spireSource       string
-	spireEndpointURL  string
-	spireIsFederated  bool
+	spireTrustDomain   string
+	spireBundleData    string
+	spireBundleType    string
+	spireSource        string
+	spireEndpointURL   string
+	spireIsFederated   bool
 	spireFederatedOnly bool
-	spireSpiffeID     string
-	spireAgentID     string
-	spireSelectors    []string
-	spireParentID     string
-	spireAutoRegister bool
+	spireSpiffeID      string
+	spireAgentID       string
+	spireSelectors     []string
+	spireParentID      string
+	spireAutoRegister  bool
 )
 
 var spireCmd = &cobra.Command{
@@ -266,5 +266,5 @@ func init() {
 	spireCmd.AddCommand(spireWorkloadDeleteCmd)
 	spireCmd.AddCommand(spireStatusCmd)
 
-	rootCmd.AddCommand(spireCmd)
+	addAdvancedCommand(spireCmd)
 }

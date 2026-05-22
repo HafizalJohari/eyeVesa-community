@@ -54,5 +54,5 @@ func init() {
 	_ = verifyCmd.MarkFlagRequired("message")
 	_ = verifyCmd.MarkFlagRequired("signature")
 
-	rootCmd.AddCommand(verifyCmd)
+	addAdvancedCommand(verifyCmd)
 }
