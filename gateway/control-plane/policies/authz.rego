@@ -1,5 +1,9 @@
 package agentid.authz
 
+# Default deny - no access unless explicitly allowed
+default allow = false
+default requires_hitl = false
+
 tool_allowed {
     input.action.tool == input.agent.allowed_tools[_]
 }
