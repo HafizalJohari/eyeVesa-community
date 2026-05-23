@@ -1,0 +1,51 @@
+name: Security Alert Delivery Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      severity:
+        description: "Alert severity"
+        required: false
+        default: "warning"
+        type: choice
+        options:
+          - warning
+          - critical
+
+permissions:
+  contents: read
+
+jobs:
+  send-test-alert:
+    runs-on: ubuntu-latest
+    env:
+      ALERT_WEBHOOK_URL: ${{ secrets.EYEVESA_ALERT_WEBHOOK_URL }}
+      RUNBOOK_URL: "https://github.com/${{ github.repository }}/blob/main/docs/incident/security-harness-runbook.md"
+    steps:
+      - name: Send test webhook payload
+        if: env.ALERT_WEBHOOK_URL != ''
+        run: |
+          payload=$(cat <<JSON
+          {
+            "source": "eyeVesa-security-harness",
+            "severity": "${{ github.event.inputs.severity || 'warning' }}",
+            "workflow": "Security Alert Delivery Test",
+            "status": "test",
+            "branch": "${{ github.ref_name }}",
+            "sha": "${{ github.sha }}",
+            "actor": "${{ github.actor }}",
+            "run_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "remediation": "No action required. This is a delivery test.",
+            "runbook": "${RUNBOOK_URL}"
+          }
+          JSON
+          )
+          curl -fsS -X POST "$ALERT_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            --data "$payload"
+
+      - name: Fail clearly if webhook secret missing
+        if: env.ALERT_WEBHOOK_URL == ''
+        run: |
+          echo "EYEVESA_ALERT_WEBHOOK_URL is not configured."
+          exit 1

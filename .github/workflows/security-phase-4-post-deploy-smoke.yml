@@ -1,0 +1,74 @@
+name: Security Phase 4 - Post Deploy Smoke
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Target base URL (e.g. https://gateway.example.com)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  post-deploy-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_BASE_URL: ${{ secrets.EYEVESA_SMOKE_BASE_URL }}
+      AUTH_SMOKE_API_KEY: ${{ secrets.EYEVESA_SMOKE_API_KEY }}
+    steps:
+      - name: Resolve target base URL
+        id: resolve
+        run: |
+          BASE_URL_INPUT="${{ github.event.inputs.base_url }}"
+          if [ -n "$BASE_URL_INPUT" ]; then
+            BASE_URL="$BASE_URL_INPUT"
+          else
+            BASE_URL="$DEFAULT_BASE_URL"
+          fi
+
+          if [ -z "$BASE_URL" ]; then
+            echo "Missing target URL. Set workflow_dispatch input base_url or EYEVESA_SMOKE_BASE_URL secret."
+            exit 1
+          fi
+
+          echo "base_url=$BASE_URL" >> "$GITHUB_OUTPUT"
+          echo "Using smoke target: $BASE_URL"
+
+      - name: Public health endpoint
+        run: curl -fsS "${{ steps.resolve.outputs.base_url }}/health"
+
+      - name: Airport public health endpoint
+        run: curl -fsS "${{ steps.resolve.outputs.base_url }}/v1/airport/health"
+
+      - name: Airport public stats endpoint
+        run: curl -fsS "${{ steps.resolve.outputs.base_url }}/v1/airport/stats"
+
+      - name: Protected route rejects missing auth (401/403 expected)
+        run: |
+          code=$(curl -s -o /tmp/noauth.out -w "%{http_code}" -X POST "${{ steps.resolve.outputs.base_url }}/v1/authorize" \
+            -H "Content-Type: application/json" \
+            -d '{"agent_id":"smoke-agent","action":"read:test","resource_id":"smoke-resource","params":{}}')
+          if [ "$code" != "401" ] && [ "$code" != "403" ]; then
+            echo "Expected 401/403 for unauthorized request but got $code"
+            cat /tmp/noauth.out
+            exit 1
+          fi
+
+      - name: Protected route accepts API key path (not 401)
+        if: env.AUTH_SMOKE_API_KEY != ''
+        run: |
+          code=$(curl -s -o /tmp/apikey.out -w "%{http_code}" -X POST "${{ steps.resolve.outputs.base_url }}/v1/authorize" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: ${AUTH_SMOKE_API_KEY}" \
+            -d '{"agent_id":"smoke-agent","action":"read:test","resource_id":"smoke-resource","params":{}}')
+          if [ "$code" = "401" ]; then
+            echo "Expected authenticated request to pass auth boundary, but got 401"
+            cat /tmp/apikey.out
+            exit 1
+          fi

@@ -1,0 +1,82 @@
+name: Security Weekly Digest
+
+on:
+  schedule:
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  weekly-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create weekly security digest issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const targetWorkflows = new Set([
+              "Security Phase 1",
+              "Security Phase 3 - Container Scan Gate",
+              "Security Phase 4 - Post Deploy Smoke",
+              "Security Phase 5 - Alerting and Incident Routing"
+            ]);
+
+            const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const failures = [];
+
+            const runsResp = await github.rest.actions.listWorkflowRunsForRepo({
+              owner,
+              repo,
+              per_page: 100
+            });
+
+            for (const run of runsResp.data.workflow_runs) {
+              if (!targetWorkflows.has(run.name)) continue;
+              if (new Date(run.created_at) < oneWeekAgo) continue;
+              if (run.conclusion === "failure") {
+                failures.push(run);
+              }
+            }
+
+            const byWorkflow = {};
+            for (const run of failures) {
+              byWorkflow[run.name] = (byWorkflow[run.name] || 0) + 1;
+            }
+
+            const lines = [];
+            lines.push(`# Weekly Security Digest`);
+            lines.push(``);
+            lines.push(`Window: last 7 days`);
+            lines.push(`Total failed security runs: ${failures.length}`);
+            lines.push(``);
+            lines.push(`## Failures by workflow`);
+            for (const wf of Array.from(targetWorkflows)) {
+              lines.push(`- ${wf}: ${byWorkflow[wf] || 0}`);
+            }
+            lines.push(``);
+            lines.push(`## Recent failed runs`);
+            const recent = failures.slice(0, 10);
+            if (recent.length === 0) {
+              lines.push(`- None`);
+            } else {
+              for (const run of recent) {
+                lines.push(`- ${run.name} | branch: ${run.head_branch} | [run](${run.html_url})`);
+              }
+            }
+            lines.push(``);
+            lines.push(`## Runbook`);
+            lines.push(`- https://github.com/${owner}/${repo}/blob/main/docs/incident/security-harness-runbook.md`);
+
+            const today = new Date().toISOString().slice(0, 10);
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title: `[Security Digest] Weekly report ${today}`,
+              body: lines.join("\n"),
+              labels: ["security", "report"]
+            });

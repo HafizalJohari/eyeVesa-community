@@ -49,6 +49,7 @@ const (
 	viewAudit
 	viewFederation
 	viewAPIKeys
+	viewSecurity
 	viewRegisterAgent
 	viewCreateAPIKey
 )
@@ -77,6 +78,7 @@ type model struct {
 	federationHealth map[string]interface{}
 	federationPeers  []map[string]interface{}
 	federationOnline []map[string]interface{}
+	securityRuns     []map[string]interface{}
 	err              error
 	loading          bool
 	spinner          spinner.Model
@@ -124,6 +126,10 @@ type federationLoadedMsg struct {
 
 type apiKeysLoadedMsg struct {
 	keys []map[string]interface{}
+	err  error
+}
+type securityLoadedMsg struct {
+	runs []map[string]interface{}
 	err  error
 }
 
@@ -337,6 +343,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadAudit,
 			m.loadFederation,
 			m.loadAPIKeys,
+			m.loadSecurity,
 		)
 
 	case agentsLoadedMsg:
@@ -402,6 +409,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case hitlActionErrMsg:
 		m.loading = false
 		m.err = msg.err
+
+	case securityLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.securityRuns = msg.runs
+		}
 	}
 
 	return m, nil
@@ -414,7 +428,7 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "tab":
-		m.currentView = (m.currentView + 1) % 8
+		m.currentView = (m.currentView + 1) % 9
 		m.formIdx = 0
 		m.formStep = stepName
 		m.formInputs = newFormInputs()
@@ -444,7 +458,7 @@ func (m model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "shift+tab":
 		if m.currentView == 0 {
-			m.currentView = 7
+			m.currentView = 8
 		} else {
 			m.currentView--
 		}
@@ -732,7 +746,7 @@ func (m model) View() string {
 	b.WriteString(titleStyle.String())
 	b.WriteString("\n\n")
 
-	views := []string{"Dashboard", "Agents", "Resources", "HITL", "Audit", "Federation", "API Keys"}
+	views := []string{"Dashboard", "Agents", "Resources", "HITL", "Audit", "Federation", "API Keys", "Security"}
 	displayView := m.currentView
 	if m.currentView == viewRegisterAgent {
 		displayView = viewAgents
@@ -770,6 +784,8 @@ func (m model) View() string {
 		b.WriteString(m.renderFederation())
 	case viewAPIKeys:
 		b.WriteString(m.renderAPIKeys())
+	case viewSecurity:
+		b.WriteString(m.renderSecurity())
 	case viewRegisterAgent:
 		b.WriteString(m.renderRegisterForm())
 	case viewCreateAPIKey:
@@ -975,6 +991,63 @@ func (m model) renderAPIKeys() string {
 	b.WriteString("\n")
 	b.WriteString(helpStyle.Render("c: create API key"))
 
+	return b.String()
+}
+
+func (m model) loadSecurity() tea.Msg {
+	runs, err := m.client.SecurityWorkflowRuns()
+	if err != nil {
+		return securityLoadedMsg{err: err}
+	}
+	return securityLoadedMsg{runs: runs}
+}
+
+func (m model) renderSecurity() string {
+	var b strings.Builder
+	if m.loading && len(m.securityRuns) == 0 {
+		return m.spinner.View() + " Loading security harness status..."
+	}
+
+	b.WriteString(boxStyle.Render("Security Harness Status (GitHub Actions)"))
+	b.WriteString("\n\n")
+
+	if len(m.securityRuns) == 0 {
+		b.WriteString("No security workflow runs found.\n")
+		b.WriteString(helpStyle.Render("Set GITHUB_TOKEN and optional EYEVESA_GITHUB_REPO=owner/repo, then press r"))
+		return b.String()
+	}
+
+	for _, run := range m.securityRuns {
+		name, _ := run["name"].(string)
+		status, _ := run["status"].(string)
+		conclusion, _ := run["conclusion"].(string)
+		branch, _ := run["head_branch"].(string)
+		createdAt, _ := run["created_at"].(string)
+		runURL, _ := run["html_url"].(string)
+
+		state := status
+		if conclusion != "" {
+			state = conclusion
+		}
+		bullet := "●"
+		lineStyle := viewStyle
+		if conclusion == "success" {
+			lineStyle = successStyle
+		} else if conclusion == "failure" {
+			lineStyle = errorStyle
+		}
+
+		b.WriteString(lineStyle.Render(fmt.Sprintf("%s %s", bullet, name)))
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  State: %s | Branch: %s\n", state, branch))
+		b.WriteString(fmt.Sprintf("  Time: %s\n", createdAt))
+		if runURL != "" {
+			b.WriteString(fmt.Sprintf("  Run: %s\n", runURL))
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString(helpStyle.Render("r: refresh security status"))
 	return b.String()
 }
 

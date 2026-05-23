@@ -23,8 +23,10 @@ This project follows Semantic Versioning.
 - Added a codebase-backed user flow guide covering platform setup, credential bootstrap, agent registration, Airport discovery, authorization, HITL, A2A, and audit review.
 - Added a CLI `quickstart` guide command and `config set` command so first-time users can discover the correct setup path and save gateway credentials without editing TOML manually.
 - Added grouped CLI help sections so beginner, core, operator, and advanced commands are easier to scan.
+- Added a dedicated Phase 1 security workflow at `.github/workflows/security-phase-1.yml` for PR/push security gating.
 
 ### Changed
+- Updated agent registration limit enforcement to apply only with tenant context (centralized Airport path), removing the global community/local cap fallback.
 - Extended Airport search to support merchant-focused marketplace filters and ranking (`kind=merchant`, `min_merchant_trust`, `merchant_confidence`, `merchant_category`, `merchant_verification`).
 - Changed the CLI module path and imports to `github.com/HafizalJohari/eyeVesa-community/cli` for standalone community builds.
 - Updated `./start.sh` to build and install the real `eyevesa` CLI to `~/.local/bin/eyevesa`, show the resolved command path, and include CLI doctor verification in the success screen.
@@ -56,7 +58,7 @@ This project follows Semantic Versioning.
 - Fixed `deploy-gcp.sh build` Docker contexts so local GCP image builds match the root-context Dockerfiles used by Cloud Build.
 - Fixed gateway-core forwarding to accept full HTTPS Cloud Run control-plane URLs instead of forcing an `http://` scheme when backend TLS is disabled.
 - Persisted `tenant_id` on agent registration when tenant context is present.
-- Enforced per-tenant agent caps during agent registration (falling back to the license cap when no tenant context is available).
+- Enforced per-tenant agent caps during agent registration without applying a global fallback cap to community/local registrations.
 - Fixed `./start.sh` startup in non-interactive agent shells where `TERM` may be unset.
 - Updated `./start.sh` to wait on the Compose `postgres` service instead of a fixed global container name.
 - Fixed `eyevesa init` so returned registration API keys are saved to config when present, and fixed config saving for JWT-only auth.
@@ -70,6 +72,18 @@ This project follows Semantic Versioning.
 - Blocked `AUTH_ENABLED=false` when the runtime environment is production.
 - Replaced real-looking API key and Central Airport examples with placeholders in public-facing docs and scripts.
 - Ignored generated session transcript files to prevent accidental credential capture in source control.
+- Added secret-leak blocking in CI using Gitleaks on every push and pull request to `main`.
+- Added High/Critical filesystem and IaC risk blocking in CI using Trivy (`scan-type=fs`) across repository content.
+- Added explicit Go vulnerability scanning gates with `govulncheck` for `gateway/control-plane` and `adapter/resource-adapter-go`.
+- Added an auth/policy regression CI gate that explicitly runs `internal/auth`, `internal/policy`, and `cmd/api/handlers` test suites to block authorization boundary regressions.
+- Added Phase 3 container-image vulnerability gates that build control-plane, core, and adapter images, then block CI on Trivy High/Critical findings.
+- Added Phase 4 post-deploy smoke gate with public health checks plus protected-route auth boundary verification (`401/403` without auth, authenticated path check with smoke API key).
+- Added Phase 5 alerting and incident routing for failed security workflows with severity mapping, branch-scoped dedupe, cooldown guard, webhook delivery, and runbook-linked remediation context.
+- Added alert delivery test workflow (`security-alert-delivery-test.yml`) to validate webhook routing and payload formatting on demand.
+- Added automatic GitHub incident issue creation for failed critical security workflows with duplicate-open-issue suppression.
+- Added weekly security digest reporting workflow that summarizes failed security runs over the last 7 days.
+- Added branch-protection setup guidance for enforcing security harness checks on `main`.
+- Added a TUI Security view that shows latest Phase 1/3/4/5 GitHub Actions security harness run statuses (success/failure, branch, timestamp, and run URL).
 
 ## [0.1.1] - 2026-05-20
 

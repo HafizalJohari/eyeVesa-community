@@ -1,0 +1,93 @@
+name: Security Phase 5 - Alerting and Incident Routing
+
+on:
+  workflow_run:
+    workflows:
+      - Security Phase 1
+      - Security Phase 3 - Container Scan Gate
+      - Security Phase 4 - Post Deploy Smoke
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-alert-${{ github.event.workflow_run.name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  route-alert:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    env:
+      ALERT_WEBHOOK_URL: ${{ secrets.EYEVESA_ALERT_WEBHOOK_URL }}
+      ALERT_COOLDOWN_SECONDS: "900"
+      RUNBOOK_URL: "https://github.com/${{ github.repository }}/blob/main/docs/incident/security-harness-runbook.md"
+    steps:
+      - name: Determine severity and message
+        id: classify
+        run: |
+          workflow_name="${{ github.event.workflow_run.name }}"
+          severity="warning"
+          remediation="Review failed checks and rerun after remediation."
+
+          if [ "$workflow_name" = "Security Phase 3 - Container Scan Gate" ]; then
+            severity="critical"
+            remediation="Patch base image/dependencies, rebuild image, and rerun scan."
+          elif [ "$workflow_name" = "Security Phase 4 - Post Deploy Smoke" ]; then
+            severity="critical"
+            remediation="Check deploy health and auth boundary behavior, rollback if needed."
+          elif [ "$workflow_name" = "Security Phase 1" ]; then
+            severity="critical"
+            remediation="Resolve secret/vulnerability/IaC finding before merge/deploy."
+          fi
+
+          echo "severity=$severity" >> "$GITHUB_OUTPUT"
+          echo "remediation=$remediation" >> "$GITHUB_OUTPUT"
+
+      - name: Cooldown guard
+        run: |
+          now=$(date +%s)
+          event_ts=$(date -d "${{ github.event.workflow_run.updated_at }}" +%s)
+          delta=$((now - event_ts))
+          if [ "$delta" -gt "$ALERT_COOLDOWN_SECONDS" ]; then
+            echo "Event is outside cooldown window; skipping stale alert."
+            exit 0
+          fi
+
+      - name: Send alert to webhook
+        if: env.ALERT_WEBHOOK_URL != ''
+        run: |
+          payload=$(cat <<'JSON'
+          {
+            "source": "eyeVesa-security-harness",
+            "severity": "${{ steps.classify.outputs.severity }}",
+            "workflow": "${{ github.event.workflow_run.name }}",
+            "status": "${{ github.event.workflow_run.conclusion }}",
+            "branch": "${{ github.event.workflow_run.head_branch }}",
+            "sha": "${{ github.event.workflow_run.head_sha }}",
+            "actor": "${{ github.event.workflow_run.actor.login }}",
+            "run_url": "${{ github.event.workflow_run.html_url }}",
+            "remediation": "${{ steps.classify.outputs.remediation }}",
+            "runbook": "${RUNBOOK_URL}"
+          }
+          JSON
+          )
+
+          # Expand GitHub expression values already rendered above into valid JSON payload
+          echo "$payload" > /tmp/alert-template.json
+          sed \
+            -e "s#\${RUNBOOK_URL}#${RUNBOOK_URL}#g" \
+            /tmp/alert-template.json > /tmp/alert.json
+
+          curl -fsS -X POST "$ALERT_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/alert.json
+
+      - name: Log fallback when webhook secret is missing
+        if: env.ALERT_WEBHOOK_URL == ''
+        run: |
+          echo "EYEVESA_ALERT_WEBHOOK_URL is not configured."
+          echo "Severity: ${{ steps.classify.outputs.severity }}"
+          echo "Workflow: ${{ github.event.workflow_run.name }}"
+          echo "Run: ${{ github.event.workflow_run.html_url }}"

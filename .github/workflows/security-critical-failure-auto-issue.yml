@@ -1,0 +1,62 @@
+name: Security Critical Failure Auto Issue
+
+on:
+  workflow_run:
+    workflows:
+      - Security Phase 1
+      - Security Phase 3 - Container Scan Gate
+      - Security Phase 4 - Post Deploy Smoke
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-incident-issue:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create issue for failed security workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const title = `[Security Incident] ${run.name} failed on ${run.head_branch}`;
+            const body = [
+              `A critical security workflow failed and needs investigation.`,
+              ``,
+              `- Workflow: ${run.name}`,
+              `- Branch: ${run.head_branch}`,
+              `- Commit: ${run.head_sha}`,
+              `- Actor: ${run.actor?.login || "unknown"}`,
+              `- Run URL: ${run.html_url}`,
+              `- Runbook: https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/docs/incident/security-harness-runbook.md`,
+              ``,
+              `## Immediate Actions`,
+              `1. Open the failed run and identify the failing step.`,
+              `2. Apply runbook remediation.`,
+              `3. Re-run workflow and update this issue with outcome.`,
+            ].join("\n");
+
+            // Prevent duplicate open issues for same workflow+branch.
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100
+            });
+
+            const duplicate = issues.find(i => i.title === title);
+            if (duplicate) {
+              core.info(`Duplicate open issue exists: #${duplicate.number}`);
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ["security", "incident", "priority:high"]
+            });

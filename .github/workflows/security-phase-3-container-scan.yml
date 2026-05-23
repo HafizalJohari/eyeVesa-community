@@ -1,0 +1,42 @@
+name: Security Phase 3 - Container Scan Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  container-image-scan:
+    name: Container Image Vulnerability Gate (High/Critical)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: eyevesa-control
+            dockerfile: gateway/control-plane/Dockerfile
+            context: gateway/control-plane
+          - image: eyevesa-core
+            dockerfile: gateway/core/Dockerfile
+            context: gateway/core
+          - image: eyevesa-adapter
+            dockerfile: adapter/resource-adapter-go/Dockerfile
+            context: adapter/resource-adapter-go
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.image }}
+        run: docker build -t ${{ matrix.image }}:ci -f ${{ matrix.dockerfile }} ${{ matrix.context }}
+      - name: Scan ${{ matrix.image }} with Trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ matrix.image }}:ci
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: "1"

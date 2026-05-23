@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -19,6 +20,15 @@ type Client struct {
 	JWTToken         string
 	AgentID          string
 	generatedKeyPair *clientcrypto.KeyPair
+}
+
+type WorkflowRunStatus struct {
+	Name       string
+	Status     string
+	Conclusion string
+	Branch     string
+	RunURL     string
+	CreatedAt  string
 }
 
 func NewClient(baseURL string) *Client {
@@ -233,6 +243,86 @@ func (c *Client) ListDelegations(agentID string) (map[string]interface{}, error)
 
 func (c *Client) ValidateDelegation(parentID, childID string) (map[string]interface{}, error) {
 	return c.Get(fmt.Sprintf("/v1/delegations/validate?parent=%s&child=%s", parentID, childID))
+}
+
+func (c *Client) SecurityWorkflowRuns() ([]map[string]interface{}, error) {
+	repo := os.Getenv("EYEVESA_GITHUB_REPO")
+	if repo == "" {
+		repo = "hafizaljohari/eyeVesa"
+	}
+	parts := strings.Split(repo, "/")
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return nil, fmt.Errorf("invalid EYEVESA_GITHUB_REPO value: expected owner/repo")
+	}
+
+	token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv("GH_TOKEN"))
+	}
+	if token == "" {
+		return nil, fmt.Errorf("missing GitHub token: set GITHUB_TOKEN (or GH_TOKEN)")
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/runs?per_page=100", parts[0], parts[1])
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create github request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("github request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read github response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("github API %d: %s", resp.StatusCode, string(body))
+	}
+
+	var payload struct {
+		WorkflowRuns []map[string]interface{} `json:"workflow_runs"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("parse github response: %w", err)
+	}
+
+	target := map[string]bool{
+		"Security Phase 1":                                 true,
+		"Security Phase 3 - Container Scan Gate":           true,
+		"Security Phase 4 - Post Deploy Smoke":             true,
+		"Security Phase 5 - Alerting and Incident Routing": true,
+	}
+
+	latest := map[string]map[string]interface{}{}
+	for _, run := range payload.WorkflowRuns {
+		name, _ := run["name"].(string)
+		if !target[name] {
+			continue
+		}
+		if _, exists := latest[name]; !exists {
+			latest[name] = run
+		}
+	}
+
+	order := []string{
+		"Security Phase 1",
+		"Security Phase 3 - Container Scan Gate",
+		"Security Phase 4 - Post Deploy Smoke",
+		"Security Phase 5 - Alerting and Incident Routing",
+	}
+	result := make([]map[string]interface{}, 0, len(order))
+	for _, name := range order {
+		if run, ok := latest[name]; ok {
+			result = append(result, run)
+		}
+	}
+	return result, nil
 }
 
 func (c *Client) RevokeDelegation(delegationID string) (map[string]interface{}, error) {
