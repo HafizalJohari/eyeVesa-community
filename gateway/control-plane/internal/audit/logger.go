@@ -78,9 +78,15 @@ func (a *AuditLogger) Log(ctx context.Context, entry AuditEntry, signingKey ed25
 }
 
 func (a *AuditLogger) computeSignature(entry AuditEntry, key ed25519.PrivateKey) ([]byte, error) {
-	payload := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+	paramsJSON, _ := json.Marshal(entry.Params)
+	resultJSON, _ := json.Marshal(entry.Result)
+
+	payload := fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s:%s:%.2f:%.2f:%s",
 		entry.LogID, entry.AgentID, entry.ResourceID,
-		entry.Action, entry.Method, entry.Status)
+		entry.Action, entry.Method, entry.Status,
+		string(paramsJSON), string(resultJSON),
+		entry.TrustBefore, entry.TrustAfter,
+		entry.SessionID)
 
 	hash := sha256.Sum256([]byte(payload))
 	sig := ed25519.Sign(key, hash[:])
@@ -88,20 +94,25 @@ func (a *AuditLogger) computeSignature(entry AuditEntry, key ed25519.PrivateKey)
 }
 
 func (a *AuditLogger) VerifyIntegrity(ctx context.Context, logID string, publicKey ed25519.PublicKey) (bool, error) {
-	var action, method, status, agentID, resourceID string
+	var action, method, status, agentID, resourceID, sessionID string
+	var trustBefore, trustAfter float64
+	var paramsJSON, resultJSON []byte
 	var signature []byte
 
 	err := a.q.QueryRow(ctx,
-		`SELECT agent_id, resource_id, action, method, result_status, signature FROM audit_logs WHERE log_id = $1`,
+		`SELECT agent_id, resource_id, action, method, result_status, params, result, trust_score_before, trust_score_after, session_id, signature
+		 FROM audit_logs WHERE log_id = $1`,
 		logID,
-	).Scan(&agentID, &resourceID, &action, &method, &status, &signature)
+	).Scan(&agentID, &resourceID, &action, &method, &status, &paramsJSON, &resultJSON, &trustBefore, &trustAfter, &sessionID, &signature)
 
 	if err != nil {
 		return false, err
 	}
 
-	payload := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
-		logID, agentID, resourceID, action, method, status)
+	payload := fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s:%s:%.2f:%.2f:%s",
+		logID, agentID, resourceID, action, method, status,
+		string(paramsJSON), string(resultJSON),
+		trustBefore, trustAfter, sessionID)
 
 	hash := sha256.Sum256([]byte(payload))
 	return ed25519.Verify(publicKey, hash[:], signature), nil

@@ -159,9 +159,13 @@ func TestLog_WithSigningKey(t *testing.T) {
 		t.Fatalf("expected %d byte signature, got %d", ed25519.SignatureSize, len(signature))
 	}
 
-	payload := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+	paramsJSON, _ := json.Marshal(entry.Params)
+	resultJSON, _ := json.Marshal(entry.Result)
+	payload := fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s:%s:%.2f:%.2f:%s",
 		entry.LogID, entry.AgentID, entry.ResourceID,
-		entry.Action, entry.Method, entry.Status)
+		entry.Action, entry.Method, entry.Status,
+		string(paramsJSON), string(resultJSON),
+		entry.TrustBefore, entry.TrustAfter, entry.SessionID)
 	hash := sha256.Sum256([]byte(payload))
 
 	if !ed25519.Verify(pubKey, hash[:], signature) {
@@ -506,15 +510,22 @@ func TestVerifyIntegrity_Valid(t *testing.T) {
 
 	sig, _ := (&AuditLogger{}).computeSignature(entry, privKey)
 
+	paramsJSON, _ := json.Marshal(entry.Params)
+	resultJSON, _ := json.Marshal(entry.Result)
 	q := &mockQuerier{
 		queryRowFn: func(ctx context.Context, sql string, args ...interface{}) database.Row {
 			return &verifyRow{
-				agentID:    entry.AgentID,
-				resourceID: entry.ResourceID,
-				action:     entry.Action,
-				method:     entry.Method,
-				status:     entry.Status,
-				signature:  sig,
+				agentID:     entry.AgentID,
+				resourceID:  entry.ResourceID,
+				action:      entry.Action,
+				method:      entry.Method,
+				status:      entry.Status,
+				paramsJSON:  paramsJSON,
+				resultJSON:  resultJSON,
+				trustBefore: entry.TrustBefore,
+				trustAfter:  entry.TrustAfter,
+				sessionID:   entry.SessionID,
+				signature:   sig,
 			}
 		},
 	}
@@ -548,15 +559,22 @@ func TestVerifyIntegrity_Invalid(t *testing.T) {
 
 	sig, _ := (&AuditLogger{}).computeSignature(entry, privKey)
 
+	paramsJSON, _ := json.Marshal(entry.Params)
+	resultJSON, _ := json.Marshal(entry.Result)
 	q := &mockQuerier{
 		queryRowFn: func(ctx context.Context, sql string, args ...interface{}) database.Row {
 			return &verifyRow{
-				agentID:    entry.AgentID,
-				resourceID: entry.ResourceID,
-				action:     entry.Action,
-				method:     entry.Method,
-				status:     entry.Status,
-				signature:  sig,
+				agentID:     entry.AgentID,
+				resourceID:  entry.ResourceID,
+				action:      entry.Action,
+				method:      entry.Method,
+				status:      entry.Status,
+				paramsJSON:  paramsJSON,
+				resultJSON:  resultJSON,
+				trustBefore: entry.TrustBefore,
+				trustAfter:  entry.TrustAfter,
+				sessionID:   entry.SessionID,
+				signature:   sig,
 			}
 		},
 	}
@@ -607,15 +625,22 @@ func TestVerifyIntegrity_TamperedData(t *testing.T) {
 
 	sig, _ := (&AuditLogger{}).computeSignature(origEntry, privKey)
 
+	paramsJSON, _ := json.Marshal(origEntry.Params)
+	resultJSON, _ := json.Marshal(origEntry.Result)
 	q := &mockQuerier{
 		queryRowFn: func(ctx context.Context, sql string, args ...interface{}) database.Row {
 			return &verifyRow{
-				agentID:    "agent-TAMPERED",
-				resourceID: origEntry.ResourceID,
-				action:     origEntry.Action,
-				method:     origEntry.Method,
-				status:     origEntry.Status,
-				signature:  sig,
+				agentID:     "agent-TAMPERED",
+				resourceID:  origEntry.ResourceID,
+				action:      origEntry.Action,
+				method:      origEntry.Method,
+				status:      origEntry.Status,
+				paramsJSON:  paramsJSON,
+				resultJSON:  resultJSON,
+				trustBefore: origEntry.TrustBefore,
+				trustAfter:  origEntry.TrustAfter,
+				sessionID:   origEntry.SessionID,
+				signature:   sig,
 			}
 		},
 	}
@@ -631,24 +656,34 @@ func TestVerifyIntegrity_TamperedData(t *testing.T) {
 }
 
 type verifyRow struct {
-	agentID    string
-	resourceID string
-	action     string
-	method     string
-	status     string
-	signature  []byte
+	agentID     string
+	resourceID  string
+	action      string
+	method      string
+	status      string
+	paramsJSON  []byte
+	resultJSON  []byte
+	trustBefore float64
+	trustAfter  float64
+	sessionID   string
+	signature   []byte
 }
 
 func (r *verifyRow) Scan(dest ...interface{}) error {
-	if len(dest) != 6 {
-		return fmt.Errorf("expected 6 scan destinations, got %d", len(dest))
+	if len(dest) != 11 {
+		return fmt.Errorf("expected 11 scan destinations, got %d", len(dest))
 	}
 	*(dest[0].(*string)) = r.agentID
 	*(dest[1].(*string)) = r.resourceID
 	*(dest[2].(*string)) = r.action
 	*(dest[3].(*string)) = r.method
 	*(dest[4].(*string)) = r.status
-	*(dest[5].(*[]byte)) = r.signature
+	*(dest[5].(*[]byte)) = r.paramsJSON
+	*(dest[6].(*[]byte)) = r.resultJSON
+	*(dest[7].(*float64)) = r.trustBefore
+	*(dest[8].(*float64)) = r.trustAfter
+	*(dest[9].(*string)) = r.sessionID
+	*(dest[10].(*[]byte)) = r.signature
 	return nil
 }
 
