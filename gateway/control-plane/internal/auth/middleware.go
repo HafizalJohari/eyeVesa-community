@@ -105,9 +105,9 @@ func (a *AuthMiddleware) checkAPIKey(r *http.Request) (string, bool) {
 	keyHash := hashAPIKey(key)
 	err := a.db.QueryRow(r.Context(),
 		`SELECT tenant_id FROM api_keys
-		 WHERE is_active = TRUE AND (api_key_hash = $1 OR api_key = $2)
+		 WHERE is_active = TRUE AND api_key_hash = $1
 		 LIMIT 1`,
-		keyHash, key,
+		keyHash,
 	).Scan(&tenantID)
 	if err != nil {
 		return "", false

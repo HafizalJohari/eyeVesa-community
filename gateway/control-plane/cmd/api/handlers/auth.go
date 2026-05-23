@@ -54,9 +54,9 @@ func createAPIKeyForTenant(ctx context.Context, name, tenantID string) (APIKeyRe
 	}
 
 	err := querier.QueryRow(ctx,
-		`INSERT INTO api_keys (key_id, api_key, api_key_hash, name, tenant_id, is_active, created_at)
-		 VALUES ($1, $2, $3, $4, $5, true, NOW()) RETURNING created_at`,
-		keyID, hashAPIKey(apiKey), hashAPIKey(apiKey), name, tenantArg,
+		`INSERT INTO api_keys (key_id, api_key_hash, name, tenant_id, is_active, created_at)
+		 VALUES ($1, $2, $3, $4, true, NOW()) RETURNING created_at`,
+		keyID, hashAPIKey(apiKey), name, tenantArg,
 	).Scan(&createdAt)
 	if err != nil {
 		return APIKeyResponse{}, err
