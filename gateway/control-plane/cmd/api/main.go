@@ -84,7 +84,7 @@ func main() {
 
 	keyPath := os.Getenv("GATEWAY_KEY_PATH")
 	if keyPath == "" {
-		keyPath = "/tmp/agentid-gateway-ed25519.key"
+		keyPath = "/etc/eyevesa/gateway-ed25519.key"
 	}
 
 	pubKey, privKey, err = gwcrypto.LoadOrGenerateKeys(keyPath)
@@ -116,7 +116,7 @@ func main() {
 		slog.Info("gateway identity", "spiffe_id", svid.SpiffeID, "trust_domain", svid.TrustDomain)
 	}
 
-	if err := identityProvider.WriteCerts("/tmp/agentid-gateway.crt", "/tmp/agentid-gateway.key"); err != nil {
+	if err := identityProvider.WriteCerts("/etc/eyevesa/gateway.crt", "/etc/eyevesa/gateway.key"); err != nil {
 		slog.Warn("could not write certs", "error", err)
 	}
 

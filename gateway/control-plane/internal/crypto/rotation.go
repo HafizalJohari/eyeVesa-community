@@ -205,11 +205,11 @@ func (s *KeyRotationService) StartAutoRotation(interval time.Duration) chan stru
 func DefaultKeyPaths() (keyPath, ptvKeyPath string) {
 	keyPath = os.Getenv("GATEWAY_KEY_PATH")
 	if keyPath == "" {
-		keyPath = "/tmp/agentid-gateway-ed25519.key"
+		keyPath = "/etc/eyevesa/gateway-ed25519.key"
 	}
 	ptvKeyPath = os.Getenv("PTV_KEY_PATH")
 	if ptvKeyPath == "" {
-		ptvKeyPath = "/tmp/agentid-gateway-ptv-ecdsa.key"
+		ptvKeyPath = "/etc/eyevesa/gateway-ptv-ecdsa.key"
 	}
 	return keyPath, ptvKeyPath
 }

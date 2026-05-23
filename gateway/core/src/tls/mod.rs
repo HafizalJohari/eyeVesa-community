@@ -25,11 +25,11 @@ impl TlsConfig {
     pub fn from_env() -> Self {
         Self {
             cert_path: std::env::var("TLS_CERT_PATH")
-                .unwrap_or_else(|_| "/tmp/agentid-gateway.crt".to_string()),
+                .unwrap_or_else(|_| "/etc/eyevesa/gateway.crt".to_string()),
             key_path: std::env::var("TLS_KEY_PATH")
-                .unwrap_or_else(|_| "/tmp/agentid-gateway.key".to_string()),
+                .unwrap_or_else(|_| "/etc/eyevesa/gateway.key".to_string()),
             ca_path: std::env::var("TLS_CA_PATH")
-                .unwrap_or_else(|_| "/tmp/agentid-ca.crt".to_string()),
+                .unwrap_or_else(|_| "/etc/eyevesa/ca.crt".to_string()),
             require_client_cert: std::env::var("TLS_REQUIRE_CLIENT_CERT")
                 .unwrap_or_else(|_| "false".to_string())
                 == "true",
@@ -50,11 +50,11 @@ impl BackendTlsConfig {
         Self {
             enabled,
             ca_path: std::env::var("BACKEND_TLS_CA_PATH")
-                .unwrap_or_else(|_| "/tmp/agentid-ca.crt".to_string()),
+                .unwrap_or_else(|_| "/etc/eyevesa/ca.crt".to_string()),
             cert_path: std::env::var("BACKEND_TLS_CERT_PATH")
-                .unwrap_or_else(|_| "/tmp/agentid-gateway.crt".to_string()),
+                .unwrap_or_else(|_| "/etc/eyevesa/gateway.crt".to_string()),
             key_path: std::env::var("BACKEND_TLS_KEY_PATH")
-                .unwrap_or_else(|_| "/tmp/agentid-gateway.key".to_string()),
+                .unwrap_or_else(|_| "/etc/eyevesa/gateway.key".to_string()),
             server_name: std::env::var("BACKEND_TLS_SERVER_NAME")
                 .unwrap_or_else(|_| "gateway-control".to_string()),
         }

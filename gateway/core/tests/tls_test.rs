@@ -100,9 +100,9 @@ fn test_tls_config_defaults() {
     std::env::remove_var("TLS_CA_PATH");
 
     let config = agentid_core::tls::TlsConfig::from_env();
-    assert_eq!(config.cert_path, "/tmp/agentid-gateway.crt");
-    assert_eq!(config.key_path, "/tmp/agentid-gateway.key");
-    assert_eq!(config.ca_path, "/tmp/agentid-ca.crt");
+    assert_eq!(config.cert_path, "/etc/eyevesa/gateway.crt");
+    assert_eq!(config.key_path, "/etc/eyevesa/gateway.key");
+    assert_eq!(config.ca_path, "/etc/eyevesa/ca.crt");
 }
 
 #[test]

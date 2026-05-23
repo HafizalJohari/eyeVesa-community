@@ -62,7 +62,7 @@ type PTVService struct {
 func NewPTVService(db *pgxpool.Pool) *PTVService {
 	keyPath := os.Getenv("PTV_KEY_PATH")
 	if keyPath == "" {
-		keyPath = "/tmp/agentid-ptv-ecdsa.key"
+		keyPath = "/etc/eyevesa/gateway-ptv-ecdsa.key"
 	}
 
 	var key *ecdsa.PrivateKey
