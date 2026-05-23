@@ -282,7 +282,22 @@ func main() {
 			globalRPS = f
 		}
 	}
+	authRPS := 5.0
+	if v := os.Getenv("RATE_LIMIT_AUTH_RPS"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			authRPS = f
+		}
+	}
+	airportRPS := 10.0
+	if v := os.Getenv("RATE_LIMIT_AIRPORT_RPS"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			airportRPS = f
+		}
+	}
+
 	rateLimiter := ratelimit.NewRateLimiter(globalRPS*10, globalRPS)
+	authLimiter := ratelimit.NewRateLimiter(authRPS*5, authRPS)
+	airportLimiter := ratelimit.NewRateLimiter(airportRPS*5, airportRPS)
 	r.Use(rateLimiter.Middleware)
 
 	healthChecker := health.NewChecker(db, policyEngine, &draining)
@@ -313,8 +328,8 @@ func main() {
 
 	r.Route("/v1", func(r chi.Router) {
 		r.With(requireAdmin).Post("/api-keys", handlers.CreateAPIKey)
-		r.Post("/auth/challenge", handlers.AuthChallenge)
-		r.Post("/auth/login", handlers.AgentLogin)
+		r.With(authLimiter.IPLimiter).Post("/auth/challenge", handlers.AuthChallenge)
+		r.With(authLimiter.IPLimiter).Post("/auth/login", handlers.AgentLogin)
 
 		r.Get("/api-keys", handlers.ListAPIKeys)
 		r.With(requireAdmin).Delete("/api-keys/{keyID}", handlers.RevokeAPIKey)
@@ -453,8 +468,8 @@ func main() {
 
 		// Airport: Where agents meet
 		r.Post("/airport/handshake", handlers.AirportHandshakeHandler)
-		r.Post("/airport/connect", handlers.AirportConnectHandler)
-		r.Post("/airport/heartbeat", handlers.AirportHeartbeatHandler)
+		r.With(airportLimiter.IPLimiter).Post("/airport/connect", handlers.AirportConnectHandler)
+		r.With(airportLimiter.IPLimiter).Post("/airport/heartbeat", handlers.AirportHeartbeatHandler)
 		r.Get("/airport/agents", handlers.AirportSearchHandler)
 		r.Get("/airport/online", handlers.AirportListOnlineHandler)
 		r.Get("/airport/agents/{agentID}", handlers.AirportGetProfileHandler)

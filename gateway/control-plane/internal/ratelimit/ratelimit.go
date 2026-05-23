@@ -88,6 +88,20 @@ func (rl *RateLimiter) RouteLimiter(next http.Handler) http.Handler {
 	})
 }
 
+func (rl *RateLimiter) IPLimiter(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.RemoteAddr
+		if !rl.allow(key) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"rate_limit_exceeded","message":"too many requests"}`))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (rl *RateLimiter) Reload(maxTokens, refillPerSecond float64) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
