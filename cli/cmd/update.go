@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -61,11 +60,16 @@ func runUpdate() error {
 	}
 
 	repoPath, _ = filepath.Abs(repoPath)
-	if _, err := os.Stat(filepath.Join(repoPath, "go.mod")); err != nil {
-		return fmt.Errorf("no go.mod found at %s. Provide the correct repo path with --repo", repoPath)
+	cliPath := repoPath
+	if _, err := os.Stat(filepath.Join(cliPath, "go.mod")); err != nil {
+		cliPath = filepath.Join(repoPath, "cli")
+	}
+	if _, err := os.Stat(filepath.Join(cliPath, "go.mod")); err != nil {
+		return fmt.Errorf("cannot find CLI module (go.mod) under %s. Provide --repo pointing to the eyeVesa repository", repoPath)
 	}
 
 	fmt.Printf("  repo: %s\n", repoPath)
+	fmt.Printf("  cli:  %s\n", cliPath)
 
 	pullCmd := exec.Command("git", "pull", "--ff-only")
 	pullCmd.Dir = repoPath
@@ -87,12 +91,9 @@ func runUpdate() error {
 	}
 
 	ldflags := fmt.Sprintf("-X github.com/hafizaljohari/eyeVesa/cli/cmd.version=%s", commit)
-	if runtime.GOOS == "windows" {
-		ldflags = fmt.Sprintf("-X github.com/hafizaljohari/eyeVesa/cli/cmd.version=%s", commit)
-	}
 
 	build := exec.Command("go", "build", "-ldflags", ldflags, "-o", bin, ".")
-	build.Dir = repoPath
+	build.Dir = cliPath
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	fmt.Println("  building...")

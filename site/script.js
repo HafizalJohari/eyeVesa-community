@@ -90,6 +90,26 @@
             });
         });
     });
+    // Mouse tracking for interactive mesh gradient background
+    var mouseX = window.innerWidth / 2;
+    var mouseY = window.innerHeight / 2;
+    var targetX = mouseX;
+    var targetY = mouseY;
+    
+    document.addEventListener('mousemove', function(e) {
+        targetX = e.clientX;
+        targetY = e.clientY;
+    });
+
+    function updateMousePosition() {
+        // Smooth lerp (linear interpolation) to make the motion extremely buttery and fluid
+        mouseX += (targetX - mouseX) * 0.08;
+        mouseY += (targetY - mouseY) * 0.08;
+        document.documentElement.style.setProperty('--mouse-x', mouseX + 'px');
+        document.documentElement.style.setProperty('--mouse-y', mouseY + 'px');
+        requestAnimationFrame(updateMousePosition);
+    }
+    updateMousePosition();
 })();
 
 function copyCode(id) {
