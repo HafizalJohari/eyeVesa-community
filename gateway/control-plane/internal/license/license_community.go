@@ -5,7 +5,7 @@ package license
 func Load() Info {
 	return Info{
 		Tier:         TierCommunity,
-		MaxAgents:    5,
+		MaxAgents:    100,
 		MaxResources: 10,
 		Features: []string{
 			FeatureDelegation,

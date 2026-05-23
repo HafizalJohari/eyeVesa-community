@@ -15,7 +15,6 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/auth"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/crypto"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/database"
-	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/license"
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
 )
 
@@ -69,22 +68,14 @@ func SetPolicyEngine(pe *policy.PolicyEngine) {
 }
 
 func RegisterAgent(w http.ResponseWriter, r *http.Request) {
-	// Enforce agent limits.
-	//
-	// Community builds use the compiled license cap (typically 5) as a global ceiling.
-	// Pro builds can also apply per-tenant limits, but only if we have a tenant context.
-	lic := license.Get()
+	// Enforce tenant-scoped agent limits only when a tenant context is present
+	// (for example, centralized Airport registrations for external nodes).
+	// Local/community self-hosted registrations are not globally capped.
 	tenantID := auth.GetTenantID(r.Context())
 	if tenantID != "" && tenantService != nil {
 		allowed, current, max, err := tenantService.CheckAgentLimit(r.Context(), tenantID)
 		if err == nil && !allowed {
 			http.Error(w, fmt.Sprintf("agent limit reached for tenant (%d/%d)", current, max), http.StatusTooManyRequests)
-			return
-		}
-	} else if lic.MaxAgents > 0 {
-		var count int
-		if err := querier.QueryRow(r.Context(), `SELECT COUNT(*) FROM agents`).Scan(&count); err == nil && count >= lic.MaxAgents {
-			http.Error(w, "agent limit reached for your license tier", http.StatusTooManyRequests)
 			return
 		}
 	}
