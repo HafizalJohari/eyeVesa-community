@@ -118,11 +118,10 @@ pub async fn run_mtls(
         }
         tracing::info!("Loaded CA certificate from {}", tls_config.ca_path);
     } else {
-        tracing::warn!("CA certificate not found at {}, using permissive mTLS (accepts any client cert)", tls_config.ca_path);
+        return Err(format!("CA certificate not found at {}. mTLS requires valid client certificates. Set TLS_CA_PATH environment variable.", tls_config.ca_path).into());
     }
 
     let client_verifier = rustls::server::WebPkiClientVerifier::builder(Arc::new(root_store))
-        .allow_unauthenticated()
         .build()?;
 
     let server_config = rustls::ServerConfig::builder()
