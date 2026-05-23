@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,7 +20,11 @@ import (
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/auth"
 )
 
-var jwtSecret []byte
+var (
+	jwtSecret []byte
+	challengesMu sync.RWMutex
+	challenges = make(map[string]challengeEntry)
+)
 
 func SetJWTSecret(secret string) {
 	jwtSecret = []byte(secret)
@@ -196,8 +201,6 @@ type ChallengeResponse struct {
 	ExpiresAt int64  `json:"expires_at"`
 }
 
-var challenges = make(map[string]challengeEntry)
-
 type challengeEntry struct {
 	nonce     string
 	expiresAt time.Time
@@ -238,10 +241,12 @@ func AuthChallenge(w http.ResponseWriter, r *http.Request) {
 	nonce := uuid.New().String()
 	expiresAt := time.Now().Add(5 * time.Minute)
 
+	challengesMu.Lock()
 	challenges[agentID.String()] = challengeEntry{
 		nonce:     nonce,
 		expiresAt: expiresAt,
 	}
+	challengesMu.Unlock()
 
 	resp := ChallengeResponse{
 		AgentID:   agentID.String(),
@@ -283,14 +288,19 @@ func AgentLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	challengesMu.RLock()
 	challenge, exists := challenges[agentID.String()]
+	challengesMu.RUnlock()
+
 	if !exists {
 		http.Error(w, "no challenge found — request a challenge first via POST /v1/auth/challenge", http.StatusBadRequest)
 		return
 	}
 
 	if time.Now().After(challenge.expiresAt) {
+		challengesMu.Lock()
 		delete(challenges, agentID.String())
+		challengesMu.Unlock()
 		http.Error(w, "challenge expired — request a new challenge", http.StatusBadRequest)
 		return
 	}
@@ -328,7 +338,9 @@ func AgentLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	challengesMu.Lock()
 	delete(challenges, agentID.String())
+	challengesMu.Unlock()
 
 	secret := getJWTSecret()
 	if len(secret) == 0 {
