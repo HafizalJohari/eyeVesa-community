@@ -28,7 +28,7 @@ jobs:
             dockerfile: adapter/resource-adapter-go/Dockerfile
             context: adapter/resource-adapter-go
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build ${{ matrix.image }}
         run: docker build -t ${{ matrix.image }}:ci -f ${{ matrix.dockerfile }} ${{ matrix.context }}
       - name: Scan ${{ matrix.image }} with Trivy
