@@ -13,12 +13,17 @@ ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_api_key_key;
 -- Drop the index on plaintext key
 DROP INDEX IF EXISTS idx_api_keys_key;
 
+-- Allow new hashed-only keys to omit deprecated plaintext storage.
+ALTER TABLE api_keys
+    ALTER COLUMN api_key DROP NOT NULL;
+
 -- Make api_key_hash NOT NULL (all keys must have hash now)
 ALTER TABLE api_keys
     ALTER COLUMN api_key_hash SET NOT NULL;
 
--- Add a unique constraint on api_key_hash
-ALTER TABLE api_keys
-    ADD CONSTRAINT uk_api_keys_hash_active UNIQUE (api_key_hash) WHERE is_active = TRUE;
+-- Add a unique partial index on active api_key_hash values.
+CREATE UNIQUE INDEX IF NOT EXISTS uk_api_keys_hash_active
+    ON api_keys (api_key_hash)
+    WHERE is_active = TRUE;
 
 COMMENT ON COLUMN api_keys.api_key IS 'DEPRECATED: No longer used. Use api_key_hash for authentication. Kept for backward compatibility during migration period.';

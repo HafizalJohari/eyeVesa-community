@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
   rust-check:
@@ -164,8 +164,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build control plane image
-        run: docker build -t agentid-control:ci ./gateway/control-plane
+        run: docker build -t agentid-control:ci -f gateway/control-plane/Dockerfile .
       - name: Build core image
-        run: docker build -t agentid-core:ci ./gateway/core
+        run: docker build -t agentid-core:ci -f gateway/core/Dockerfile .
       - name: Build resource adapter image
-        run: docker build -t agentid-adapter:ci ./adapter/resource-adapter-go
+        run: docker build -t agentid-adapter:ci -f adapter/resource-adapter-go/Dockerfile .

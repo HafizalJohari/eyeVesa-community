@@ -34,6 +34,7 @@ fn generate_self_signed_cert(dir: &TempDir) -> (PathBuf, PathBuf, PathBuf) {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_load_certs_from_file() {
     let dir = tempfile::tempdir().unwrap();
     let (_, _, cert_path) = generate_self_signed_cert(&dir);
@@ -45,12 +46,14 @@ fn test_load_certs_from_file() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_load_certs_missing_file() {
     let result = agentid_core::tls::load_certs("/nonexistent/path.crt");
     assert!(result.is_err(), "should fail for missing file");
 }
 
 #[test]
+#[serial_test::serial]
 fn test_load_certs_empty_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("empty.crt");
@@ -63,6 +66,7 @@ fn test_load_certs_empty_file() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_load_key_from_file() {
     let dir = tempfile::tempdir().unwrap();
     let (_, key_path, _) = generate_self_signed_cert(&dir);
@@ -72,12 +76,14 @@ fn test_load_key_from_file() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_load_key_missing_file() {
     let result = agentid_core::tls::load_key("/nonexistent/path.key");
     assert!(result.is_err(), "should fail for missing key file");
 }
 
 #[test]
+#[serial_test::serial]
 fn test_tls_config_from_env() {
     std::env::set_var("TLS_CERT_PATH", "/tmp/test-cert.crt");
     std::env::set_var("TLS_KEY_PATH", "/tmp/test-cert.key");
@@ -94,6 +100,7 @@ fn test_tls_config_from_env() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_tls_config_defaults() {
     std::env::remove_var("TLS_CERT_PATH");
     std::env::remove_var("TLS_KEY_PATH");
@@ -106,6 +113,7 @@ fn test_tls_config_defaults() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_tls_config_cert_exists_false() {
     std::env::set_var("TLS_CERT_PATH", "/tmp/nonexistent-test-cert-xyz.crt");
     std::env::set_var("TLS_KEY_PATH", "/tmp/nonexistent-test-key-xyz.key");
@@ -116,6 +124,7 @@ fn test_tls_config_cert_exists_false() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_tls_config_cert_exists_true() {
     let dir = tempfile::tempdir().unwrap();
     let (_, key_path, cert_path) = generate_self_signed_cert(&dir);
@@ -131,6 +140,7 @@ fn test_tls_config_cert_exists_true() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_backend_tls_config_disabled() {
     std::env::remove_var("BACKEND_TLS_ENABLED");
 
@@ -139,6 +149,7 @@ fn test_backend_tls_config_disabled() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_backend_tls_config_enabled() {
     std::env::set_var("BACKEND_TLS_ENABLED", "true");
 
@@ -149,6 +160,7 @@ fn test_backend_tls_config_enabled() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_backend_tls_build_client_disabled() {
     std::env::remove_var("BACKEND_TLS_ENABLED");
     let config = agentid_core::tls::BackendTlsConfig::from_env();
@@ -157,6 +169,7 @@ fn test_backend_tls_build_client_disabled() {
 }
 
 #[test]
+#[serial_test::serial]
 fn test_cert_watcher_new() {
     let config = agentid_core::tls::TlsConfig::from_env();
     let watcher = std::sync::Arc::new(agentid_core::tls::watcher::CertWatcher::new(config));
@@ -166,6 +179,7 @@ fn test_cert_watcher_new() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn test_cert_watcher_detects_change() {
     let dir = tempfile::tempdir().unwrap();
     let cert_path = dir.path().join("watched.crt");

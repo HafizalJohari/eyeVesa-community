@@ -62,6 +62,10 @@ This project follows Semantic Versioning.
 - Removed committed GCP deploy env, Terraform variable, Terraform state, and local session transcript artifacts from the tracked tree.
 
 ### Fixed
+- Fixed CI and GCP deployment Docker builds to use the repository root build context required by root-relative Dockerfiles.
+- Fixed hashed-only API key migration so deployment migrations succeed and new agent registrations can create API keys without plaintext storage.
+- Fixed integration tests to target configurable deployment URLs and current registration, health, PTV, HITL, skills, and transaction token contracts.
+- Fixed core proxy/TLS tests that used global process state so integration gates are deterministic under parallel test execution.
 - Fixed the Docker Compose resource adapter build context so the adapter Dockerfile can build from the repository root.
 - Fixed stale AgentID Gateway CLI branding in user-facing CLI help text.
 - Fixed installer handling for stale Hermes/profile-wrapper `eyevesa` commands by backing up and replacing the wrapper with the eyeVesa CLI.

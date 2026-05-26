@@ -5,17 +5,63 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/hafizaljohari/eyeVesa/gateway/control-plane/internal/policy"
 )
 
+const testPublicKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+func endpoint(path string) string {
+	baseURL := strings.TrimRight(os.Getenv("EYEVESA_INTEGRATION_BASE_URL"), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	return baseURL + path
+}
+
+func registerTestAgent(t *testing.T, name string, allowedTools []string) string {
+	t.Helper()
+	body := map[string]interface{}{
+		"name":          name,
+		"owner":         "test-team",
+		"public_key":    testPublicKey,
+		"capabilities":  []string{"mcp"},
+		"allowed_tools": allowedTools,
+	}
+	b, _ := json.Marshal(body)
+
+	resp, err := http.Post(endpoint("/v1/agents/register"), "application/json", bytes.NewReader(b))
+	if err != nil {
+		t.Fatalf("register agent failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 201 registering agent, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode register response: %v", err)
+	}
+	agentID, _ := result["agent_id"].(string)
+	if agentID == "" {
+		t.Fatalf("expected agent_id in response: %v", result)
+	}
+	return agentID
+}
+
 func TestHealthCheck(t *testing.T) {
-	resp, err := http.Get("http://localhost:8080/health")
+	resp, err := http.Get(endpoint("/health"))
 	if err != nil {
 		t.Fatalf("health check failed: %v", err)
 	}
@@ -26,8 +72,12 @@ func TestHealthCheck(t *testing.T) {
 	}
 
 	body, _ := io.ReadAll(resp.Body)
-	if string(body) != "ok" {
-		t.Errorf("expected 'ok', got '%s'", string(body))
+	var health map[string]interface{}
+	if err := json.Unmarshal(body, &health); err != nil {
+		t.Fatalf("expected JSON health response, got %q: %v", string(body), err)
+	}
+	if health["status"] != "healthy" {
+		t.Errorf("expected healthy status, got %v", health["status"])
 	}
 }
 
@@ -35,13 +85,14 @@ func TestRegisterAndGetAgent(t *testing.T) {
 	body := map[string]interface{}{
 		"name":           "integration-test-agent",
 		"owner":          "test-team",
+		"public_key":     testPublicKey,
 		"capabilities":   []string{"mcp", "ptv"},
 		"allowed_tools":  []string{"read", "write", "search"},
 		"max_budget_usd": 100.0,
 	}
 	b, _ := json.Marshal(body)
 
-	resp, err := http.Post("http://localhost:8080/v1/agents/register", "application/json", bytes.NewReader(b))
+	resp, err := http.Post(endpoint("/v1/agents/register"), "application/json", bytes.NewReader(b))
 	if err != nil {
 		t.Fatalf("register agent failed: %v", err)
 	}
@@ -59,7 +110,7 @@ func TestRegisterAndGetAgent(t *testing.T) {
 		t.Fatal("expected agent_id in response")
 	}
 
-	getResp, err := http.Get(fmt.Sprintf("http://localhost:8080/v1/agents/%s", agentID))
+	getResp, err := http.Get(fmt.Sprintf(endpoint("/v1/agents/%s"), agentID))
 	if err != nil {
 		t.Fatalf("get agent failed: %v", err)
 	}
@@ -74,12 +125,13 @@ func TestAuthorizeFlow(t *testing.T) {
 	body := map[string]interface{}{
 		"name":          "auth-test-agent",
 		"owner":         "test-team",
+		"public_key":    testPublicKey,
 		"capabilities":  []string{"mcp"},
 		"allowed_tools": []string{"read", "write"},
 	}
 	b, _ := json.Marshal(body)
 
-	resp, err := http.Post("http://localhost:8080/v1/agents/register", "application/json", bytes.NewReader(b))
+	resp, err := http.Post(endpoint("/v1/agents/register"), "application/json", bytes.NewReader(b))
 	if err != nil {
 		t.Fatalf("register agent failed: %v", err)
 	}
@@ -107,7 +159,7 @@ func TestAuthorizeFlow(t *testing.T) {
 				"resource_id": "doc-001",
 			})
 
-			authResp, err := http.Post("http://localhost:8080/v1/authorize", "application/json", bytes.NewReader(authBody))
+			authResp, err := http.Post(endpoint("/v1/authorize"), "application/json", bytes.NewReader(authBody))
 			if err != nil {
 				t.Fatalf("authorize failed: %v", err)
 			}
@@ -130,13 +182,14 @@ func TestAuthorizeFlow(t *testing.T) {
 }
 
 func TestPTVAttestBindVerify(t *testing.T) {
+	agentID := registerTestAgent(t, "ptv-integration-agent", []string{"read"})
 	attestBody, _ := json.Marshal(map[string]interface{}{
-		"agent_id":         "ptv-integration-agent",
+		"agent_id":         agentID,
 		"platform":         "linux-tpm2",
 		"firmware_version": "2.0.0",
 	})
 
-	attestResp, err := http.Post("http://localhost:8080/v1/ptv/attest", "application/json", bytes.NewReader(attestBody))
+	attestResp, err := http.Post(endpoint("/v1/ptv/attest"), "application/json", bytes.NewReader(attestBody))
 	if err != nil {
 		t.Fatalf("attest failed: %v", err)
 	}
@@ -149,7 +202,8 @@ func TestPTVAttestBindVerify(t *testing.T) {
 		t.Fatal("expected tpm_signature in attestation")
 	}
 
-	bindResp, err := http.Post("http://localhost:8080/v1/ptv/bind", "application/json", bytes.NewReader(attestBody))
+	bindBody, _ := json.Marshal(attestResult)
+	bindResp, err := http.Post(endpoint("/v1/ptv/bind"), "application/json", bytes.NewReader(bindBody))
 	if err != nil {
 		t.Fatalf("bind failed: %v", err)
 	}
@@ -163,7 +217,7 @@ func TestPTVAttestBindVerify(t *testing.T) {
 		t.Fatal("expected binding_id in bind response")
 	}
 
-	verifyResp, err := http.Get(fmt.Sprintf("http://localhost:8080/v1/ptv/verify/%s", bindingID))
+	verifyResp, err := http.Get(fmt.Sprintf(endpoint("/v1/ptv/verify/%s"), bindingID))
 	if err != nil {
 		t.Fatalf("verify failed: %v", err)
 	}
@@ -179,14 +233,15 @@ func TestPTVAttestBindVerify(t *testing.T) {
 }
 
 func TestHITLWorkflow(t *testing.T) {
+	agentID := registerTestAgent(t, "hitl-integration-agent", []string{"read", "bank_transfer"})
 	reqBody, _ := json.Marshal(map[string]interface{}{
-		"agent_id":   "hitl-integration-agent",
+		"agent_id":   agentID,
 		"action":     "bank_transfer",
 		"reason":     "Transfer $10K externally",
 		"risk_level": "high",
 	})
 
-	resp, err := http.Post("http://localhost:8080/v1/hitl/request", "application/json", bytes.NewReader(reqBody))
+	resp, err := http.Post(endpoint("/v1/hitl/request"), "application/json", bytes.NewReader(reqBody))
 	if err != nil {
 		t.Fatalf("HITL request failed: %v", err)
 	}
@@ -211,7 +266,7 @@ func TestHITLWorkflow(t *testing.T) {
 		"approver_method": "faceid",
 	})
 
-	decideResp, err := http.Post(fmt.Sprintf("http://localhost:8080/v1/hitl/%s/decide", approvalID), "application/json", bytes.NewReader(decideBody))
+	decideResp, err := http.Post(fmt.Sprintf(endpoint("/v1/hitl/%s/decide"), approvalID), "application/json", bytes.NewReader(decideBody))
 	if err != nil {
 		t.Fatalf("HITL decide failed: %v", err)
 	}
@@ -251,7 +306,7 @@ func TestOPAPolicyEngine(t *testing.T) {
 			input.Action.Tool = tt.action
 			input.Action.EstimatedCost = tt.cost
 
-			decision := pe.Evaluate(nil, input)
+			decision := pe.Evaluate(context.Background(), input)
 
 			if decision.Allowed != tt.wantAllow {
 				t.Errorf("allowed = %v, want %v", decision.Allowed, tt.wantAllow)
@@ -270,7 +325,7 @@ func TestMCPProtocol(t *testing.T) {
 		"id":      1,
 	})
 
-	resp, err := http.Post("http://localhost:8080/v1/mcp", "application/json", bytes.NewReader(mcpBody))
+	resp, err := http.Post(endpoint("/v1/mcp"), "application/json", bytes.NewReader(mcpBody))
 	if err != nil {
 		t.Fatalf("MCP initialize failed: %v", err)
 	}
@@ -292,14 +347,14 @@ func TestMCPProtocol(t *testing.T) {
 
 func TestSkillsCRUD(t *testing.T) {
 	createBody, _ := json.Marshal(map[string]interface{}{
-		"skill_name":     "integration-k8s",
-		"description":   "Kubernetes deployment skill",
-		"category":      "infrastructure",
-		"min_proficiency": 3,
-		"min_trust":     0.5,
+		"name":                 "integration-k8s",
+		"description":          "Kubernetes deployment skill",
+		"category":             "infrastructure",
+		"required_proficiency": 3,
+		"required_trust_min":   0.5,
 	})
 
-	createResp, err := http.Post("http://localhost:8080/v1/skills", "application/json", bytes.NewReader(createBody))
+	createResp, err := http.Post(endpoint("/v1/skills"), "application/json", bytes.NewReader(createBody))
 	if err != nil {
 		t.Fatalf("create skill failed: %v", err)
 	}
@@ -320,7 +375,7 @@ func TestSkillsCRUD(t *testing.T) {
 		t.Fatal("expected skill_id in create response")
 	}
 
-	listResp, err := http.Get("http://localhost:8080/v1/skills")
+	listResp, err := http.Get(endpoint("/v1/skills"))
 	if err != nil {
 		t.Fatalf("list skills failed: %v", err)
 	}
@@ -335,10 +390,11 @@ func TestSkillsAssignmentAndEndorsement(t *testing.T) {
 	agentBody, _ := json.Marshal(map[string]interface{}{
 		"name":          "skill-test-agent",
 		"owner":         "test-team",
+		"public_key":    testPublicKey,
 		"capabilities":  []string{"mcp"},
 		"allowed_tools": []string{"read", "k8s_deploy"},
 	})
-	agentResp, err := http.Post("http://localhost:8080/v1/agents/register", "application/json", bytes.NewReader(agentBody))
+	agentResp, err := http.Post(endpoint("/v1/agents/register"), "application/json", bytes.NewReader(agentBody))
 	if err != nil {
 		t.Fatalf("register agent failed: %v", err)
 	}
@@ -349,13 +405,13 @@ func TestSkillsAssignmentAndEndorsement(t *testing.T) {
 	agentID, _ := agentResult["agent_id"].(string)
 
 	skillBody, _ := json.Marshal(map[string]interface{}{
-		"skill_name":     "endorse-test-skill",
-		"description":   "Skill for endorsement testing",
-		"category":      "testing",
-		"min_proficiency": 2,
-		"min_trust":     0.3,
+		"name":                 "endorse-test-skill",
+		"description":          "Skill for endorsement testing",
+		"category":             "testing",
+		"required_proficiency": 2,
+		"required_trust_min":   0.3,
 	})
-	skillResp, err := http.Post("http://localhost:8080/v1/skills", "application/json", bytes.NewReader(skillBody))
+	skillResp, err := http.Post(endpoint("/v1/skills"), "application/json", bytes.NewReader(skillBody))
 	if err != nil {
 		t.Fatalf("create skill failed: %v", err)
 	}
@@ -372,7 +428,7 @@ func TestSkillsAssignmentAndEndorsement(t *testing.T) {
 		assignBody, _ := json.Marshal(map[string]interface{}{
 			"proficiency": 3,
 		})
-		assignResp, err := http.Post(fmt.Sprintf("http://localhost:8080/v1/skills/%s/assign?agent_id=%s", skillID, agentID), "application/json", bytes.NewReader(assignBody))
+		assignResp, err := http.Post(fmt.Sprintf(endpoint("/v1/skills/%s/assign?agent_id=%s"), skillID, agentID), "application/json", bytes.NewReader(assignBody))
 		if err != nil {
 			t.Fatalf("assign skill failed: %v", err)
 		}
@@ -382,7 +438,7 @@ func TestSkillsAssignmentAndEndorsement(t *testing.T) {
 			"endorser_id": agentID,
 			"comment":     "Integration test endorsement",
 		})
-		endorseResp, err := http.Post(fmt.Sprintf("http://localhost:8080/v1/skills/%s/endorse?agent_id=%s", skillID, agentID), "application/json", bytes.NewReader(endorseBody))
+		endorseResp, err := http.Post(fmt.Sprintf(endpoint("/v1/skills/%s/endorse?agent_id=%s"), skillID, agentID), "application/json", bytes.NewReader(endorseBody))
 		if err != nil {
 			t.Fatalf("endorse skill failed: %v", err)
 		}
@@ -394,10 +450,11 @@ func TestTransactionProtocol(t *testing.T) {
 	agentBody, _ := json.Marshal(map[string]interface{}{
 		"name":          "tx-test-agent",
 		"owner":         "test-team",
+		"public_key":    testPublicKey,
 		"capabilities":  []string{"mcp"},
 		"allowed_tools": []string{"read", "write", "deploy"},
 	})
-	agentResp, err := http.Post("http://localhost:8080/v1/agents/register", "application/json", bytes.NewReader(agentBody))
+	agentResp, err := http.Post(endpoint("/v1/agents/register"), "application/json", bytes.NewReader(agentBody))
 	if err != nil {
 		t.Fatalf("register agent failed: %v", err)
 	}
@@ -416,7 +473,7 @@ func TestTransactionProtocol(t *testing.T) {
 		"action":      "read",
 		"scopes":      []string{"read"},
 	})
-	issueResp, err := http.Post("http://localhost:8080/v1/tx/issue", "application/json", bytes.NewReader(issueBody))
+	issueResp, err := http.Post(endpoint("/v1/tx/issue"), "application/json", bytes.NewReader(issueBody))
 	if err != nil {
 		t.Fatalf("issue token failed: %v", err)
 	}
@@ -440,10 +497,9 @@ func TestTransactionProtocol(t *testing.T) {
 		t.Fatal("expected jti in capability token")
 	}
 
-	verifyBody, _ := json.Marshal(map[string]interface{}{
-		"token": tokenData,
-	})
-	verifyResp, err := http.Post("http://localhost:8080/v1/tx/verify", "application/json", bytes.NewReader(verifyBody))
+	tokenJSON, _ := json.Marshal(tokenData)
+	verifyBody, _ := json.Marshal(map[string]interface{}{"token": string(tokenJSON)})
+	verifyResp, err := http.Post(endpoint("/v1/tx/verify"), "application/json", bytes.NewReader(verifyBody))
 	if err != nil {
 		t.Fatalf("verify token failed: %v", err)
 	}
@@ -457,10 +513,8 @@ func TestTransactionProtocol(t *testing.T) {
 		t.Errorf("expected token to be valid, got: %v", verifyResult)
 	}
 
-	receiptBody, _ := json.Marshal(map[string]interface{}{
-		"token": tokenData,
-	})
-	receiptResp, err := http.Post("http://localhost:8080/v1/tx/receipt", "application/json", bytes.NewReader(receiptBody))
+	receiptBody, _ := json.Marshal(map[string]interface{}{"token": string(tokenJSON)})
+	receiptResp, err := http.Post(endpoint("/v1/tx/receipt"), "application/json", bytes.NewReader(receiptBody))
 	if err != nil {
 		t.Fatalf("issue receipt failed: %v", err)
 	}
@@ -479,10 +533,9 @@ func TestTransactionProtocol(t *testing.T) {
 		t.Fatal("expected receipt in response")
 	}
 
-	receiptVerifyBody, _ := json.Marshal(map[string]interface{}{
-		"receipt": receiptData,
-	})
-	receiptVerifyResp, err := http.Post("http://localhost:8080/v1/tx/receipt/verify", "application/json", bytes.NewReader(receiptVerifyBody))
+	receiptJSON, _ := json.Marshal(receiptData)
+	receiptVerifyBody, _ := json.Marshal(map[string]interface{}{"receipt": string(receiptJSON)})
+	receiptVerifyResp, err := http.Post(endpoint("/v1/tx/receipt/verify"), "application/json", bytes.NewReader(receiptVerifyBody))
 	if err != nil {
 		t.Fatalf("verify receipt failed: %v", err)
 	}
@@ -500,7 +553,7 @@ func TestTransactionProtocol(t *testing.T) {
 		revokeBody, _ := json.Marshal(map[string]interface{}{
 			"reason": "integration test revocation",
 		})
-		revokeResp, err := http.Post(fmt.Sprintf("http://localhost:8080/v1/tx/revoke/%s", tokenID), "application/json", bytes.NewReader(revokeBody))
+		revokeResp, err := http.Post(fmt.Sprintf(endpoint("/v1/tx/revoke/%s"), tokenID), "application/json", bytes.NewReader(revokeBody))
 		if err != nil {
 			t.Fatalf("revoke token failed: %v", err)
 		}
@@ -515,10 +568,11 @@ func TestTransactionTokenDenied(t *testing.T) {
 	agentBody, _ := json.Marshal(map[string]interface{}{
 		"name":          "tx-denied-agent",
 		"owner":         "test-team",
+		"public_key":    testPublicKey,
 		"capabilities":  []string{"mcp"},
 		"allowed_tools": []string{"read"},
 	})
-	agentResp, err := http.Post("http://localhost:8080/v1/agents/register", "application/json", bytes.NewReader(agentBody))
+	agentResp, err := http.Post(endpoint("/v1/agents/register"), "application/json", bytes.NewReader(agentBody))
 	if err != nil {
 		t.Fatalf("register agent failed: %v", err)
 	}
@@ -532,7 +586,7 @@ func TestTransactionTokenDenied(t *testing.T) {
 		"agent_id": agentID,
 		"action":   "nuclear_launch",
 	})
-	issueResp, err := http.Post("http://localhost:8080/v1/tx/issue", "application/json", bytes.NewReader(issueBody))
+	issueResp, err := http.Post(endpoint("/v1/tx/issue"), "application/json", bytes.NewReader(issueBody))
 	if err != nil {
 		t.Fatalf("issue token request failed: %v", err)
 	}
@@ -548,7 +602,7 @@ func TestTransactionTokenDenied(t *testing.T) {
 }
 
 func TestSPIREIdentity(t *testing.T) {
-	listResp, err := http.Get("http://localhost:8080/v1/spire/trust-bundle")
+	listResp, err := http.Get(endpoint("/v1/spire/trust-bundle"))
 	if err != nil {
 		t.Fatalf("get trust bundle failed: %v", err)
 	}
@@ -569,7 +623,7 @@ func TestSPIREWorkloadRegistration(t *testing.T) {
 		"selector":  "unix:uid:1000",
 		"ttl":       3600,
 	})
-	regResp, err := http.Post("http://localhost:8080/v1/spire/register", "application/json", bytes.NewReader(regBody))
+	regResp, err := http.Post(endpoint("/v1/spire/register"), "application/json", bytes.NewReader(regBody))
 	if err != nil {
 		t.Fatalf("SPIRE register request failed: %v", err)
 	}

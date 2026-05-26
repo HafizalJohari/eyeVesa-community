@@ -3,7 +3,7 @@ use agentid_core::proxy::server;
 use agentid_core::tls::BackendTlsConfig;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -55,6 +55,7 @@ async fn start_proxy(state: Arc<ProxyState>) -> std::net::SocketAddr {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn test_routing_mcp_post() {
     let mock_server = MockServer::start().await;
     let state = make_state(&mock_server);
@@ -76,6 +77,7 @@ async fn test_routing_mcp_post() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn test_routing_health_get() {
     let mock_server = MockServer::start().await;
     let state = make_state(&mock_server);
@@ -91,6 +93,7 @@ async fn test_routing_health_get() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn test_routing_v1_forward() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -112,6 +115,7 @@ async fn test_routing_v1_forward() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn test_routing_mcp_get_rejected() {
     let mock_server = MockServer::start().await;
     let state = make_state(&mock_server);
@@ -130,6 +134,7 @@ async fn test_routing_mcp_get_rejected() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn test_routing_delegation_forward() {
     let mock_server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -155,6 +160,7 @@ async fn test_routing_delegation_forward() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn test_concurrent_requests() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -184,6 +190,7 @@ async fn test_concurrent_requests() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn test_ready_endpoint() {
     let mock_server = MockServer::start().await;
     let state = make_state(&mock_server);
