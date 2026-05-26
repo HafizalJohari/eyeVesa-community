@@ -8,6 +8,7 @@ This project follows Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added `scripts/repair-update.sh` so stale community installs can fast-forward to the remote default branch and rebuild the CLI without relying on an old updater binary.
 - Added a modular CLI TUI package with command-processing tests and a standalone `go run ./cli/cmd/eyevesa tui` entrypoint.
 - Added invite-only Community Secure Agent Node federation so self-hosted nodes can trust peer nodes and discover signed federated agents.
 - Added policy-gated federated invoke authorization via `POST /v1/federation/invoke`, including cross-node connection logging without remote execution.
@@ -62,6 +63,7 @@ This project follows Semantic Versioning.
 - Removed committed GCP deploy env, Terraform variable, Terraform state, and local session transcript artifacts from the tracked tree.
 
 ### Fixed
+- Fixed stale-device recovery by documenting a source-based updater repair command for machines stuck on old community commits.
 - Fixed `eyevesa update` so community clones switch to and fast-forward the remote default branch before rebuilding, preventing stale branch builds like `43d8ddd`.
 - Fixed CI and GCP deployment Docker builds to use the repository root build context required by root-relative Dockerfiles.
 - Fixed hashed-only API key migration so deployment migrations succeed and new agent registrations can create API keys without plaintext storage.

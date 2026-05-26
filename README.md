@@ -242,6 +242,18 @@ Install via Bun:
 bunx --bun bash -c "$(curl -fsSL https://raw.githubusercontent.com/Hafizaljohari/eyeVesa/main/scripts/install.sh)"
 ```
 
+Repair a stale community updater that keeps rebuilding an old commit:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HafizalJohari/eyeVesa-community/main/scripts/repair-update.sh | bash
+```
+
+For an existing checkout on another device:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/HafizalJohari/eyeVesa-community/main/scripts/repair-update.sh | REPO_PATH=/path/to/eyevesa-community bash
+```
+
 Install via Homebrew tap:
 
 ```bash
