@@ -38,7 +38,14 @@ var airportSearchCmd = &cobra.Command{
 		if v, _ := cmd.Flags().GetInt("limit"); v > 0 {
 			params["limit"] = v
 		}
-		result, err := client.AirportSearch(params)
+		federated, _ := cmd.Flags().GetBool("federated")
+		var result map[string]interface{}
+		var err error
+		if federated {
+			result, err = client.FederatedAirportSearch(params)
+		} else {
+			result, err = client.AirportSearch(params)
+		}
 		if err != nil {
 			return err
 		}
@@ -162,6 +169,7 @@ func init() {
 	airportSearchCmd.Flags().String("owner", "", "Filter by owner")
 	airportSearchCmd.Flags().Float64("min-trust", 0, "Minimum trust score")
 	airportSearchCmd.Flags().Int("limit", 50, "Max results")
+	airportSearchCmd.Flags().Bool("federated", false, "Search trusted federated community nodes instead of only local Airport agents")
 	airportHeartbeatCmd.Flags().String("status", "online", "Agent status (online, offline, busy, idle)")
 	airportConnectionsCmd.Flags().Int("limit", 50, "Max results")
 	airportUpdateProfileCmd.Flags().String("description", "", "Profile description")

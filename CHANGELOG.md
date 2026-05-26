@@ -8,6 +8,10 @@ This project follows Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added invite-only Community Secure Agent Node federation so self-hosted nodes can trust peer nodes and discover signed federated agents.
+- Added `federation_peer_invites` storage for one-time hashed peer invite tokens.
+- Added `eyevesa federation peers`, `eyevesa federation invite`, `eyevesa federation register`, `eyevesa federation sync`, and `eyevesa airport search --federated` CLI workflows.
+- Added community secure-node onboarding docs with a two-node local federation demo.
 - Added `eyevesa agents delete <agent-id>` with interactive confirmation and `--yes` bypass flag.
 - Added merchant-as-agent role support with new merchant profile and trust tables (`merchant_profiles`, `merchant_trust_state`, `merchant_trust_events`) and agent `roles`.
 - Added merchant endpoints: `POST /v1/merchants`, `GET /v1/merchants`, `GET /v1/merchants/{merchantID}`, and `GET /v1/merchants/{merchantID}/trust`.
@@ -26,6 +30,8 @@ This project follows Semantic Versioning.
 - Added a dedicated Phase 1 security workflow at `.github/workflows/security-phase-1.yml` for PR/push security gating.
 
 ### Changed
+- Changed the default federation peer type to `community` for community-node registration.
+- Restricted federated discovery to active trusted peers and discovery-only semantics.
 - Updated agent registration limit enforcement to apply only with tenant context (centralized Airport path), removing the global community/local cap fallback.
 - Extended Airport search to support merchant-focused marketplace filters and ranking (`kind=merchant`, `min_merchant_trust`, `merchant_confidence`, `merchant_category`, `merchant_verification`).
 - Changed the CLI module path and imports to `github.com/HafizalJohari/eyeVesa-community/cli` for standalone community builds.
@@ -64,6 +70,10 @@ This project follows Semantic Versioning.
 - Fixed `eyevesa init` so returned registration API keys are saved to config when present, and fixed config saving for JWT-only auth.
 
 ### Security
+- Required federation peer registration to use an invite token unless explicitly admin-approved.
+- Hardened federated passport verification with required fields, signature checks, active peer checks, and 24-hour freshness enforcement.
+- Rate-limited federation registration, agent sync, and heartbeat routes.
+- Excluded suspended peers from federated agent search, online lists, and federated agent detail reads.
 - Added marketplace guardrails in merchant trust state (`risk_flags`, `hitl_only`, `suspended`) so low-confidence or low-trust merchants can be rate-limited before checkout.
 - Restricted autonomous policy generation to detached, validated Rego output and blocked never-event actions such as schema, cluster, policy override, and secret access from promotion.
 - Disabled Cloud SQL public IPv4 by default and enabled Cloud SQL deletion protection in the GCP Terraform path.

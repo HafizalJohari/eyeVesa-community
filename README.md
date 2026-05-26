@@ -44,6 +44,7 @@ Agent (SDK) ──mTLS──▶ Gateway Core ──gRPC──▶ Control Plane �
 - **SPIRE/SPIFFE**: Workload identity with mTLS for service communication (local dev fallback available)
 - **mTLS/TLS**: Rust proxy supports plaintext, TLS, and mTLS modes via `GATEWAY_MODE` env var
 - **Airport**: Agent discovery layer with heartbeat tracking, searchable profiles, online presence, and connection logging
+- **Community Secure Agent Node**: Self-hosted Airport nodes can invite trusted peers and discover signed federated agents without enabling remote execution
 
 ## Packages
 
@@ -113,6 +114,17 @@ The **Airport** is eyeVesa's agent discovery layer — the place where agents me
 - **Connections**: Every authorization interaction between two agents is logged as a connection record, creating a social graph.
 - **Health**: A public endpoint returns airport status (online agent count, total profiles).
 - **Auto-Registration**: When an agent registers via `POST /v1/agents/register`, it automatically receives an airport heartbeat (status: online) and a profile (listed: true). Connections are logged automatically during the authorize flow.
+
+### Community Secure Agent Nodes
+
+Community installs are local-first by default. A node only federates with another
+node after an admin creates an invite and the peer registers with that invite.
+Federated discovery accepts signed agent passports from active trusted peers,
+excludes suspended peers, and keeps the first milestone discovery-only: no remote
+tool execution is enabled by federation.
+
+See [`docs/community-secure-agent-node.md`](docs/community-secure-agent-node.md)
+for the two-node demo and CLI workflow.
 
 ### Airport API Endpoints
 

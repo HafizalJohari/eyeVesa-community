@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -24,6 +25,7 @@ func RegisterFederationPeer(w http.ResponseWriter, r *http.Request) {
 		Endpoint    string `json:"endpoint"`
 		TrustDomain string `json:"trust_domain"`
 		PeerType    string `json:"peer_type"`
+		InviteToken string `json:"invite_token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -39,10 +41,10 @@ func RegisterFederationPeer(w http.ResponseWriter, r *http.Request) {
 		req.TrustDomain = req.Name
 	}
 	if req.PeerType == "" {
-		req.PeerType = "remote"
+		req.PeerType = "community"
 	}
 
-	peer, err := federationService.RegisterPeer(r.Context(), req.Name, req.PublicKey, req.Endpoint, req.TrustDomain, req.PeerType)
+	peer, err := federationService.RegisterPeer(r.Context(), req.Name, req.PublicKey, req.Endpoint, req.TrustDomain, req.PeerType, req.InviteToken, false)
 	if err != nil {
 		slog.Error("register federation peer failed", "error", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -54,6 +56,74 @@ func RegisterFederationPeer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(peer)
+}
+
+func RegisterFederationPeerAdmin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name        string `json:"name"`
+		PublicKey   string `json:"public_key"`
+		Endpoint    string `json:"endpoint"`
+		TrustDomain string `json:"trust_domain"`
+		PeerType    string `json:"peer_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" || req.PublicKey == "" || req.Endpoint == "" {
+		http.Error(w, "name, public_key, and endpoint are required", http.StatusBadRequest)
+		return
+	}
+	if req.TrustDomain == "" {
+		req.TrustDomain = req.Name
+	}
+	if req.PeerType == "" {
+		req.PeerType = "community"
+	}
+	peer, err := federationService.RegisterPeer(r.Context(), req.Name, req.PublicKey, req.Endpoint, req.TrustDomain, req.PeerType, "", true)
+	if err != nil {
+		slog.Error("admin register federation peer failed", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(peer)
+}
+
+func CreateFederationInvite(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name        string `json:"name"`
+		Endpoint    string `json:"endpoint"`
+		TrustDomain string `json:"trust_domain"`
+		PeerType    string `json:"peer_type"`
+		TTLHours    int    `json:"ttl_hours"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" || req.Endpoint == "" {
+		http.Error(w, "name and endpoint are required", http.StatusBadRequest)
+		return
+	}
+	if req.PeerType == "" {
+		req.PeerType = "community"
+	}
+	ttl := time.Duration(req.TTLHours) * time.Hour
+	invite, err := federationService.CreatePeerInvite(r.Context(), req.Name, req.Endpoint, req.TrustDomain, req.PeerType, ttl)
+	if err != nil {
+		slog.Error("create federation invite failed", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(invite)
 }
 
 func GetFederationPeer(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +240,9 @@ func FederatedHeartbeatHandler(w http.ResponseWriter, r *http.Request) {
 	err := federationService.FederatedHeartbeat(r.Context(), req.AgentID, req.GatewayID, req.Status, req.Metadata)
 	if err != nil {
 		slog.Error("federated heartbeat failed", "error", err)
-		http.Error(w, "heartbeat failed", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -288,8 +360,8 @@ func FederationHealthHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":             "healthy",
-		"active_gateways":    len(peers),
+		"status":                  "healthy",
+		"active_gateways":         len(peers),
 		"online_federated_agents": len(online),
 	})
 }

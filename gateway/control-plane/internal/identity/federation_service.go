@@ -3,10 +3,14 @@ package identity
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,29 +32,42 @@ type FederationPeer struct {
 	RegisteredAt string  `json:"registered_at"`
 }
 
+type FederationPeerInvite struct {
+	InviteID    string `json:"invite_id"`
+	Token       string `json:"token,omitempty"`
+	TokenHash   string `json:"-"`
+	Name        string `json:"name"`
+	Endpoint    string `json:"endpoint"`
+	TrustDomain string `json:"trust_domain"`
+	PeerType    string `json:"peer_type"`
+	ExpiresAt   string `json:"expires_at"`
+	UsedAt      string `json:"used_at,omitempty"`
+	CreatedAt   string `json:"created_at"`
+}
+
 type FederatedAgent struct {
-	AgentID            string   `json:"agent_id"`
-	GatewayID          string   `json:"gateway_id"`
-	Name               string   `json:"name"`
-	Owner              string   `json:"owner"`
-	PublicKey          string   `json:"public_key"`
-	TrustScore         float64  `json:"trust_score"`
-	Capabilities       []string `json:"capabilities"`
-	AllowedTools       []string `json:"allowed_tools"`
-	PassportSignature  string   `json:"passport_signature"`
-	PassportIssuedAt   string   `json:"passport_issued_at"`
-	Scope              string   `json:"scope"`
-	Status             string   `json:"status"`
-	Description        string   `json:"description,omitempty"`
-	Tags               []string `json:"tags,omitempty"`
-	HeartbeatStatus    string   `json:"heartbeat_status,omitempty"`
-	LastHeartbeat      string   `json:"last_heartbeat,omitempty"`
-	MerchantTrustScore float64  `json:"merchant_trust_score,omitempty"`
-	MerchantConfidence float64  `json:"merchant_confidence,omitempty"`
-	MerchantVerificationTier string `json:"merchant_verification_tier,omitempty"`
-	MerchantRiskFlags []string `json:"merchant_risk_flags,omitempty"`
-	MerchantHITLOnly bool `json:"merchant_hitl_only,omitempty"`
-	MerchantSuspended bool `json:"merchant_suspended,omitempty"`
+	AgentID                  string   `json:"agent_id"`
+	GatewayID                string   `json:"gateway_id"`
+	Name                     string   `json:"name"`
+	Owner                    string   `json:"owner"`
+	PublicKey                string   `json:"public_key"`
+	TrustScore               float64  `json:"trust_score"`
+	Capabilities             []string `json:"capabilities"`
+	AllowedTools             []string `json:"allowed_tools"`
+	PassportSignature        string   `json:"passport_signature"`
+	PassportIssuedAt         string   `json:"passport_issued_at"`
+	Scope                    string   `json:"scope"`
+	Status                   string   `json:"status"`
+	Description              string   `json:"description,omitempty"`
+	Tags                     []string `json:"tags,omitempty"`
+	HeartbeatStatus          string   `json:"heartbeat_status,omitempty"`
+	LastHeartbeat            string   `json:"last_heartbeat,omitempty"`
+	MerchantTrustScore       float64  `json:"merchant_trust_score,omitempty"`
+	MerchantConfidence       float64  `json:"merchant_confidence,omitempty"`
+	MerchantVerificationTier string   `json:"merchant_verification_tier,omitempty"`
+	MerchantRiskFlags        []string `json:"merchant_risk_flags,omitempty"`
+	MerchantHITLOnly         bool     `json:"merchant_hitl_only,omitempty"`
+	MerchantSuspended        bool     `json:"merchant_suspended,omitempty"`
 }
 
 type FederatedMerchantTrustSync struct {
@@ -71,15 +88,15 @@ type FederatedMerchantTrustSync struct {
 }
 
 type AgentPassport struct {
-	AgentID       string `json:"agent_id"`
-	AgentPubKey   string `json:"agent_public_key"`
-	GatewayID     string `json:"gateway_id"`
-	GatewaySig    string `json:"gateway_signature"`
-	IssuedAt      string `json:"issued_at"`
+	AgentID     string `json:"agent_id"`
+	AgentPubKey string `json:"agent_public_key"`
+	GatewayID   string `json:"gateway_id"`
+	GatewaySig  string `json:"gateway_signature"`
+	IssuedAt    string `json:"issued_at"`
 }
 
 type FederationService struct {
-	pool   *pgxpool.Pool
+	pool    *pgxpool.Pool
 	querier database.Querier
 }
 
@@ -94,7 +111,57 @@ func (fs *FederationService) SetQuerierForTest(q database.Querier) {
 	fs.querier = q
 }
 
-func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB64, endpoint, trustDomain, peerType string) (*FederationPeer, error) {
+func (fs *FederationService) CreatePeerInvite(ctx context.Context, name, endpoint, trustDomain, peerType string, ttl time.Duration) (*FederationPeerInvite, error) {
+	if name == "" || endpoint == "" {
+		return nil, fmt.Errorf("name and endpoint are required")
+	}
+	if err := validateFederationEndpoint(endpoint); err != nil {
+		return nil, err
+	}
+	peerType = normalizePeerType(peerType)
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+	if trustDomain == "" {
+		trustDomain = name
+	}
+
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, fmt.Errorf("generate invite token: %w", err)
+	}
+	token := hex.EncodeToString(tokenBytes)
+	tokenHash := hashInviteToken(token)
+
+	var inviteID string
+	var expiresAt, createdAt time.Time
+	err := fs.querier.QueryRow(ctx,
+		`INSERT INTO federation_peer_invites (token_hash, name, endpoint, trust_domain, peer_type, expires_at, created_at)
+		 VALUES ($1, $2, $3, $4, $5, NOW() + ($6::int * INTERVAL '1 second'), NOW())
+		 RETURNING invite_id, expires_at, created_at`,
+		tokenHash, name, endpoint, trustDomain, peerType, int(ttl.Seconds()),
+	).Scan(&inviteID, &expiresAt, &createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("create federation peer invite failed: %w", err)
+	}
+
+	return &FederationPeerInvite{
+		InviteID:    inviteID,
+		Token:       token,
+		TokenHash:   tokenHash,
+		Name:        name,
+		Endpoint:    endpoint,
+		TrustDomain: trustDomain,
+		PeerType:    peerType,
+		ExpiresAt:   expiresAt.Format(time.RFC3339),
+		CreatedAt:   createdAt.Format(time.RFC3339),
+	}, nil
+}
+
+func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB64, endpoint, trustDomain, peerType, inviteToken string, adminApproved bool) (*FederationPeer, error) {
+	if err := validateFederationEndpoint(endpoint); err != nil {
+		return nil, err
+	}
 	pubKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyB64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid public_key base64: %w", err)
@@ -103,9 +170,17 @@ func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB6
 		return nil, fmt.Errorf("invalid public_key: must be %d bytes, got %d", ed25519.PublicKeySize, len(pubKeyBytes))
 	}
 
-	validPeerTypes := map[string]bool{"self": true, "domestic": true, "remote": true}
-	if !validPeerTypes[peerType] {
-		peerType = "remote"
+	peerType = normalizePeerType(peerType)
+	inviteID := ""
+	if !adminApproved {
+		if inviteToken == "" {
+			return nil, fmt.Errorf("invite_token is required")
+		}
+		var err error
+		inviteID, err = fs.validatePeerInvite(ctx, inviteToken, name, endpoint, trustDomain, peerType)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var gatewayID string
@@ -121,6 +196,11 @@ func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB6
 	if err != nil {
 		return nil, fmt.Errorf("failed to register peer: %w", err)
 	}
+	if inviteID != "" {
+		if err := fs.markPeerInviteUsed(ctx, inviteID); err != nil {
+			return nil, err
+		}
+	}
 
 	slog.Info("federation peer registered", "gateway_id", gatewayID, "name", name, "endpoint", endpoint, "peer_type", peerType)
 
@@ -135,6 +215,69 @@ func (fs *FederationService) RegisterPeer(ctx context.Context, name, publicKeyB6
 		TrustScore:   1.0,
 		RegisteredAt: registeredAt.Format(time.RFC3339),
 	}, nil
+}
+
+func (fs *FederationService) validatePeerInvite(ctx context.Context, token, name, endpoint, trustDomain, peerType string) (string, error) {
+	tokenHash := hashInviteToken(token)
+	var inviteID, inviteName, inviteEndpoint, inviteTrustDomain, invitePeerType string
+	var expiresAt time.Time
+	err := fs.querier.QueryRow(ctx,
+		`SELECT invite_id, name, endpoint, trust_domain, peer_type, expires_at
+		 FROM federation_peer_invites
+		 WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()`,
+		tokenHash,
+	).Scan(&inviteID, &inviteName, &inviteEndpoint, &inviteTrustDomain, &invitePeerType, &expiresAt)
+	if err != nil {
+		return "", fmt.Errorf("invalid or expired federation invite")
+	}
+	if inviteEndpoint != endpoint {
+		return "", fmt.Errorf("invite endpoint mismatch")
+	}
+	if inviteName != "" && inviteName != name {
+		return "", fmt.Errorf("invite name mismatch")
+	}
+	if inviteTrustDomain != "" && trustDomain != "" && inviteTrustDomain != trustDomain {
+		return "", fmt.Errorf("invite trust_domain mismatch")
+	}
+	if invitePeerType != "" && peerType != "" && invitePeerType != normalizePeerType(peerType) {
+		return "", fmt.Errorf("invite peer_type mismatch")
+	}
+	if time.Now().After(expiresAt) {
+		return "", fmt.Errorf("federation invite expired")
+	}
+	return inviteID, nil
+}
+
+func (fs *FederationService) markPeerInviteUsed(ctx context.Context, inviteID string) error {
+	_, err := fs.querier.Exec(ctx, `UPDATE federation_peer_invites SET used_at = NOW() WHERE invite_id = $1`, inviteID)
+	if err != nil {
+		return fmt.Errorf("mark federation invite used failed: %w", err)
+	}
+	return nil
+}
+
+func hashInviteToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func normalizePeerType(peerType string) string {
+	validPeerTypes := map[string]bool{"self": true, "domestic": true, "remote": true, "community": true}
+	if !validPeerTypes[peerType] {
+		return "community"
+	}
+	return peerType
+}
+
+func validateFederationEndpoint(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("endpoint must be an absolute http(s) URL")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("endpoint scheme must be http or https")
+	}
+	return nil
 }
 
 func (fs *FederationService) GetPeer(ctx context.Context, gatewayID string) (*FederationPeer, error) {
@@ -224,6 +367,17 @@ func (fs *FederationService) ListPeers(ctx context.Context, status, peerType str
 }
 
 func (fs *FederationService) VerifyPassport(ctx context.Context, passport AgentPassport) error {
+	if passport.AgentID == "" || passport.AgentPubKey == "" || passport.GatewayID == "" || passport.GatewaySig == "" || passport.IssuedAt == "" {
+		return fmt.Errorf("passport requires agent_id, agent_public_key, gateway_id, gateway_signature, and issued_at")
+	}
+	issuedAt, err := time.Parse(time.RFC3339, passport.IssuedAt)
+	if err != nil {
+		return fmt.Errorf("invalid passport issued_at: %w", err)
+	}
+	if issuedAt.Before(time.Now().Add(-24*time.Hour)) || issuedAt.After(time.Now().Add(5*time.Minute)) {
+		return fmt.Errorf("passport issued_at is stale or in the future")
+	}
+
 	peer, err := fs.GetPeer(ctx, passport.GatewayID)
 	if err != nil {
 		return fmt.Errorf("gateway not registered: %w", err)
@@ -245,10 +399,10 @@ func (fs *FederationService) VerifyPassport(ctx context.Context, passport AgentP
 	}
 
 	verificationPayload := map[string]string{
-		"agent_id":        passport.AgentID,
+		"agent_id":         passport.AgentID,
 		"agent_public_key": passport.AgentPubKey,
-		"gateway_id":      passport.GatewayID,
-		"issued_at":       passport.IssuedAt,
+		"gateway_id":       passport.GatewayID,
+		"issued_at":        passport.IssuedAt,
 	}
 	payload, err := json.Marshal(verificationPayload)
 	if err != nil {
@@ -344,18 +498,18 @@ func (fs *FederationService) SyncAgent(ctx context.Context, passport AgentPasspo
 	slog.Info("federated agent synced to airport", "agent_id", passport.AgentID, "gateway_id", passport.GatewayID, "name", name, "scope", scope)
 
 	return &FederatedAgent{
-		AgentID:          passport.AgentID,
-		GatewayID:        passport.GatewayID,
-		Name:             name,
-		Owner:            owner,
-		PublicKey:        passport.AgentPubKey,
-		TrustScore:       trustScore,
-		Capabilities:     capabilities,
-		AllowedTools:     allowedTools,
+		AgentID:           passport.AgentID,
+		GatewayID:         passport.GatewayID,
+		Name:              name,
+		Owner:             owner,
+		PublicKey:         passport.AgentPubKey,
+		TrustScore:        trustScore,
+		Capabilities:      capabilities,
+		AllowedTools:      allowedTools,
 		PassportSignature: passport.GatewaySig,
-		PassportIssuedAt: passport.IssuedAt,
-		Scope:            scope,
-		Status:           "active",
+		PassportIssuedAt:  passport.IssuedAt,
+		Scope:             scope,
+		Status:            "active",
 	}, nil
 }
 
@@ -420,6 +574,14 @@ func (fs *FederationService) SyncMerchantTrust(ctx context.Context, in Federated
 }
 
 func (fs *FederationService) FederatedHeartbeat(ctx context.Context, agentID, gatewayID, status string, metadata json.RawMessage) error {
+	peer, err := fs.GetPeer(ctx, gatewayID)
+	if err != nil {
+		return fmt.Errorf("unknown gateway: %w", err)
+	}
+	if peer.Status != "active" {
+		return fmt.Errorf("gateway is not active")
+	}
+
 	validStatuses := map[string]bool{"online": true, "offline": true, "busy": true, "idle": true}
 	if !validStatuses[status] {
 		status = "online"
@@ -428,7 +590,7 @@ func (fs *FederationService) FederatedHeartbeat(ctx context.Context, agentID, ga
 		metadata = json.RawMessage(`{}`)
 	}
 
-	_, err := fs.querier.Exec(ctx,
+	_, err = fs.querier.Exec(ctx,
 		`INSERT INTO federated_heartbeats (agent_id, gateway_id, last_heartbeat, status, metadata, updated_at)
 		 VALUES ($1, $2, NOW(), $3, $4, NOW())
 		 ON CONFLICT (agent_id) DO UPDATE SET
@@ -452,7 +614,7 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 
 	args := []interface{}{}
 	argIdx := 1
-	conditions := []string{"fa.status = 'active'", "fp.listed = true"}
+	conditions := []string{"fa.status = 'active'", "COALESCE(fp.listed, true) = true", "fg.status = 'active'"}
 
 	if minTrust > 0 {
 		conditions = append(conditions, fmt.Sprintf("fa.trust_score >= $%d", argIdx))
@@ -507,6 +669,7 @@ func (fs *FederationService) SearchFederatedAgents(ctx context.Context, status, 
 		COALESCE(fmt.hitl_only, false) as merchant_hitl_only,
 		COALESCE(fmt.suspended, false) as merchant_suspended
 		FROM federated_agents fa
+		JOIN federation_peers fg ON fg.gateway_id = fa.gateway_id
 		LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
 		LEFT JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
 		LEFT JOIN federated_merchant_trust fmt ON fmt.merchant_id = fa.agent_id
@@ -585,11 +748,12 @@ func (fs *FederationService) ListFederatedOnline(ctx context.Context, scope stri
 		COALESCE(fmt.hitl_only, false) as merchant_hitl_only,
 		COALESCE(fmt.suspended, false) as merchant_suspended
 		FROM federated_agents fa
+		JOIN federation_peers fg ON fg.gateway_id = fa.gateway_id
 		JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
 		LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
 		LEFT JOIN federated_merchant_trust fmt ON fmt.merchant_id = fa.agent_id
 		WHERE fh.status = 'online' AND fh.last_heartbeat > NOW() - INTERVAL '5 minutes'
-		AND fa.status = 'active' AND COALESCE(fp.listed, true) = true`
+		AND fa.status = 'active' AND COALESCE(fp.listed, true) = true AND fg.status = 'active'`
 	args := []interface{}{}
 
 	if scope != "" {
@@ -671,10 +835,11 @@ func (fs *FederationService) GetFederatedAgent(ctx context.Context, agentID stri
 		COALESCE(fmt.hitl_only, false) as merchant_hitl_only,
 		COALESCE(fmt.suspended, false) as merchant_suspended
 		FROM federated_agents fa
+		JOIN federation_peers fg ON fg.gateway_id = fa.gateway_id
 		LEFT JOIN federated_profiles fp ON fp.agent_id = fa.agent_id
 		LEFT JOIN federated_heartbeats fh ON fh.agent_id = fa.agent_id
 		LEFT JOIN federated_merchant_trust fmt ON fmt.merchant_id = fa.agent_id
-		WHERE fa.agent_id = $1`,
+		WHERE fa.agent_id = $1 AND fg.status = 'active'`,
 		agentID,
 	).Scan(&a.AgentID, &a.GatewayID, &a.Name, &a.Owner, &pubKeyBytes,
 		&a.TrustScore, &capsStr, &toolsStr,
