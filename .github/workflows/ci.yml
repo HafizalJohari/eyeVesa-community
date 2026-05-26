@@ -13,7 +13,7 @@ jobs:
       run:
         working-directory: gateway/core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -33,7 +33,7 @@ jobs:
       run:
         working-directory: sdk/agent-sdk-rust
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -47,7 +47,7 @@ jobs:
       run:
         working-directory: gateway/control-plane
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -66,7 +66,7 @@ jobs:
       run:
         working-directory: adapter/resource-adapter-go
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
@@ -76,7 +76,7 @@ jobs:
   rust-security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
@@ -102,7 +102,7 @@ jobs:
   go-security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -133,7 +133,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -162,7 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [integration]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build control plane image
         run: docker build -t agentid-control:ci -f gateway/control-plane/Dockerfile .
       - name: Build core image
