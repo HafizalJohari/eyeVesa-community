@@ -62,6 +62,7 @@ This project follows Semantic Versioning.
 - Removed committed GCP deploy env, Terraform variable, Terraform state, and local session transcript artifacts from the tracked tree.
 
 ### Fixed
+- Fixed `eyevesa update` so community clones switch to and fast-forward the remote default branch before rebuilding, preventing stale branch builds like `43d8ddd`.
 - Fixed CI and GCP deployment Docker builds to use the repository root build context required by root-relative Dockerfiles.
 - Fixed hashed-only API key migration so deployment migrations succeed and new agent registrations can create API keys without plaintext storage.
 - Fixed integration tests to target configurable deployment URLs and current registration, health, PTV, HITL, skills, and transaction token contracts.
