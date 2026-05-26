@@ -89,8 +89,8 @@ services:
 
   resource-adapter:
     build:
-      context: ./adapter/resource-adapter-go
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: adapter/resource-adapter-go/Dockerfile
     container_name: agentid-resource-adapter
     ports:
       - "8443:8443"

@@ -21,6 +21,10 @@ docs-all/
 docs/.astro/
 session-ses_*.md
 eyevesa-pro
+/eyevesa
+/eyevesa-tui
+cli/tui.log
+.antigravitycli/
 *_license.json
 **/.terraform/
 *.tfvars

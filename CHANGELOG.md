@@ -8,6 +8,7 @@ This project follows Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- Added a modular CLI TUI package with command-processing tests and a standalone `go run ./cli/cmd/eyevesa tui` entrypoint.
 - Added invite-only Community Secure Agent Node federation so self-hosted nodes can trust peer nodes and discover signed federated agents.
 - Added policy-gated federated invoke authorization via `POST /v1/federation/invoke`, including cross-node connection logging without remote execution.
 - Added `federation_peer_invites` storage for one-time hashed peer invite tokens.
@@ -31,6 +32,7 @@ This project follows Semantic Versioning.
 - Added a dedicated Phase 1 security workflow at `.github/workflows/security-phase-1.yml` for PR/push security gating.
 
 ### Changed
+- Refactored the CLI `tui` command to delegate Bubble Tea model, update, view, styles, data, and command handling into `cli/internal/tui`.
 - Changed the default federation peer type to `community` for community-node registration.
 - Restricted federated discovery and invoke authorization to active trusted peers.
 - Updated agent registration limit enforcement to apply only with tenant context (centralized Airport path), removing the global community/local cap fallback.
@@ -60,6 +62,7 @@ This project follows Semantic Versioning.
 - Removed committed GCP deploy env, Terraform variable, Terraform state, and local session transcript artifacts from the tracked tree.
 
 ### Fixed
+- Fixed the Docker Compose resource adapter build context so the adapter Dockerfile can build from the repository root.
 - Fixed stale AgentID Gateway CLI branding in user-facing CLI help text.
 - Fixed installer handling for stale Hermes/profile-wrapper `eyevesa` commands by backing up and replacing the wrapper with the eyeVesa CLI.
 - Fixed `deploy-gcp.sh build` Docker contexts so local GCP image builds match the root-context Dockerfiles used by Cloud Build.
