@@ -87,6 +87,24 @@ type FederatedMerchantTrustSync struct {
 	Metadata         map[string]interface{} `json:"metadata"`
 }
 
+type FederatedInvokeRequest struct {
+	RequesterID string                 `json:"requester_id"`
+	ResponderID string                 `json:"responder_id"`
+	Action      string                 `json:"action"`
+	Params      map[string]interface{} `json:"params,omitempty"`
+}
+
+type FederatedInvokeDecision struct {
+	Allowed            bool    `json:"allowed"`
+	RequiresHITL       bool    `json:"requires_hitl"`
+	Reason             string  `json:"reason"`
+	RiskLevel          string  `json:"risk_level"`
+	RequesterTrust     float64 `json:"requester_trust"`
+	ResponderTrust     float64 `json:"responder_trust"`
+	ResponderGatewayID string  `json:"responder_gateway_id"`
+	ExecutionEnabled   bool    `json:"execution_enabled"`
+}
+
 type AgentPassport struct {
 	AgentID     string `json:"agent_id"`
 	AgentPubKey string `json:"agent_public_key"`
@@ -569,6 +587,79 @@ func (fs *FederationService) SyncMerchantTrust(ctx context.Context, in Federated
 		if err != nil {
 			return fmt.Errorf("insert federated merchant trust event failed: %w", err)
 		}
+	}
+	return nil
+}
+
+func (fs *FederationService) AuthorizeFederatedInvoke(ctx context.Context, req FederatedInvokeRequest) (*FederatedInvokeDecision, error) {
+	if req.RequesterID == "" || req.ResponderID == "" || req.Action == "" {
+		return nil, fmt.Errorf("requester_id, responder_id, and action are required")
+	}
+
+	var requesterTrust float64
+	err := fs.querier.QueryRow(ctx,
+		`SELECT trust_score FROM agents WHERE agent_id = $1 AND status = 'active'`,
+		req.RequesterID,
+	).Scan(&requesterTrust)
+	if err != nil {
+		return nil, fmt.Errorf("requester agent not found or inactive: %w", err)
+	}
+
+	var responderGatewayID, gatewayStatus string
+	var responderTrust, gatewayTrust float64
+	err = fs.querier.QueryRow(ctx,
+		`SELECT fa.gateway_id, fa.trust_score, fg.status, fg.trust_score
+		 FROM federated_agents fa
+		 JOIN federation_peers fg ON fg.gateway_id = fa.gateway_id
+		 WHERE fa.agent_id = $1 AND fa.status = 'active'`,
+		req.ResponderID,
+	).Scan(&responderGatewayID, &responderTrust, &gatewayStatus, &gatewayTrust)
+	if err != nil {
+		return nil, fmt.Errorf("responder federated agent not found or inactive: %w", err)
+	}
+
+	decision := &FederatedInvokeDecision{
+		Allowed:            false,
+		RequiresHITL:       false,
+		Reason:             "cross-node invoke denied: trust or peer status insufficient",
+		RiskLevel:          "high",
+		RequesterTrust:     requesterTrust,
+		ResponderTrust:     responderTrust,
+		ResponderGatewayID: responderGatewayID,
+		ExecutionEnabled:   false,
+	}
+
+	if gatewayStatus == "active" && gatewayTrust >= 0.5 && requesterTrust >= 0.5 && responderTrust >= 0.3 {
+		decision.Allowed = true
+		decision.Reason = "cross-node invoke authorized for policy-gated handoff"
+		if requesterTrust < 0.7 {
+			decision.RequiresHITL = true
+			decision.Reason = "cross-node invoke authorized but requires HITL"
+		}
+	}
+
+	outcome := "denied"
+	if decision.Allowed {
+		outcome = "success"
+	}
+	if decision.RequiresHITL {
+		outcome = "hitl_required"
+	}
+	if err := fs.logFederatedConnection(ctx, req.RequesterID, req.ResponderID, responderGatewayID, req.Action, outcome, requesterTrust); err != nil {
+		return nil, err
+	}
+
+	return decision, nil
+}
+
+func (fs *FederationService) logFederatedConnection(ctx context.Context, requesterID, responderID, responderGatewayID, action, outcome string, trustScore float64) error {
+	_, err := fs.querier.Exec(ctx,
+		`INSERT INTO federated_connections (requester_id, responder_id, responder_gateway_id, action, outcome, trust_score_at_time, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+		requesterID, responderID, responderGatewayID, action, outcome, trustScore,
+	)
+	if err != nil {
+		return fmt.Errorf("log federated connection failed: %w", err)
 	}
 	return nil
 }

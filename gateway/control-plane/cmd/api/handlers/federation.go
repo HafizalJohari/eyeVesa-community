@@ -215,6 +215,26 @@ func SyncFederatedAgent(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(agent)
 }
 
+func AuthorizeFederatedInvokeHandler(w http.ResponseWriter, r *http.Request) {
+	var req identity.FederatedInvokeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	decision, err := federationService.AuthorizeFederatedInvoke(r.Context(), req)
+	if err != nil {
+		slog.Error("federated invoke authorization failed", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(decision)
+}
+
 func FederatedHeartbeatHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AgentID   string          `json:"agent_id"`

@@ -9,8 +9,9 @@ This project follows Semantic Versioning.
 
 ### Added
 - Added invite-only Community Secure Agent Node federation so self-hosted nodes can trust peer nodes and discover signed federated agents.
+- Added policy-gated federated invoke authorization via `POST /v1/federation/invoke`, including cross-node connection logging without remote execution.
 - Added `federation_peer_invites` storage for one-time hashed peer invite tokens.
-- Added `eyevesa federation peers`, `eyevesa federation invite`, `eyevesa federation register`, `eyevesa federation sync`, and `eyevesa airport search --federated` CLI workflows.
+- Added `eyevesa federation peers`, `eyevesa federation invite`, `eyevesa federation register`, `eyevesa federation sync`, `eyevesa federation invoke`, and `eyevesa airport search --federated` CLI workflows.
 - Added community secure-node onboarding docs with a two-node local federation demo.
 - Added `eyevesa agents delete <agent-id>` with interactive confirmation and `--yes` bypass flag.
 - Added merchant-as-agent role support with new merchant profile and trust tables (`merchant_profiles`, `merchant_trust_state`, `merchant_trust_events`) and agent `roles`.
@@ -31,7 +32,7 @@ This project follows Semantic Versioning.
 
 ### Changed
 - Changed the default federation peer type to `community` for community-node registration.
-- Restricted federated discovery to active trusted peers and discovery-only semantics.
+- Restricted federated discovery and invoke authorization to active trusted peers.
 - Updated agent registration limit enforcement to apply only with tenant context (centralized Airport path), removing the global community/local cap fallback.
 - Extended Airport search to support merchant-focused marketplace filters and ranking (`kind=merchant`, `min_merchant_trust`, `merchant_confidence`, `merchant_category`, `merchant_verification`).
 - Changed the CLI module path and imports to `github.com/HafizalJohari/eyeVesa-community/cli` for standalone community builds.
@@ -73,6 +74,7 @@ This project follows Semantic Versioning.
 - Required federation peer registration to use an invite token unless explicitly admin-approved.
 - Hardened federated passport verification with required fields, signature checks, active peer checks, and 24-hour freshness enforcement.
 - Rate-limited federation registration, agent sync, and heartbeat routes.
+- Logged federated invoke decisions to `federated_connections` for cross-node audit visibility.
 - Excluded suspended peers from federated agent search, online lists, and federated agent detail reads.
 - Added marketplace guardrails in merchant trust state (`risk_flags`, `hitl_only`, `suspended`) so low-confidence or low-trust merchants can be rate-limited before checkout.
 - Restricted autonomous policy generation to detached, validated Rego output and blocked never-event actions such as schema, cluster, policy override, and secret access from promotion.

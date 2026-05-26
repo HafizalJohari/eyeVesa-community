@@ -85,6 +85,29 @@ var federationSyncCmd = &cobra.Command{
 	},
 }
 
+var federationInvokeCmd = &cobra.Command{
+	Use:   "invoke",
+	Short: "Authorize a policy-gated cross-node agent handoff",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		requesterID, _ := cmd.Flags().GetString("requester")
+		responderID, _ := cmd.Flags().GetString("responder")
+		action, _ := cmd.Flags().GetString("action")
+		rawParams, _ := cmd.Flags().GetString("params")
+		var params map[string]interface{}
+		if rawParams != "" {
+			if err := json.Unmarshal([]byte(rawParams), &params); err != nil {
+				return err
+			}
+		}
+		result, err := getClient().FederationInvoke(requesterID, responderID, action, params)
+		if err != nil {
+			return err
+		}
+		printResult(result)
+		return nil
+	},
+}
+
 func init() {
 	federationInviteCmd.Flags().String("name", "", "Peer node name")
 	federationInviteCmd.Flags().String("endpoint", "", "Peer node endpoint, for example http://node-b.local:8080")
@@ -107,9 +130,18 @@ func init() {
 
 	federationSyncCmd.Flags().String("payload", "", "Raw JSON body for /v1/federation/agents/sync")
 
+	federationInvokeCmd.Flags().String("requester", "", "Local requester agent ID")
+	federationInvokeCmd.Flags().String("responder", "", "Federated responder agent ID")
+	federationInvokeCmd.Flags().String("action", "", "Requested cross-node action")
+	federationInvokeCmd.Flags().String("params", "", "Optional JSON params for the action")
+	federationInvokeCmd.MarkFlagRequired("requester")
+	federationInvokeCmd.MarkFlagRequired("responder")
+	federationInvokeCmd.MarkFlagRequired("action")
+
 	federationCmd.AddCommand(federationPeersCmd)
 	federationCmd.AddCommand(federationInviteCmd)
 	federationCmd.AddCommand(federationRegisterCmd)
 	federationCmd.AddCommand(federationSyncCmd)
+	federationCmd.AddCommand(federationInvokeCmd)
 	addOperateCommand(federationCmd)
 }

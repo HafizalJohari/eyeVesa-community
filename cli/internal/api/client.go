@@ -870,6 +870,18 @@ func (c *Client) FederationSyncAgent(body map[string]interface{}) (map[string]in
 	return c.Post("/v1/federation/agents/sync", body)
 }
 
+func (c *Client) FederationInvoke(requesterID, responderID, action string, params map[string]interface{}) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"requester_id": requesterID,
+		"responder_id": responderID,
+		"action":       action,
+	}
+	if params != nil {
+		body["params"] = params
+	}
+	return c.Post("/v1/federation/invoke", body)
+}
+
 func (c *Client) CreateAPIKey(name, tenantID string) (map[string]interface{}, error) {
 	body := map[string]interface{}{
 		"name": name,

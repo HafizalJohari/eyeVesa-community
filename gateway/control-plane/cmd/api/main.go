@@ -455,6 +455,7 @@ func main() {
 		r.Get("/federation/peers", handlers.ListFederationPeers)
 		r.Get("/federation/peers/{gatewayID}", handlers.GetFederationPeer)
 		r.With(airportLimiter.IPLimiter).Post("/federation/agents/sync", handlers.SyncFederatedAgent)
+		r.With(airportLimiter.IPLimiter).Post("/federation/invoke", handlers.AuthorizeFederatedInvokeHandler)
 		r.Post("/federation/merchant-trust/sync", handlers.SyncFederatedMerchantTrust)
 		r.With(airportLimiter.IPLimiter).Post("/federation/heartbeat", handlers.FederatedHeartbeatHandler)
 		r.Get("/federation/agents", handlers.SearchFederatedAgentsHandler)

@@ -6,12 +6,15 @@ federate with other community nodes through explicit invites.
 
 ## Security Boundary
 
-Community federation starts with secure discovery only:
+Community federation starts with secure discovery, then adds policy-gated
+handoff authorization:
 
 - Local agents remain local unless their profile is listed.
 - Remote nodes must be invited before they can register as trusted peers.
 - Federated agents must sync with a signed passport from their gateway.
 - Suspended peers are excluded from federated search and online results.
+- Cross-node invoke authorization records an audit trail before any future
+  execution layer.
 - Remote tool execution is not enabled by this milestone.
 
 Think of it like airport flight boards. A trusted terminal can share which
@@ -58,6 +61,16 @@ Search trusted federated agents:
 
 ```bash
 eyevesa --gateway http://localhost:8080 airport search --federated --status online
+```
+
+Authorize a cross-node handoff without executing remote tools:
+
+```bash
+eyevesa --gateway http://localhost:8080 federation invoke \
+  --requester <local-agent-id> \
+  --responder <federated-agent-id> \
+  --action research.handoff \
+  --params '{"topic":"supply chain risk"}'
 ```
 
 If node B is suspended, its agents disappear from federated discovery.

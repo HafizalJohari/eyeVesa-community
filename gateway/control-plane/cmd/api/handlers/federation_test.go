@@ -74,6 +74,7 @@ func setupFederationRouter() http.Handler {
 		r.Get("/federation/peers", ListFederationPeers)
 		r.Get("/federation/peers/{gatewayID}", GetFederationPeer)
 		r.Post("/federation/agents/sync", SyncFederatedAgent)
+		r.Post("/federation/invoke", AuthorizeFederatedInvokeHandler)
 		r.Post("/federation/heartbeat", FederatedHeartbeatHandler)
 		r.Get("/federation/agents", SearchFederatedAgentsHandler)
 		r.Get("/federation/online", ListFederatedOnlineHandler)
@@ -637,6 +638,170 @@ func TestSyncFederatedAgentRejectsStalePassport(t *testing.T) {
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400 for stale passport, got %d", resp.StatusCode)
+	}
+}
+
+func TestAuthorizeFederatedInvokeAllowed(t *testing.T) {
+	requesterID := uuid.New().String()
+	responderID := uuid.New().String()
+	gatewayID := uuid.New().String()
+	writes := 0
+
+	fs := identity.NewFederationService(nil)
+	fs.SetQuerierForTest(&mockQuerier{
+		queryRowFn: func(ctx context.Context, sql string, args ...interface{}) database.Row {
+			if strings.Contains(sql, "FROM agents") {
+				return &flexMockRow{vals: []interface{}{0.82}}
+			}
+			return &flexMockRow{vals: []interface{}{gatewayID, 0.76, "active", 0.9}}
+		},
+		execFn: func(ctx context.Context, sql string, args ...interface{}) (database.CommandTag, error) {
+			if !strings.Contains(sql, "federated_connections") {
+				t.Fatalf("unexpected write: %s", sql)
+			}
+			writes++
+			return database.CommandTag{RowsAffected: 1}, nil
+		},
+	})
+	SetFederationService(fs)
+
+	r := chi.NewRouter()
+	r.Post("/v1/federation/invoke", AuthorizeFederatedInvokeHandler)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"requester_id": requesterID,
+		"responder_id": responderID,
+		"action":       "research.handoff",
+	})
+
+	resp, err := http.Post(ts.URL+"/v1/federation/invoke", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("invoke request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["allowed"] != true {
+		t.Fatalf("expected allowed=true, got %v", result["allowed"])
+	}
+	if result["requires_hitl"] != false {
+		t.Fatalf("expected requires_hitl=false, got %v", result["requires_hitl"])
+	}
+	if result["execution_enabled"] != false {
+		t.Fatalf("expected execution_enabled=false, got %v", result["execution_enabled"])
+	}
+	if writes != 1 {
+		t.Fatalf("expected one federated connection log, got %d", writes)
+	}
+}
+
+func TestAuthorizeFederatedInvokeRequiresHITL(t *testing.T) {
+	fs := identity.NewFederationService(nil)
+	fs.SetQuerierForTest(&mockQuerier{
+		queryRowFn: func(ctx context.Context, sql string, args ...interface{}) database.Row {
+			if strings.Contains(sql, "FROM agents") {
+				return &flexMockRow{vals: []interface{}{0.62}}
+			}
+			return &flexMockRow{vals: []interface{}{uuid.New().String(), 0.8, "active", 0.9}}
+		},
+		execFn: func(ctx context.Context, sql string, args ...interface{}) (database.CommandTag, error) {
+			return database.CommandTag{RowsAffected: 1}, nil
+		},
+	})
+	SetFederationService(fs)
+
+	r := chi.NewRouter()
+	r.Post("/v1/federation/invoke", AuthorizeFederatedInvokeHandler)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"requester_id": uuid.New().String(),
+		"responder_id": uuid.New().String(),
+		"action":       "merchant.quote",
+	})
+
+	resp, err := http.Post(ts.URL+"/v1/federation/invoke", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("invoke request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["allowed"] != true || result["requires_hitl"] != true {
+		t.Fatalf("expected allowed HITL decision, got %#v", result)
+	}
+}
+
+func TestAuthorizeFederatedInvokeDeniedForSuspendedPeer(t *testing.T) {
+	fs := identity.NewFederationService(nil)
+	fs.SetQuerierForTest(&mockQuerier{
+		queryRowFn: func(ctx context.Context, sql string, args ...interface{}) database.Row {
+			if strings.Contains(sql, "FROM agents") {
+				return &flexMockRow{vals: []interface{}{0.9}}
+			}
+			return &flexMockRow{vals: []interface{}{uuid.New().String(), 0.8, "suspended", 0.9}}
+		},
+		execFn: func(ctx context.Context, sql string, args ...interface{}) (database.CommandTag, error) {
+			return database.CommandTag{RowsAffected: 1}, nil
+		},
+	})
+	SetFederationService(fs)
+
+	r := chi.NewRouter()
+	r.Post("/v1/federation/invoke", AuthorizeFederatedInvokeHandler)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"requester_id": uuid.New().String(),
+		"responder_id": uuid.New().String(),
+		"action":       "research.handoff",
+	})
+
+	resp, err := http.Post(ts.URL+"/v1/federation/invoke", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("invoke request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["allowed"] != false {
+		t.Fatalf("expected denied decision, got %#v", result)
+	}
+}
+
+func TestAuthorizeFederatedInvokeMissingFields(t *testing.T) {
+	r := setupFederationRouter()
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"requester_id": uuid.New().String(),
+	})
+
+	resp, err := http.Post(ts.URL+"/v1/federation/invoke", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("invoke request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing fields, got %d", resp.StatusCode)
 	}
 }
 

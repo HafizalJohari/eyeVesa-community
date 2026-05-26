@@ -44,7 +44,7 @@ Agent (SDK) ──mTLS──▶ Gateway Core ──gRPC──▶ Control Plane �
 - **SPIRE/SPIFFE**: Workload identity with mTLS for service communication (local dev fallback available)
 - **mTLS/TLS**: Rust proxy supports plaintext, TLS, and mTLS modes via `GATEWAY_MODE` env var
 - **Airport**: Agent discovery layer with heartbeat tracking, searchable profiles, online presence, and connection logging
-- **Community Secure Agent Node**: Self-hosted Airport nodes can invite trusted peers and discover signed federated agents without enabling remote execution
+- **Community Secure Agent Node**: Self-hosted Airport nodes can invite trusted peers, discover signed federated agents, and authorize cross-node handoffs without enabling remote execution
 
 ## Packages
 
@@ -122,6 +122,12 @@ node after an admin creates an invite and the peer registers with that invite.
 Federated discovery accepts signed agent passports from active trusted peers,
 excludes suspended peers, and keeps the first milestone discovery-only: no remote
 tool execution is enabled by federation.
+
+Phase 2 adds policy-gated invoke authorization through
+`POST /v1/federation/invoke`. The endpoint validates the local requester,
+federated responder, peer status, and trust thresholds, then records a
+`federated_connections` audit row. It returns whether the handoff is allowed or
+requires HITL, but still does not execute remote tools.
 
 See [`docs/community-secure-agent-node.md`](docs/community-secure-agent-node.md)
 for the two-node demo and CLI workflow.
